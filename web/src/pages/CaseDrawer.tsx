@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type AgentRun, type OrderRow, type PackingResult } from "../api";
 import { ErrorBox, Loading, Meter, Pill, Timeline, useAsync } from "../components/ui";
-import { FAILURE_POINT, METHOD, ROUTE, money, stateTone } from "../format";
+import { FAILURE_POINT, METHOD, ROUTE, money, riskTone, stateTone } from "../format";
 
 const TEST_TRACKING = ["SHIPPO_DELIVERED", "SHIPPO_TRANSIT", "SHIPPO_FAILURE", "SHIPPO_PRE_TRANSIT", "SHIPPO_RETURNED"];
 
@@ -163,6 +163,12 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
           <div className="spread"><span className="muted">Amount</span><span>{money(row.amount_minor, row.currency)}</span></div>
           <div className="spread"><span className="muted">Delivery</span><span>{row.method ? METHOD[row.method] : "—"}{row.recommended_method && row.recommended_method !== row.method ? <span className="faint"> (suggested: {METHOD[row.recommended_method]})</span> : null}</span></div>
           <div className="spread"><span className="muted">Address check</span><Pill tone={row.address_check === "valid" ? "good" : row.address_check === "overridden" ? "warn" : "neutral"} plain>{row.address_check}</Pill></div>
+          {row.delivery_risk != null && (
+            <div className="col" style={{ gap: 4 }}>
+              <div className="spread"><span className="muted">Delivery risk</span><Pill tone={riskTone(row.delivery_risk)} plain>{`${(row.delivery_risk * 100).toFixed(1)}%`}</Pill></div>
+              {row.risk_reasons.map((r) => <span key={r} className="faint">{r}</span>)}
+            </div>
+          )}
           <div className="col" style={{ gap: 6 }}>
             <span className="muted">Evidence</span>
             <Meter value={row.evidence.score} />

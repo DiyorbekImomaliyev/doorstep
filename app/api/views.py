@@ -14,7 +14,10 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.ai.risk import RiskFeatures, load_model
 from app.cases.signals import EvidenceKind
+from app.checkout.risk import seller_case_rate, seller_order_count
+from app.money import MINOR_UNIT_EXPONENT, parse_currency
 from app.orders.enums import CaseState, OrderState
 from app.orders.models import (
     AuditLog,
@@ -376,6 +379,40 @@ class OrderRow(BaseModel):
     packing_verdict: str | None = None
     packing_message: str | None = None
     packing_cleared: bool = False
+    # RK: live delivery risk for the chosen method and address outcome, before delivery only.
+    delivery_risk: float | None = None
+    risk_reasons: list[str] = []
+
+
+_RISK_STATES = {
+    OrderState.CREATED.value,
+    OrderState.PAID.value,
+    OrderState.PACKED.value,
+    OrderState.SHIPPED.value,
+    OrderState.IN_TRANSIT.value,
+    OrderState.EXCEPTION.value,
+}
+
+
+def delivery_risk(s: Session, order: Order) -> tuple[float | None, list[str]]:
+    """The trained model's view of this parcel as sent (method, address outcome, shop history).
+    None once the parcel is delivered, or when the model is unavailable."""
+    model = load_model()
+    if model is None or order.state not in _RISK_STATES:
+        return None, []
+    method = order.shipping_method if order.shipping_method in ("locker", "signature") else "home"
+    score = model.score(
+        RiskFeatures(
+            order_value_major=order.amount_minor
+            / 10 ** MINOR_UNIT_EXPONENT[parse_currency(order.currency)],
+            buyer_country=order.buyer_country,
+            seller_case_rate=min(seller_case_rate(s, order.seller_id), 1.0),
+            seller_orders=seller_order_count(s, order.seller_id),
+            method=method,  # type: ignore[arg-type]
+            address_overridden=order.address_check == "overridden",
+        )
+    )
+    return score.p_failure, [r.text for r in score.top_reasons]
 
 
 def order_row(s: Session, order: Order) -> OrderRow:
@@ -400,6 +437,7 @@ def order_row(s: Session, order: Order) -> OrderRow:
         .order_by(AuditLog.at.desc())
         .limit(1)
     )
+    risk_now, risk_reasons = delivery_risk(s, order)
     return OrderRow(
         order_id=order.id,
         order_ref=order.id[:8].upper(),
@@ -433,6 +471,8 @@ def order_row(s: Session, order: Order) -> OrderRow:
         packing_verdict=packing_result.get("verdict"),
         packing_message=packing_result.get("message"),
         packing_cleared=bool(packing_result.get("cleared", False)),
+        delivery_risk=risk_now,
+        risk_reasons=risk_reasons,
     )
 
 

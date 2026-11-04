@@ -57,3 +57,8 @@ export const REASONS: { value: string; label: string }[] = [
   { value: "missing_item", label: "Something is missing" },
   { value: "empty_box", label: "The box was empty" },
 ];
+
+/** Delivery-risk pill tone: the locker threshold is 5%; above 15% is high. */
+export function riskTone(p: number): Tone {
+  return p >= 0.15 ? "bad" : p >= 0.05 ? "warn" : "good";
+}

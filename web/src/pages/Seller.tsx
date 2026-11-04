@@ -3,7 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type ICellRendererParams } from "ag-grid-community";
 import { api, type OrderRow } from "../api";
 import { Brand, ErrorBox, Loading, Meter, Pill, Toast, useAsync } from "../components/ui";
-import { FAILURE_POINT, METHOD, ROUTE, ago, money, stateTone } from "../format";
+import { FAILURE_POINT, METHOD, ROUTE, ago, money, riskTone, stateTone } from "../format";
 import CaseDrawer from "./CaseDrawer";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -92,6 +92,14 @@ export default function Seller({ token }: { token: string }) {
       headerName: "Evidence", width: 150,
       valueGetter: (p) => p.data?.evidence.score ?? 0,
       cellRenderer: (p: ICellRendererParams<OrderRow>) => <div style={{ display: "flex", alignItems: "center", height: "100%" }} title={`Missing: ${p.data!.evidence.missing.join(", ") || "nothing"}`}><Meter value={p.data!.evidence.score} /></div>,
+    },
+    {
+      headerName: "Risk", field: "delivery_risk", width: 100,
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => {
+        const r = p.data!;
+        if (r.delivery_risk == null) return <span className="faint">—</span>;
+        return <span title={r.risk_reasons.join("\n")}><Pill tone={riskTone(r.delivery_risk)} plain>{`${(r.delivery_risk * 100).toFixed(1)}%`}</Pill></span>;
+      },
     },
     {
       headerName: "Delivery", field: "method", width: 120,

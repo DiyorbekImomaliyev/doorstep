@@ -68,6 +68,8 @@ export type OrderRow = {
   packing_verdict: "match" | "mismatch" | "check" | null;
   packing_message: string | null;
   packing_cleared: boolean;
+  delivery_risk: number | null;
+  risk_reasons: string[];
 };
 
 export type AgentRun = {
