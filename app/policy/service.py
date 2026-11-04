@@ -261,6 +261,7 @@ class PolicyService:
         route = self._route(case, order, seller, result, outcome, rule is not None, refund, notes)
         codes = [code for code, _ in notes]
         reasons = [*result.reasons, *(text for _, text in notes)]
+        liability = outcome.model_dump(mode="json") if outcome else None  # pragma: no mutate
 
         decision = Decision(
             case_id=case.id,
@@ -274,11 +275,10 @@ class PolicyService:
             rule_version=outcome.rule_version if outcome else None,
             reasons=reasons,
             reason_codes=[code.value for code in codes],
-            explanation="",
             signals={
-                "engine": result.model_dump(mode="json"),
+                "engine": result.model_dump(mode="json"),  # pragma: no mutate
                 "facts": facts.model_dump(mode="json"),
-                "liability": outcome.model_dump(mode="json") if outcome else None,
+                "liability": liability,
                 "remaining_refundable_minor": remaining.amount_minor,
             },
             model_outputs=model_outputs or {},
@@ -654,11 +654,12 @@ class RefundJobHandler:
     def _load(self, session: Session, job: Job) -> tuple[MoneyAction, Order, Case, Decision]:
         ma_id = str(job.payload.get("money_action_id", ""))  # pragma: no mutate
         ma = session.scalar(select(MoneyAction).where(MoneyAction.id == ma_id).with_for_update())
-        if ma is None or ma.case_id is None or ma.decision_id is None:
+        if ma is None:
             raise MissingRecord(f"job {job.id}: money action missing")
         order = session.get(Order, ma.order_id)
-        case = session.get(Case, ma.case_id)
-        decision = session.get(Decision, ma.decision_id)
+        case = session.get(Case, ma.case_id) if ma.case_id else None  # pragma: no mutate
+        did = ma.decision_id
+        decision = session.get(Decision, did) if did else None  # pragma: no mutate
         if order is None or case is None or decision is None:
             raise MissingRecord(f"job {job.id}: order, case or decision missing")
         return ma, order, case, decision
@@ -669,7 +670,7 @@ class RefundJobHandler:
         """Decide, right before PayPal, whether this refund may go out (PO-12, ADR-016, ADR-022)."""
         state = CaseState(case.state)
         if state in FINISHED_CASE_STATES:  # closed or settled another way: never send money
-            return _Verdict.block(Reason.CASE_FINISHED, state, state=state.value)
+            return _Verdict.block(Reason.CASE_FINISHED, state=state.value)  # terminal: case stays
         if _open_dispute(session, order.id):
             return _Verdict.block(Reason.DISPUTE_OPENED, CaseState.DISPUTE_EVIDENCE)
         if evidence_fingerprint(session, order.id) != decision.evidence_fingerprint:

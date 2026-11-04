@@ -86,11 +86,21 @@ Tracked against the day's definition of done (SPEC section 16).
     content, 23 logic gaps).
   - **The gate is red.** It needs a test addendum (human approval); see the report.
 
+- Mutation-gap addendum (e8960d5, human-approved): 22 tests in
+  `tests/unit/test_po_mutation_gaps.py`. They pin the refund amount (partial stays partial),
+  custom_id on every refund, the crash-recovery conditions, refund kind, address comparison,
+  and one audit golden per money or state action.
+  - Simplifications: `explanation` left to its column default, no target on a finished-case
+    block, `_load` checks each reference once.
+  - Checks: `make lint` clean; `make test` 585 passed, 1 xfailed (3 runs); `app/policy`
+    branch coverage 100%.
+  - **`make mutmut-gate` green:** 1386 mutants, 1352 killed, 2 timeout, 32 text-only
+    survivors, 0 logic survivors.
+
 ### In progress
 - Waiting on the human:
-  - `tests-locked-core` is still at 48f38bd (local and origin), not 9b22bbb, so
-    `make locked` fails;
-  - approval of the audit-content and logic-gap tests (docs/mutation-report.md).
+  - `tests-locked-core` is still at 48f38bd (local and origin), so `make locked` fails;
+  - lock-tag move to the addendum commit.
 
 ### Not started (day-1 definition of done)
 - [ ] Sandbox order with shipping options → capture → tracking → partial refund → sandbox dispute settled

@@ -34,7 +34,9 @@ mutmut:
 	uv run mutmut results
 
 # Gate (ADR-023): zero surviving logic mutants in the money path; text-only survivors allowed.
+# Starts clean: mutmut's cached test map misses tests added since the last run.
 mutmut-gate:
+	rm -rf mutants
 	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run mutmut run
 	uv run python scripts/mutmut_gate.py
 
