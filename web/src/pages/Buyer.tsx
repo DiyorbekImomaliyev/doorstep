@@ -139,6 +139,7 @@ export default function Buyer({ token }: { token: string }) {
           <h3>History</h3>
           <Timeline items={v.timeline} />
         </section>
+        {v.can_report && <AgentLink token={token} />}
         <p className="faint" style={{ textAlign: "center" }}>
           Doorstep never asks for card details. Money is handled by PayPal.
         </p>
@@ -207,5 +208,35 @@ function AddressFix({ token, view, busy, onDone, onKeep }: { token: string; view
       <button className="btn primary lg block" disabled={busy || !unit.trim()} onClick={save}>Add {unit.trim() ? `${unitWord} ${unit.trim()}` : "number"} and pay</button>
       <button className="btn ghost block" disabled={busy} onClick={onKeep}>My address is complete — keep it</button>
     </section>
+  );
+}
+
+/** MC-01: an AI assistant can report a problem for this one order, never touch others. */
+function AgentLink({ token }: { token: string }) {
+  const [link, setLink] = useState<{ order_token: string; mcp_url: string; expires_in_days: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function get() {
+    try { setLink(await api.agentLink(token)); } catch (e) { setErr(String((e as Error).message)); }
+  }
+  return (
+    <details className="card">
+      <summary>Using an AI assistant?</summary>
+      <div className="col" style={{ marginTop: 10 }}>
+        <p className="muted" style={{ margin: 0 }}>
+          Your assistant can check this order and report a problem for you through Doorstep's MCP tool.
+          The link works for this order only and cannot move money.
+        </p>
+        {!link && <button className="btn" onClick={get}>Create an assistant link</button>}
+        {err && <ErrorBox message={err} />}
+        {link && (
+          <div className="col" style={{ gap: 6 }}>
+            <span className="faint">MCP server</span>
+            <code className="mono" style={{ wordBreak: "break-all" }}>{link.mcp_url}</code>
+            <span className="faint">Order token (valid {link.expires_in_days} days)</span>
+            <code className="mono" style={{ wordBreak: "break-all" }}>{link.order_token}</code>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }

@@ -448,3 +448,19 @@ check needs the seller's "I checked it" (recorded as `cleared`, read by the engi
 shrunk to 1600 px JPEG in the browser; the API caps uploads at 5 MB.
 **Trade-off.** No photo bytes are kept, so a later dispute cannot show the packing photo itself;
 storing it needs object storage and a 90-day deletion job (SPEC section 13), left for later.
+
+## ADR-030 — MCP tool: one order per token, opens a case, no money tools
+
+**Context.** MC-01..03 and SPEC section 9: buyers' AI agents should get the same fair process
+through an MCP tool, without any way to move money or see other orders.
+**Decision.** `app/mcp/server.py` (FastMCP) exposes `get_delivery_status` and
+`report_delivery_problem`. Both take an `order_token` signed with the `mcp` scope (buyer links
+are refused); no tool takes an order, seller or case id. The order work is injected as
+`AgentPort` (adapter in `app/api/agent.py`), so `app.mcp` never imports the pipeline or money
+code; import-linter checks it. A report runs the same pipeline as "Not here", recorded as
+`reported_by=agent`, so the coded policy decides the outcome. The buyer page mints a 7-day agent
+token. The server is mounted at `/agent/mcp` (streamable HTTP, stateless, JSON responses) and
+its lifespan runs inside the API's.
+**Trade-off.** Stateless mode keeps deploys simple but has no server-to-client notifications;
+the agent polls `get_delivery_status`. A report under the auto-approve limit can still end in
+an automatic refund, exactly as the buyer's own tap would: the policy decides, not the agent.

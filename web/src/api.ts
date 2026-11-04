@@ -192,6 +192,10 @@ export const api = {
   choose: (t: string, option: string) => call<BuyerView>("POST", `/api/buyer/${t}/choice`, { option }),
   fixAddress: (t: string, address: Address) =>
     call<{ valid: boolean; issues: { code: string; message: string }[] }>("POST", `/api/buyer/${t}/address`, address),
+  agentLink: (t: string) =>
+    call<{ order_token: string; mcp_url: string; tool: string; expires_in_days: number }>(
+      "POST", `/api/buyer/${t}/agent-link`,
+    ),
   keepAddress: (t: string) => call<BuyerView>("POST", `/api/buyer/${t}/keep-address`),
 
   me: (t: string) => call<{ seller_id: string; name: string; region: string }>("GET", `/api/seller/${t}/me`),

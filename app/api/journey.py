@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.ai.explainer import Explainer
 from app.ai.llm import Image
 from app.ai.packing import PackingChecker
+from app.api.agent import MCP_MOUNT, MCP_PATH
 from app.api.deps import SIMULATED_COMPONENTS, AppDeps, Services
 from app.api.views import (
     BuyerView,
@@ -38,6 +39,7 @@ from app.checkout.address import AddressChecker, AddressCheckResult
 from app.checkout.service import CheckoutError, CheckoutService, DeliveryQuote
 from app.db import Base
 from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
+from app.mcp.server import MCP_SCOPE
 from app.money import Currency, Money
 from app.orders.enums import ShippingMethod
 from app.orders.models import Case, Order, Seller
@@ -135,6 +137,16 @@ class PackingOut(BaseModel):
     message: str
     reasons: list[str]
     order: OrderRow
+
+
+AGENT_LINK_TTL_S = 7 * 24 * 3600
+
+
+class AgentLinkOut(BaseModel):
+    order_token: str
+    mcp_url: str
+    tool: str
+    expires_in_days: int
 
 
 class ActionOut(BaseModel):
@@ -332,6 +344,18 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         s.commit()
         return ReportOut(
             case_id=report.case_id, status=report.route.value, message=report.buyer_message
+        )
+
+    @router.post("/api/buyer/{token}/agent-link", response_model=AgentLinkOut)
+    def agent_link(token: str, s: Db) -> AgentLinkOut:
+        """MC-01: a separate token, scoped to this one order, for the buyer's AI assistant."""
+        order = _order(s, token)
+        agent_token = services.links.issue(order.id, scope=MCP_SCOPE, ttl_s=AGENT_LINK_TTL_S)
+        return AgentLinkOut(
+            order_token=agent_token,
+            mcp_url=f"{services.app_base_url}{MCP_MOUNT}{MCP_PATH}",
+            tool="report_delivery_problem",
+            expires_in_days=AGENT_LINK_TTL_S // 86400,
         )
 
     @router.post("/api/buyer/{token}/choice", response_model=BuyerView)

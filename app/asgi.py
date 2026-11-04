@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 
+from app.api.agent import build_agent_http, mount_agent
 from app.main import create_app
 from app.runtime import build_runtime, env
 
@@ -17,6 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 runtime = build_runtime()
 app = create_app(runtime.deps)
+mount_agent(app, build_agent_http(runtime))
 
 if env("EMBEDDED_WORKER") == "1":  # pragma: no cover - process wiring
     from app.worker.main import run_loop

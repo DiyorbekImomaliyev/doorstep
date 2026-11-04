@@ -14,6 +14,7 @@ dependencies = [
   "paypal",
   "cryptography>=50.0.2",
   "anthropic>=2.4.0",
+  "fastmcp>=2.12",
 ]
 
 [dependency-groups]
