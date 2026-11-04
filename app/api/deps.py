@@ -40,7 +40,7 @@ SIMULATED_COMPONENTS: dict[str, str] = {
     "carrier_claims": "Carrier claim letters are drafted, never filed on a carrier portal.",
     "scratch_refunds": "Refunds on seeded scratch orders (capture ids starting SIM-) are "
     "simulated; refunds on real sandbox checkouts go to PayPal.",
-    "risk_model": "Delivery risk uses a rule-of-thumb score until the trained model ships.",
+    "risk_model": "Delivery risk comes from a model trained on synthetic data (model card).",
 }
 
 
