@@ -97,6 +97,19 @@ Tracked against the day's definition of done (SPEC section 16).
   - **`make mutmut-gate` green:** 1386 mutants, 1352 killed, 2 timeout, 32 text-only
     survivors, 0 logic survivors.
 
+- Journey, frontend and agent work (this session), one commit each:
+  4bbd106 CK/TR/BC/EX/PR · bdc9951 API, runtime, worker, model adapter, seed · e049081 PayPal
+  return URL · 3ccf7af web (React + AG Grid) · deploy blueprint (ADR-028) · cfa533c PK packing
+  check (ADR-029) · 9ba8665 MC MCP tool (ADR-030) · 3e0d875 AT case agent on the Agent Toolkit
+  (ADR-031) · 436aeff Schemathesis fuzz, secrets checks, CI, full trace.
+  - Fixes from review: development receipt key persisted beside the SQLite file (receipts kept
+    verifying across restarts); seeded history dated in order; buyer progress never shows
+    "Received" on a "Not here"; `/demo/seed?scratch=0` development-only; MCP URL without a
+    redirect; a 500 on non-ASCII link tokens (found by Schemathesis).
+  - Checks: `make lint` clean (ruff, pyright, 3 import contracts kept); `make test` 798 passed,
+    24 strict xfail; `make fuzz` 26 operations clean; `make trace` 129/129; Playwright 4 passed;
+    `app/policy` + `state.py` branch coverage 100%.
+
 ### In progress
 - Waiting on the human:
   - `tests-locked-core` is still at 48f38bd (local and origin), so `make locked` fails;
