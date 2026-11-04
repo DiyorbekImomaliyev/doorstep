@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+mutants/
+
+# Node
+node_modules/
+web/dist/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Local data
+data/
+*.sqlite3
