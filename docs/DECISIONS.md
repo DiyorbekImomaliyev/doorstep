@@ -192,3 +192,83 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
     git URL may be used.
   - Tests fake PayPal over HTTP (ADR-013), so falling back to PyPI 2.4.0 (`paypalserversdk`)
     changes only `app/paypal_client` internals.
+
+## ADR-015 — SDK models, our own transport
+
+- **Date:** 2026-11-04 · **Status:** accepted (phase C; see paypal-plan.md)
+- **Context:** The pinned SDK (ADR-014) has its own transport, but:
+  - its token cache uses `time.monotonic`, not our injectable Clock;
+  - it does not retry a 401;
+  - SDK retries are on by default (we retry only in the outbox);
+  - `patch_order` and `create_order_tracking` take no `PayPal-Request-Id`;
+  - its typed error model needs `message` + `debug_id`, so a thin error body fails to decode and
+    the status is lost.
+- **Decision:** Use SDK models (`OrderRequest`, `Patch`, `OrderTrackerRequest`, `RefundRequest`,
+  `Order`, `Refund`) to build request bodies (`to_dict`) and decode responses. Transport, OAuth,
+  401 refresh-once, logging, `debug_id` capture and error mapping stay in `app/paypal_client/client.py`
+  (httpx).
+- **Trade-off:** We don't use the SDK's call surface. The models still keep wire shapes right.
+  Phase D: the real sandbox 422 body did include `message`/`debug_id`
+  (`recordings/paypal/capture_declined.json`), so the decode concern is about thin/5xx bodies only.
+  Re-check before switching to the SDK transport.
+
+## ADR-016 — Refund ceiling and pre-refund re-check
+
+- **Date:** 2026-11-04 · **Status:** accepted (phase C, PO-06/PO-12)
+- **Decision:**
+  - A refund amount is clamped to the remaining refundable amount: order amount minus queued,
+    completed and external refunds.
+  - Right before the PayPal call, `RefundJobHandler` re-checks:
+    - no open dispute;
+    - the evidence fingerprint is unchanged;
+    - the live capture is `COMPLETED` in the same currency;
+    - the live refunded total equals our known total, or known + this refund (an earlier attempt
+      that landed);
+    - known + this refund ≤ min(live capture, order amount).
+  - Any mismatch → money action `BLOCKED`, case → `HOLD_FOR_REVIEW`.
+- **Trade-off:** It's a ceiling, not strict equality with the capture, so an order captured above
+  its stored amount still refunds (capped at the order amount). PayPal `PENDING` refunds count as
+  refunded.
+
+## ADR-017 — Repeat claimants and the daily cap
+
+- **Date:** 2026-11-04 · **Status:** accepted (phase C, PO-04/PO-08)
+- **Decision:**
+  - **Repeat claimant:** count this seller's cases for the same PayPal payer opened in the last
+    `window_days` (90), plus this case. At ≥ `threshold` (3) → hold. No payer id → not counted.
+  - **Daily cap:** sum this seller's queued + completed, non-external refunds in this currency
+    since 00:00 UTC.
+  - External refunds (made outside Doorstep) count toward the refundable ceiling, but not the cap.
+- **Trade-off:** The window uses case open time, not order time. UTC day, not the seller's local day.
+
+## ADR-018 — Failure-point engine: fallback and contradiction
+
+- **Date:** 2026-11-04 · **Status:** accepted (phase C, FE-01..FE-08)
+- **Decision:**
+  - Candidates are ranked by `FAILURE_POINT_PRIORITY`. Score = support weights − missing-signal
+    penalty − ambiguity penalty; thresholds in `tuning/engine_config.py`.
+  - No matching candidate → `FALLBACK_BY_CLAIM` at LOW confidence (→ human).
+  - CONTRADICTS also fires when:
+    - a WRONG_ITEM claim meets a packing-photo match, or a cleared mismatch;
+    - a DAMAGED claim meets a buyer photo showing no damage.
+- **Trade-off:** Weights are hand-set until the FE-09 dataset and autoresearch exist.
+
+## ADR-019 — Carrier mapping and phase-D items to verify
+
+- **Date:** 2026-11-04 · **Status:** accepted (phase C)
+- **Decision:**
+  - **Shippo status → order state:**
+    - PRE_TRANSIT → SHIPPED;
+    - TRANSIT → IN_TRANSIT;
+    - DELIVERED → DELIVERED;
+    - FAILURE/RETURNED → EXCEPTION;
+    - UNKNOWN → no-op.
+  - Illegal or backward events are recorded and ignored (SM-09). There is no implicit
+    PAID → SHIPPED; a label purchase does that.
+  - Carriers PayPal doesn't know are sent as `OTHER` + `carrier_name_other`. Locker = PayPal
+    shipping option type `PICKUP`.
+- **To verify in the sandbox (phase D):**
+  - whether shipping options need an amount breakdown;
+  - the PATCH path `/purchase_units/@reference_id=='default'/shipping/address`;
+  - `admin_area_1` rules for US addresses;
+  - real webhook payload shapes for capture, refund and dispute events.
