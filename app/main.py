@@ -14,9 +14,31 @@ def create_app(deps: AppDeps) -> FastAPI:
     app.state.deps = deps
     app.state.rulebook = rulebook
     app.include_router(build_router(deps))
+    if deps.services is not None:
+        from fastapi import Request
+        from fastapi.responses import JSONResponse
 
-    @app.get("/healthz")
-    def healthz() -> dict[str, object]:
-        return {"ok": True, "rules": sorted(rulebook.rule_ids)}
+        from app.api.deps import ServiceUnavailable
+        from app.api.journey import build_journey_router
+        from app.paypal_client.errors import PayPalAuthError, PayPalServerError
+
+        @app.exception_handler(ServiceUnavailable)
+        def _unavailable(request: Request, exc: ServiceUnavailable) -> JSONResponse:
+            return JSONResponse({"detail": str(exc)}, status_code=503)
+
+        @app.exception_handler(PayPalServerError)
+        @app.exception_handler(PayPalAuthError)
+        def _paypal_down(request: Request, exc: Exception) -> JSONResponse:
+            return JSONResponse(
+                {"detail": "PayPal is not reachable right now; nothing was charged. Try again."},
+                status_code=503,
+            )
+
+        app.include_router(build_journey_router(deps, deps.services, rulebook))
+    else:
+
+        @app.get("/healthz")
+        def healthz() -> dict[str, object]:
+            return {"ok": True, "rules": sorted(rulebook.rule_ids)}
 
     return app

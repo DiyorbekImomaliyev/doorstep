@@ -368,3 +368,51 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
 - **Trade-off:** A full mutation run takes minutes, so it only runs when the money path
   changes. The text-only rule is narrow on purpose; a new text-only position (e.g. a new
   helper) must be added to the gate in review, not guessed.
+
+## ADR-024 — Signed links instead of accounts; tables created at startup
+
+**Context.** Buyers and sellers must act with zero typing (SPEC section 4, principle 6), and
+judges need a no-login path (SPEC section 15). There is no migration history yet.
+**Decision.** Buyers act through an HMAC-signed, order-scoped link (scope `buyer`); the seller
+through a signed seller link (scope `seller`, subject = seller id); MCP gets scope `mcp`. A bad,
+expired or wrong-scope token, or an id outside its scope, answers 404 (BC-01, BC-04).
+`Base.metadata.create_all` runs at startup; no Alembic in the hackathon build.
+**Trade-off.** A leaked link grants that one order's actions until it expires (30 days); links
+are not revocable without rotating `SIGNING_SECRET`. Adding columns later needs a fresh database
+or a first migration.
+
+## ADR-025 — One model adapter on the official SDK; no temperature on Claude Sonnet 5.5
+
+**Context.** CLAUDE.md asks for temperature 0 on checks. Claude Sonnet 5.5 returns 400 for a
+non-default `temperature` and for forced `tool_choice`.
+**Decision.** `app/ai/llm.py` is the only module that talks to a model. Claude goes through the
+official `anthropic` SDK with `messages.parse(output_format=<Pydantic model>)` (structured
+outputs) and `effort: low`; Gemini goes over REST with `responseJsonSchema` and temperature 0.
+Invalid output: one retry on the same provider, then the caller's template fallback. Budget,
+quota, auth or outage on the main provider: one retry on the fallback provider; the answering
+provider is stored with the explanation. User text is redacted (emails, phones, postcodes to
+district) before any call (SE-02). Opus model ids are refused.
+**Trade-off.** Claude outputs are schema-guaranteed but not sampling-deterministic; evals record
+and replay outputs instead of relying on temperature.
+
+## ADR-026 — Signed receipts on one global hash chain
+
+**Context.** PR-01..03 ask for tamper-evident money decisions anyone can check.
+**Decision.** Every decision, approval, decline and completed refund appends an Ed25519-signed
+receipt whose hash covers the previous receipt's hash. `GET /cases/{id}/verify` recomputes the
+chain from receipt 1 up to that case's last receipt and names the first broken one. Payloads hold
+ids, amounts and rule ids only, because the endpoint is public. `/healthz` publishes the key.
+**Trade-off.** Verification cost grows with the whole chain (fine at hackathon scale; a
+per-period checkpoint would bound it). Demo reset wipes the chain, so reset is development-only.
+
+## ADR-027 — Seeded scratch data uses simulated refunds, labelled as such
+
+**Context.** Judges each get an isolated scenario (PR-06), but seeded orders never went through a
+PayPal checkout, so they have no real capture to refund.
+**Decision.** Seeded orders carry capture ids starting `SIM-`. The worker's refund gateway routes
+those to `SimulatedRefundGateway` and everything else to PayPal. The full policy path still runs
+(limits, caps, approvals, pre-refund re-check, receipts); only the final PayPal call is
+simulated, and its status reads `simulated` everywhere (PR-08). `/healthz` lists it. The filmed
+refund comes from a real sandbox checkout.
+**Trade-off.** Scratch refunds prove the decision path, not PayPal's refund API; the sandbox
+smoke test (E2E-03) and the filmed demo cover the real call.

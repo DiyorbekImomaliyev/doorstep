@@ -46,7 +46,9 @@ def handle_shippo_track_updated(session: Session, row: WebhookInbox) -> None:
     status_block = data.get("tracking_status")
     status_block = status_block if isinstance(status_block, dict) else {}
     shipment = session.scalars(
-        select(Shipment).where(Shipment.tracking_number == tracking_number)
+        select(Shipment)
+        .where(Shipment.tracking_number == tracking_number)
+        .order_by(Shipment.created_at.desc())  # Shippo test numbers are shared: newest wins
     ).first()
     if shipment is None:
         log.info("shippo event %s for unknown tracking number; skipped", row.event_id)

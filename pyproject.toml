@@ -13,6 +13,7 @@ dependencies = [
   "uvicorn>=0.30",
   "paypal",
   "cryptography>=50.0.2",
+  "anthropic>=2.4.0",
 ]
 
 [dependency-groups]
@@ -75,7 +76,7 @@ allow_indirect_imports = true
 [[tool.importlinter.contracts]]
 name = "PO-01 only app.policy imports refund and dispute writes"
 type = "forbidden"
-source_modules = ["app.api", "app.ai", "app.cases", "app.mcp", "app.orders", "app.shipping", "app.worker"]
+source_modules = ["app.api", "app.ai", "app.cases", "app.checkout", "app.demo", "app.mcp", "app.orders", "app.proof", "app.security", "app.shipping", "app.worker"]
 forbidden_modules = ["app.paypal_client.writes.money"]
 allow_indirect_imports = true
 

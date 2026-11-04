@@ -1,0 +1,379 @@
+"""The Sam and Maria demo scenario (E2E-02) and per-judge scratch copies (PR-06).
+
+Every row is built the way production builds it: orders start CREATED and move only through
+app.orders.state; cases run through the real CasePipeline (engine -> policy -> explainer ->
+receipt). Ids are uuid5 of (tag, key), so a seed is identical every time for the same tag.
+
+Seeded orders never went through PayPal checkout: their capture ids start with `SIM-`, so any
+refund on them is routed to the simulated gateway and labelled as simulated (PR-05, PR-08).
+The filmed refund comes from a real sandbox checkout, not from seeded data.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+from datetime import timedelta
+from typing import Any
+
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.ai.explainer import Explainer
+from app.cases.engine import ClaimReason
+from app.cases.pipeline import CasePipeline
+from app.cases.signals import EvidenceKind
+from app.clock import Clock
+from app.config import Settings
+from app.orders.enums import OrderState
+from app.orders.models import Evidence, Order, Seller, Shipment, TrackingEvent
+from app.orders.state import transition_order
+from app.policy.rules import RuleBook
+from app.proof.receipts import ReceiptSigner
+from app.shipping.service import FAILED_ATTEMPT_CHOICES
+from app.worker.simulated import SIM_PREFIX
+
+DEMO_TAG = "demo"
+_NS = uuid.UUID("7c1d6a52-4c1e-4a59-9a43-6a3d0f1d2c11")
+
+_O = OrderState
+_PATHS: dict[OrderState, list[OrderState]] = {
+    _O.IN_TRANSIT: [_O.PAID, _O.SHIPPED, _O.IN_TRANSIT],
+    _O.EXCEPTION: [_O.PAID, _O.SHIPPED, _O.IN_TRANSIT, _O.EXCEPTION],
+    _O.DELIVERED: [_O.PAID, _O.SHIPPED, _O.IN_TRANSIT, _O.DELIVERED],
+    _O.PICKED_UP: [_O.PAID, _O.SHIPPED, _O.IN_TRANSIT, _O.PICKED_UP],
+}
+_CARRIER_STATUS = {
+    _O.SHIPPED: "PRE_TRANSIT",
+    _O.IN_TRANSIT: "TRANSIT",
+    _O.EXCEPTION: "FAILURE",
+    _O.DELIVERED: "DELIVERED",
+    _O.PICKED_UP: "DELIVERED",
+}
+
+
+@dataclass(frozen=True)
+class _Spec:
+    key: str
+    buyer: str
+    item: str
+    amount_minor: int
+    currency: str
+    country: str
+    method: str
+    state: OrderState
+    postcode: str
+    city: str
+    hours_ago: int
+    evidence: tuple[tuple[EvidenceKind, dict[str, Any]], ...] = ()
+    report: ClaimReason | None = None
+    confirm: bool = False
+    stale: bool = False
+    failure_substatus: str = ""
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+_PACKED = (EvidenceKind.PACKING_PHOTO, {"verdict": "match", "expected_weight_g": 900})
+
+SCENARIO: tuple[_Spec, ...] = (
+    _Spec(
+        "sam-jacket",
+        "Sam Carter",
+        "Black jacket, size M",
+        6000,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "N1 9GU",
+        "London",
+        30,
+        (_PACKED,),
+    ),
+    _Spec(
+        "failed-attempt",
+        "Priya Shah",
+        "Wool scarf, grey",
+        3500,
+        "GBP",
+        "GB",
+        "home",
+        _O.EXCEPTION,
+        "M14 5RT",
+        "Manchester",
+        20,
+        (_PACKED,),
+        failure_substatus="no_access",
+    ),
+    _Spec(
+        "locker-pickup",
+        "Tom Hughes",
+        "Leather boots, size 8",
+        4500,
+        "GBP",
+        "GB",
+        "locker",
+        _O.PICKED_UP,
+        "LS6 2AB",
+        "Leeds",
+        50,
+        (_PACKED, (EvidenceKind.LOCKER_CODE, {"code_used": True})),
+    ),
+    _Spec(
+        "empty-box",
+        "Alex Reed",
+        "Bucket hat, black",
+        2800,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "BS1 4DJ",
+        "Bristol",
+        70,
+        (_PACKED,),
+        report=ClaimReason.EMPTY_BOX,
+    ),
+    _Spec(
+        "damaged-mug",
+        "Jo Evans",
+        "Ceramic mug set",
+        4000,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "CF10 1EP",
+        "Cardiff",
+        60,
+        (_PACKED, (EvidenceKind.BUYER_PHOTO, {"damage_visible": True, "severity": "major"})),
+        report=ClaimReason.DAMAGED,
+    ),
+    _Spec(
+        "in-transit",
+        "Ben Clark",
+        "Knit gloves",
+        2200,
+        "GBP",
+        "GB",
+        "locker",
+        _O.IN_TRANSIT,
+        "EH1 1YZ",
+        "Edinburgh",
+        10,
+        (_PACKED,),
+    ),
+    _Spec(
+        "lost-denim",
+        "Chloe Ward",
+        "Denim jacket, size S",
+        7500,
+        "GBP",
+        "GB",
+        "home",
+        _O.IN_TRANSIT,
+        "B1 1AA",
+        "Birmingham",
+        120,
+        (_PACKED,),
+        report=ClaimReason.NOT_RECEIVED,
+        stale=True,
+    ),
+    _Spec(
+        "signed-coat",
+        "Omar Haddad",
+        "Wool coat, navy, size L",
+        12000,
+        "GBP",
+        "GB",
+        "signature",
+        _O.DELIVERED,
+        "SW1A 1AA",
+        "London",
+        90,
+        (_PACKED, (EvidenceKind.SIGNATURE, {"signed_by": "_O. Haddad"})),
+        confirm=True,
+    ),
+    _Spec(
+        "us-sneakers",
+        "Dana Lee",
+        "Running sneakers, US 10",
+        12000,
+        "USD",
+        "US",
+        "home",
+        _O.DELIVERED,
+        "94107",
+        "San Francisco",
+        40,
+        (_PACKED,),
+    ),
+)
+
+
+class SeededOrder(BaseModel):
+    key: str
+    order_id: str
+    buyer: str
+    item: str
+    state: str
+    case_id: str | None = None
+    route: str | None = None
+
+
+class SeedSummary(BaseModel):
+    tag: str
+    seller_id: str
+    orders: list[SeededOrder]
+
+
+def _id(tag: str, key: str) -> str:
+    return str(uuid.uuid5(_NS, f"{tag}:{key}"))
+
+
+def seed_scenario(
+    session: Session,
+    *,
+    rulebook: RuleBook,
+    clock: Clock,
+    settings: Settings,
+    signer: ReceiptSigner,
+    tag: str = DEMO_TAG,
+) -> SeedSummary:
+    """Seeds Maria's shop for `tag`. Seeding a tag that already exists returns it unchanged."""
+    seller_id = _id(tag, "seller")
+    if session.get(Seller, seller_id) is None:
+        _build(session, rulebook, clock, settings, signer, tag, seller_id)
+    return _summary(session, tag, seller_id)
+
+
+def _build(
+    session: Session,
+    rulebook: RuleBook,
+    clock: Clock,
+    settings: Settings,
+    signer: ReceiptSigner,
+    tag: str,
+    seller_id: str,
+) -> None:
+    now = clock.now()
+    session.add(
+        Seller(
+            id=seller_id,
+            name="Maria's Vintage",
+            region="GB",
+            scratch_tag=tag,
+            policy_text=(
+                "We refund or reship any order that does not reach you. Report a problem within "
+                "30 days of the expected delivery date."
+            ),
+        )
+    )
+    session.flush()
+    pipeline = CasePipeline(session, rulebook, clock, settings, Explainer(), signer)
+    for spec in SCENARIO:
+        oid = _id(tag, spec.key)
+        created = now - timedelta(hours=spec.hours_ago)
+        order = Order(
+            id=oid,
+            seller_id=seller_id,
+            paypal_order_id=f"{SIM_PREFIX}PPO-{oid[:13]}",
+            capture_id=f"{SIM_PREFIX}CAP-{oid[:13]}",
+            capture_status="COMPLETED",
+            amount_minor=spec.amount_minor,
+            currency=spec.currency,
+            buyer_country=spec.country,
+            payer_id=f"SIM-PAYER-{spec.key}",
+            shipping_address={
+                "name": spec.buyer,
+                "line1": "Flat 1, 1 Demo Street" if spec.country == "GB" else "1 Demo Street",
+                "city": spec.city,
+                "postal_code": spec.postcode,
+                "country": spec.country,
+            },
+            address_check="valid",
+            shipping_method=spec.method,
+            recommended_method=spec.method,
+            item_description=spec.item,
+            scratch_tag=tag,
+            created_at=created,
+        )
+        session.add(order)
+        session.flush()
+        shipment = Shipment(
+            order_id=oid,
+            carrier="shippo",
+            tracking_number=f"SIM-{oid[:8]}-{spec.key}".upper(),
+            method=spec.method,
+            label_weight_g=900,
+            delivery_address=dict(order.shipping_address),
+            created_at=created + timedelta(hours=2),
+        )
+        session.add(shipment)
+        session.flush()
+        for kind, result in spec.evidence:
+            session.add(
+                Evidence(order_id=oid, kind=kind.value, ai_result=result, created_at=created)
+            )
+        path = _PATHS[spec.state]
+        step = timedelta(hours=max(1, spec.hours_ago // (len(path) + 1)))
+        for i, to in enumerate(path):
+            transition_order(session, order, to, actor="demo-seed", reason=f"seeded {to.value}")
+            status = _CARRIER_STATUS.get(to)
+            if status is None or (spec.stale and to == _O.IN_TRANSIT):
+                continue
+            raw: dict[str, Any] = {"tracking_status": {"status": status}}
+            if to == _O.EXCEPTION and spec.failure_substatus:
+                raw["tracking_status"]["substatus"] = {"code": spec.failure_substatus}
+            session.add(
+                TrackingEvent(
+                    shipment_id=shipment.id,
+                    status=status,
+                    occurred_at=created + step * (i + 1),
+                    applied=True,
+                    raw=raw,
+                )
+            )
+        if spec.state == _O.EXCEPTION:
+            shipment.choice_offered = list(FAILED_ATTEMPT_CHOICES)
+        session.flush()
+        if spec.confirm:
+            pipeline.confirm_received(order, actor="demo-seed")
+        if spec.report is not None:
+            pipeline.report(order, spec.report, reported_by="buyer")
+    session.flush()
+
+
+def _summary(session: Session, tag: str, seller_id: str) -> SeedSummary:
+    from sqlalchemy import select
+
+    from app.orders.models import Case, Decision
+
+    out: list[SeededOrder] = []
+    for spec in SCENARIO:
+        order = session.get(Order, _id(tag, spec.key))
+        assert order is not None
+        case = session.scalars(
+            select(Case).where(Case.order_id == order.id).order_by(Case.opened_at.desc())
+        ).first()
+        decision = (
+            session.scalars(
+                select(Decision)
+                .where(Decision.case_id == case.id)
+                .order_by(Decision.created_at.desc())
+            ).first()
+            if case
+            else None
+        )
+        out.append(
+            SeededOrder(
+                key=spec.key,
+                order_id=order.id,
+                buyer=spec.buyer,
+                item=spec.item,
+                state=order.state,
+                case_id=case.id if case else None,
+                route=decision.route if decision else None,
+            )
+        )
+    return SeedSummary(tag=tag, seller_id=seller_id, orders=out)

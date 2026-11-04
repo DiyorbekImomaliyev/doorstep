@@ -105,6 +105,7 @@ class Explanation(BaseModel):
     rule_id: str | None
     source: Literal["model", "template"]
     blocked_reason: str | None = None
+    provider: str | None = None  # which model provider answered (CLAUDE.md fallback rule)
 
 
 def _fix_text(ctx: ExplainContext) -> str:
@@ -209,4 +210,5 @@ class Explainer:
             claim_letter=draft.claim_letter if ctx.failure_point in _CARRIER_FAULTS else None,
             rule_id=ctx.rule_id,
             source="model",
+            provider=getattr(self.llm, "last_provider", None),
         )
