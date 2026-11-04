@@ -82,6 +82,16 @@ class StartOut(BaseModel):
     buyer_url: str
 
 
+class ReturnIn(BaseModel):
+    paypal_order_id: str = Field(min_length=1, max_length=64)
+
+
+class ReturnOut(BaseModel):
+    buyer_token: str
+    buyer_url: str
+    address: AddressCheckResult | None = None
+
+
 class ReportIn(BaseModel):
     reason: ClaimReason = ClaimReason.NOT_RECEIVED
     note: str = Field(default="", max_length=1000)  # data, never instructions (hard rule 8)
@@ -222,6 +232,25 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             buyer_token=token,
             buyer_url=_buyer_url(token),
         )
+
+    @router.post("/api/checkout/return", response_model=ReturnOut)
+    def paypal_return(body: ReturnIn, s: Db) -> ReturnOut:
+        """PayPal sends the buyer back with ?token=<PayPal order id>. That id is unguessable and
+        known only to the buyer's browser; it is exchanged once for the signed buyer link."""
+        order = s.scalars(
+            select(Order).where(Order.paypal_order_id == body.paypal_order_id)
+        ).first()
+        if order is None:
+            raise HTTPException(404, "not found")
+        result = None
+        if order.state == "CREATED" and order.address_check in ("unknown", "invalid"):
+            try:
+                result = _checkout(s).on_approved(order)
+            except CheckoutError as exc:
+                raise HTTPException(409, str(exc)) from None
+            s.commit()
+        token = services.links.issue(order.id, scope=BUYER)
+        return ReturnOut(buyer_token=token, buyer_url=_buyer_url(token), address=result)
 
     @router.post("/api/buyer/{token}/approved", response_model=AddressCheckResult)
     def approved(token: str, s: Db) -> AddressCheckResult:

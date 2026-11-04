@@ -43,8 +43,12 @@ class OrdersGateway(Protocol):
 class RestOrdersGateway:
     """OrdersGateway over app.paypal_client.writes.orders (never writes.money, PO-01)."""
 
-    def __init__(self, client: PayPalClient) -> None:
+    def __init__(
+        self, client: PayPalClient, *, return_url: str | None = None, cancel_url: str | None = None
+    ) -> None:
         self.client = client
+        self.return_url = return_url
+        self.cancel_url = cancel_url
 
     def create_order(
         self,
@@ -55,7 +59,13 @@ class RestOrdersGateway:
         request_id: str,
     ) -> CreatedOrder:
         return order_writes.create_order(
-            self.client, amount=amount, options=options, selected=selected, request_id=request_id
+            self.client,
+            amount=amount,
+            options=options,
+            selected=selected,
+            request_id=request_id,
+            return_url=self.return_url,
+            cancel_url=self.cancel_url,
         )
 
     def update_shipping_address(

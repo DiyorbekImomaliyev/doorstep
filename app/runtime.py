@@ -120,7 +120,10 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
             ),
             clock,
         )
-        orders = RestOrdersGateway(paypal)
+        app_url = env("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+        orders = RestOrdersGateway(
+            paypal, return_url=f"{app_url}/return", cancel_url=f"{app_url}/return?cancelled=1"
+        )
         approved = PayPalApprovedOrderReader(paypal)
         if env("PAYPAL_WEBHOOK_ID"):
             verifier = PayPalWebhookVerifier(paypal)

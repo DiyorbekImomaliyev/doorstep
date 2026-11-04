@@ -14,12 +14,21 @@ from paypal.models import (
     OrderRequest,
     OrderTrackerRequest,
     Patch,
+    PaymentSource,
+    PayPalWallet,
+    PayPalWalletExperienceContext,
     PurchaseUnitRequest,
     ShippingDetails,
     ShippingOptionDict,
 )
 from paypal.models import ShippingOption as SdkShippingOption
-from paypal.models.enums import CheckoutPaymentIntent, PatchOp, ShippingType
+from paypal.models.enums import (
+    CheckoutPaymentIntent,
+    PatchOp,
+    PayPalExperienceUserAction,
+    PayPalWalletContextShippingPreference,
+    ShippingType,
+)
 
 from app.money import Money
 from app.orders.enums import ShippingMethod
@@ -61,10 +70,26 @@ def create_order(
     options: Sequence[ShippingOption],
     selected: ShippingMethod,
     request_id: str,
+    return_url: str | None = None,
+    cancel_url: str | None = None,
 ) -> CreatedOrder:
+    """With return_url, PayPal sends the buyer back to Doorstep after approval (not capture:
+    the address check runs first, so user_action is CONTINUE)."""
     if not any(o.method == selected for o in options):
         raise ValueError(f"selected method {selected} is not one of the options")
-    body = OrderRequest(
+    source = None
+    if return_url:
+        source = PaymentSource(
+            paypal=PayPalWallet(
+                experience_context=PayPalWalletExperienceContext(
+                    return_url=return_url,
+                    cancel_url=cancel_url or return_url,
+                    shipping_preference=PayPalWalletContextShippingPreference.GET_FROM_FILE,
+                    user_action=PayPalExperienceUserAction.CONTINUE,
+                )
+            )
+        )
+    request = OrderRequest(
         intent=CheckoutPaymentIntent.CAPTURE,
         purchase_units=[
             PurchaseUnitRequest(
@@ -74,7 +99,10 @@ def create_order(
                 shipping=ShippingDetails(options=[_shipping_option(o, selected) for o in options]),
             )
         ],
-    ).to_dict()
+    )
+    if source is not None:
+        request = request.model_copy(update={"payment_source": source})
+    body = request.to_dict()
     response = client.request(
         "POST", "/v2/checkout/orders", json=body, request_id=request_id, headers=PREFER_FULL
     )

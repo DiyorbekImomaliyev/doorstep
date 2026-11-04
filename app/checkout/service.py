@@ -55,6 +55,13 @@ class StartedCheckout(BaseModel):
     recommended: ShippingMethod
 
 
+def shipping_options(amount: Money) -> list[ShippingOption]:
+    """Home, locker, signature. Prices are zero (ADR: avoids an amount-breakdown mismatch)."""
+    return [
+        ShippingOption(method=m, label=_LABELS[m], amount=amount.zero()) for m in ShippingMethod
+    ]
+
+
 class CheckoutService:
     def __init__(
         self,
@@ -76,9 +83,7 @@ class CheckoutService:
 
     # ---- CK-03 ------------------------------------------------------------------
     def quote(self, seller_id: str, amount: Money, *, buyer_country: str) -> DeliveryQuote:
-        options = [
-            ShippingOption(method=m, label=_LABELS[m], amount=amount.zero()) for m in ShippingMethod
-        ]
+        options = shipping_options(amount)
         estimate = risk.estimate(self.session, seller_id, amount)
         reasons = list(estimate.reasons)
         sp = self.rulebook.seller_protection
