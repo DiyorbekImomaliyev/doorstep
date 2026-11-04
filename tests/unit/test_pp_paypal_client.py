@@ -381,11 +381,12 @@ def test_PP_05_retry_reuses_same_request_id(pp, httpserver, db, session_factory,
     shipment = make_shipment(db, order)
     enqueue(db, ADD_TRACKING, {"shipment_id": shipment.id}, clock=clock)
     db.commit()
-    serve_token(httpserver)
-    httpserver.expect_ordered_request(
+    serve_token(httpserver)  # permanent: the OAuth request is not part of the order check
+    # Oneshot handlers are used up in registration order: first attempt 503, retry 201.
+    httpserver.expect_oneshot_request(
         "/v2/checkout/orders/O-1/track", method="POST"
     ).respond_with_json({"name": "INTERNAL_SERVER_ERROR"}, status=503)
-    httpserver.expect_ordered_request(
+    httpserver.expect_oneshot_request(
         "/v2/checkout/orders/O-1/track", method="POST"
     ).respond_with_json({"id": "O-1"}, status=201)
     runner = JobRunner(

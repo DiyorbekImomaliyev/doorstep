@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -280,7 +281,16 @@ def test_PO_07_crash_after_paypal_success_retries_with_same_key(
 
 
 def _todays_refund(db, seller, *, minor: int, status: str, at: datetime, currency: str = "GBP"):
-    order = make_order(db, seller, amount_minor=minor, currency=currency, state=OrderState.RESOLVED)
+    # Each earlier refund belongs to a different buyer, so the PO-04 repeat-claimant hold never
+    # fires and only the daily cap decides the route.
+    order = make_order(
+        db,
+        seller,
+        amount_minor=minor,
+        currency=currency,
+        state=OrderState.RESOLVED,
+        payer_id=f"PAYER-CAP-{uuid4().hex[:8]}",
+    )
     case = make_case(db, order, state=CaseState.SETTLED)
     decision = add_decision(db, case, fix=Fix.REFUND, route="AUTO_REFUND")
     add_money_action(

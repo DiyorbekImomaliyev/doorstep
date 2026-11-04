@@ -6,9 +6,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from pytest_httpserver import HTTPServer
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+from werkzeug import Request, Response
 
 from app.config import Settings
 from app.db import Base, import_all_models, make_engine, make_session_factory
@@ -25,6 +27,43 @@ RULE_FILES = [
     "paypal_sp_v1.yaml",
     "money_limits_v1.yaml",
 ]
+
+
+class IsolatedLogHTTPServer(HTTPServer):
+    """Session-wide fake server whose request log belongs to one test at a time.
+
+    A request is logged only if it arrived during the current test. A slow handler from an earlier
+    test that finishes late (e.g. a client timeout test) never lands in the next test's log.
+    """
+
+    generation = 0
+
+    def application(self, request: Request) -> Response:
+        started_in = self.generation
+        request.get_data()
+        response = self.dispatch(request)
+        if started_in == self.generation:
+            self.log.append((request, response))
+        return response
+
+
+@pytest.fixture(scope="session")
+def make_httpserver() -> Iterator[HTTPServer]:
+    server = IsolatedLogHTTPServer(host=HTTPServer.DEFAULT_LISTEN_HOST, port=0)
+    server.start()
+    yield server
+    server.clear()
+    if server.is_running():
+        server.stop()
+
+
+@pytest.fixture
+def httpserver(make_httpserver: IsolatedLogHTTPServer) -> Iterator[HTTPServer]:
+    make_httpserver.generation += 1
+    make_httpserver.clear()
+    yield make_httpserver
+    make_httpserver.generation += 1
+    make_httpserver.clear()
 
 
 def sqlite_session_factory() -> sessionmaker[Session]:
