@@ -24,7 +24,7 @@ PayPal: automatically under the seller's limit, with one tap above it, never by 
 
 | Stage | What happens | PayPal does |
 | --- | --- | --- |
-| **Prevent** | Address check after approval (missing flat number → one tap fix, PATCHed before capture); delivery choice (home / locker / signature) recommended from order value and risk. | Orders v2 with shipping options, PATCH, capture |
+| **Prevent** | Address check after approval (missing flat number → one tap fix, PATCHed before capture); delivery choice (home / locker / signature) recommended by a calibrated XGBoost risk model with plain-word SHAP reasons ([model card](docs/MODEL_CARD_risk.md)). | Orders v2 with shipping options, PATCH, capture |
 | **Prove** | Packing photo check (the model describes, code decides, never auto-pass); tracking registered on the payment through the outbox; Shippo events drive the state machine. | Shipment tracking on the capture |
 | **Resolve** | Buyer taps "Not here" (or their AI agent reports it). A deterministic engine names the failure point; the regional rule (UK CRA 2015 s.29, EU, US seller policy) decides liability; a coded policy picks the route; the model only explains. | Refund (idempotent), dispute evidence |
 | **Agent** | The case agent reads the PayPal order, tracking and disputes through **PayPal's Agent Toolkit** (read-only allowlist), then calls its only money tool, `request_refund`, which asks the policy and stops at the seller's limit. | Agent Toolkit reads |
@@ -46,7 +46,7 @@ PayPal: automatically under the seller's limit, with one tap above it, never by 
 
 | Check | Result |
 | --- | --- |
-| Unit + property tests (`make test`) | 798 passed; 24 strict `xfail` for criteria not built yet (each names why) |
+| Unit + property tests (`make test`) | 834 passed; 19 strict `xfail` for criteria not built yet (each names why) |
 | Acceptance trace (`make trace`) | 129/129 acceptance IDs have a test |
 | Branch coverage | 100% on `app/policy` and `app/orders/state.py` |
 | Mutation testing (`make mutmut-gate`) | Zero surviving logic mutants in the money path (see `docs/mutation-report.md`) |
@@ -80,8 +80,9 @@ Schemathesis, mutmut, import-linter, Playwright · Render.
 - No live carrier rerouting or real locker booking; both are simulated and labelled.
 - Carrier claim letters are drafted, not filed on carrier portals.
 - Packing photos are not stored (only their fingerprint); a later dispute can't show the image.
-- The risk suggestion at checkout is a rule-of-thumb model for now; the XGBoost + SHAP model, the
-  RAG policy reader, AG Studio and the Bryntum deadline radar are not built (strict `xfail` tests).
+- The risk model is trained on synthetic data (see the model card); real effect sizes need real
+  seller outcomes. The policy reader uses lexical (BM25) retrieval, not embeddings (ADR-033).
+  AG Studio, the Bryntum deadline radar and the Ragas run are not built (strict `xfail` tests).
 - Rules are information, not legal advice; the seller decides.
 - In production, acting on a seller's PayPal account needs their explicit permission.
 

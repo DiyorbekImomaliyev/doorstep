@@ -110,6 +110,15 @@ Tracked against the day's definition of done (SPEC section 16).
     24 strict xfail; `make fuzz` 26 operations clean; `make trace` 129/129; Playwright 4 passed;
     `app/policy` + `state.py` branch coverage 100%.
 
+- Nov 4 (later): RK risk model (f8bb8c0, ADR-032), Control Room risk column (2983515), RG policy
+  reader (e9090d3, ADR-033), mutation tests for the agent gate (accee13).
+  - Risk model: XGBoost with monotone constraints, Platt-calibrated, exact TreeSHAP reasons;
+    synthetic data; PR-AUC 0.155 (ceiling 0.156), ECE 0.005; `make risk-model` rebuilds it
+    deterministically, and a test fails if the tuning changes without a retrain.
+  - Policy reader: BM25 passages, cited structured answer, rule-file quote when nothing matches.
+  - Checks: `make lint` clean; `make test` 834 passed, 19 strict xfail; `make fuzz` clean;
+    trace 129/129; Playwright 5 passed; mutmut on `app/policy`: 0 logic survivors.
+
 ### In progress
 - Waiting on the human:
   - `tests-locked-core` is still at 48f38bd (local and origin), so `make locked` fails;
