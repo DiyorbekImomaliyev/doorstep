@@ -28,7 +28,7 @@ Full spec: @docs/SPEC.md — before any task, read the spec section it belongs t
 ## Stack
 
 Python 3.12, uv, FastAPI, Pydantic v2, SQLAlchemy 2 + Alembic, Postgres + pgvector,
-Anthropic SDK (model from `ANTHROPIC_MODEL`), XGBoost + SHAP, FastMCP,
+Model-agnostic AI layer: Claude Sonnet main, Gemini fallback and bulk evals, XGBoost + SHAP, FastMCP,
 React + Vite + AG Studio and AG Grid + Bryntum Scheduler (frontend), pytest + Hypothesis + Schemathesis + Playwright,
 DeepEval + Ragas + Promptfoo (evals), Langfuse (tracing), Render (hosting), GitHub Actions (CI).
 
@@ -78,6 +78,22 @@ render.yaml
 - Test unhappy paths in the sandbox (declines, refunds, disputes), not only the happy path.
 - Webhook handler returns 2xx fast and processes from the inbox; PayPal retries non-2xx.
 
+## AI provider rule
+
+- Every model call goes through ONE adapter: `app/ai/llm.py` (provider chosen by `LLM_PROVIDER`).
+  No other module imports a model SDK directly.
+- Where docs/SPEC.md says "Claude" for the app's runtime AI, read "the configured model provider".
+- Gemini free tier: prompts may be used by Google to improve its products, so send only sandbox
+  and synthetic data, never real personal data. Respect rate limits: cache model outputs in tests
+  and evals (record once, replay), and keep autoresearch runs small.
+- Use a stable (non-preview) model; preview models have tighter limits.
+- Main provider (`LLM_PROVIDER`, Claude) has a small prepaid budget. If a call fails for
+  budget, quota, expiry or outage, the adapter retries once on `LLM_FALLBACK_PROVIDER` (Gemini)
+  and records which provider answered. Judges may test the live app until results are announced,
+  so the fallback must work.
+- Bulk work (evals, autoresearch, test recording) uses `EVAL_LLM_PROVIDER` (Gemini free tier).
+  Never run bulk loops on the paid key. Never use Opus models in the app.
+
 ## Spec-driven loop (how we build)
 
 - Source of truth: `docs/SPEC.md` + `specs/ACCEPTANCE.md`. Code is derived from them.
@@ -109,7 +125,8 @@ Money or AI changes also need: evals run, zero unsafe money actions.
 PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID,
 PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com,
 SHIPPO_API_KEY (test key), SHIPPO_WEBHOOK_TOKEN,
-ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-sonnet-5-5),
+LLM_PROVIDER, ANTHROPIC_API_KEY, ANTHROPIC_MODEL, LLM_FALLBACK_PROVIDER,
+GEMINI_API_KEY, GEMINI_MODEL, EVAL_LLM_PROVIDER,
 DATABASE_URL, APP_BASE_URL, SIGNING_SECRET, RECEIPT_SIGNING_KEY,
 LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST, AG_GRID_LICENSE_KEY
 (template: `.env.example`)
