@@ -1,0 +1,20 @@
+# UK consumer possession rule (SPEC section 6). Changing a rule needs a pull request (hard rule 2).
+id: uk_possession_v1
+kind: liability
+region: GB
+source: "Consumer Rights Act 2015 s.29 — https://www.legislation.gov.uk/ukpga/2015/15/section/29"
+version: "2026-11-04"
+applies_if:
+  buyer_country: [GB]
+  buyer_type: consumer
+# Any one of these proves the buyer (or a person they chose) physically holds the goods.
+possession_proof: [signature, locker_pickup_code, photo_at_buyer_address]
+when_no_possession_proof:
+  liable_party: seller
+  recommended_fix: [refund, reship]
+  also: carrier_claim_if_carrier_fault
+when_possession_proven:
+  liable_party: buyer
+  recommended_fix: []
+  also: ask_for_more_information_seller_decides
+disclaimer: "Information, not legal advice. Seller decides."

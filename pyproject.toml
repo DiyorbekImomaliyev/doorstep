@@ -11,6 +11,7 @@ dependencies = [
   "sqlalchemy>=2.0",
   "psycopg[binary]>=3.2",
   "uvicorn>=0.30",
+  "paypal",
 ]
 
 [dependency-groups]
@@ -26,6 +27,9 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+paypal = { git = "https://github.com/context-plugins/paypal-python-sdk.git", rev = "143e57f2a3729d7df3727386b8c9ddf023d9a5df" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

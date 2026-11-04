@@ -1,0 +1,28 @@
+# US: no single legal rule; the seller's structured policy decides (RL-06).
+# Only the structured fields below are used for decisions. policy_text is for RAG and
+# explanations only and is never part of a decision.
+id: us_seller_policy_v1
+kind: liability
+region: US
+source: "Seller written delivery policy (demo seller defaults); no single US rule — SPEC section 6"
+version: "2026-11-04"
+applies_if:
+  buyer_country: [US]
+  buyer_type: consumer
+# Possession is proven when ALL of proof_required are present ...
+proof_required: [delivered_scan, delivery_photo]
+# ... or when ANY ONE of these stronger proofs is present.
+possession_proof: [signature, locker_pickup_code]
+when_no_possession_proof:
+  liable_party: seller
+  recommended_fix: [refund, reship]
+  also: carrier_claim_if_carrier_fault
+when_possession_proven:
+  liable_party: buyer
+  recommended_fix: []
+  also: ask_for_more_information_seller_decides
+policy_text: >-
+  We ship with tracking. A package counts as delivered when the carrier shows a delivered scan
+  and a delivery photo, or when it was signed for or picked up from a locker with your code.
+  If it did not arrive, we refund or reship.
+disclaimer: "Information, not legal advice. Seller decides."

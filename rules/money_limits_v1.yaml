@@ -1,0 +1,18 @@
+# Default money limits per currency, in integer minor units (ADR-003, ADR-004, ADR-006, RL-11).
+# Per-seller overrides live in the sellers table. These values never appear in Python code.
+id: money_limits_v1
+kind: money_limits
+source: "Doorstep default policy — SPEC section 7, ADR-003/ADR-006"
+version: "2026-11-04"
+# A refund at or under this amount auto-approves when the seller is liable (ADR-004).
+auto_approve_limit_minor:
+  GBP: 5000
+  USD: 5000
+# Total auto + approved refunds per seller per UTC day (PO-08).
+daily_refund_cap_minor:
+  GBP: 50000
+  USD: 50000
+# A buyer with this many claims in the window is held for human review (PO-04).
+repeat_claims:
+  threshold: 3
+  window_days: 90

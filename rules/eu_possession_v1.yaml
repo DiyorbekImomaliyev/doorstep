@@ -1,0 +1,19 @@
+# EU consumer possession rule (SPEC section 6). The EU country list lives here (RL-03).
+id: eu_possession_v1
+kind: liability
+region: EU
+source: "Directive 2011/83/EU Art. 20, via ECC-Net — https://www.eccnet.eu/publication/parcel-delivery-challenges-addressed-ecc-net-e-commerce-sector"
+version: "2026-11-04"
+applies_if:
+  buyer_country: [AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LV, LT, LU, MT, NL, PL, PT, RO, SK, SI, ES, SE]
+  buyer_type: consumer
+possession_proof: [signature, locker_pickup_code, photo_at_buyer_address]
+when_no_possession_proof:
+  liable_party: seller
+  recommended_fix: [refund, reship]
+  also: carrier_claim_if_carrier_fault
+when_possession_proven:
+  liable_party: buyer
+  recommended_fix: []
+  also: ask_for_more_information_seller_decides
+disclaimer: "Information, not legal advice. Seller decides."
