@@ -65,9 +65,32 @@ Tracked against the day's definition of done (SPEC section 16).
     scoped to the order, the bad-address override, refund kind on external refunds);
   - a test addendum is needed (human approval).
 
+- Mutation addendum (9b22bbb, human-approved) made green:
+  - reason codes: `app/policy/reasons.py` (`Reason` + `MESSAGES`), `decisions.reason_codes`,
+    `paypal_response.blocked_code` (ADR-023);
+  - refund identity: `custom_id = money_action.id` on every refund; crash recovery reads
+    the capture's refunds and settles ours with no resend; unidentified refunds block
+    (ADR-022);
+  - a job payload without `money_action_id` fails permanently (orphan, ERROR log);
+  - simplifications: unused `RefundJobHandler.rulebook` dropped, `_Verdict.target` only on
+    blocks, `RefundRequest` built from its TypedDict (pyright-clean).
+- tests/ diff vs 9b22bbb: only the 9 xfail marks (plus the blank line after the removed
+  `pytestmark`).
+- Checks:
+  - `make lint` clean;
+  - `make test` 563 passed, 1 xfailed, 3 runs in a row;
+  - branch coverage: `app/policy` 100% (559 statements, 120 branches); `state.py` 100%.
+- Mutation gate (ADR-023): `make mutmut-gate`, `scripts/mutmut_gate.py`,
+  `.github/workflows/mutation.yml`; equivalents listed in `docs/mutation-report.md`.
+  - Last run: 1417 mutants, 1272 killed, 145 survived: 31 text-only, 114 logic (91 audit-trail
+    content, 23 logic gaps).
+  - **The gate is red.** It needs a test addendum (human approval); see the report.
+
 ### In progress
-- Waiting on the human: tag move for the xfail-mark removal; approval of the
-  mutation-killing and `case_id` fault-injection tests.
+- Waiting on the human:
+  - `tests-locked-core` is still at 48f38bd (local and origin), not 9b22bbb, so
+    `make locked` fails;
+  - approval of the audit-content and logic-gap tests (docs/mutation-report.md).
 
 ### Not started (day-1 definition of done)
 - [ ] Sandbox order with shipping options → capture → tracking → partial refund → sandbox dispute settled

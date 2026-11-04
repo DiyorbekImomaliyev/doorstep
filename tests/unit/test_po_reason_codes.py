@@ -17,8 +17,6 @@ from app.policy.service import REFUND_JOB, PolicyService, RefundJobHandler
 from tests.factories import make_case, make_order, make_seller, money_actions
 from tests.helpers import engine_result, facts_for, money, run_jobs
 
-pytestmark = pytest.mark.xfail(strict=True, reason="ADR-023: reason codes not built yet")
-
 
 class _LazyReasons:
     """app.policy.reasons is imported when a test runs, so this module collects before it exists."""

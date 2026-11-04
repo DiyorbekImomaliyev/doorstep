@@ -102,6 +102,7 @@ class Decision(Base):
     rule_id: Mapped[str | None] = mapped_column(String(64))
     rule_version: Mapped[str | None] = mapped_column(String(32))
     reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    reason_codes: Mapped[list[str]] = mapped_column(JSON, default=list)  # app.policy.reasons
     explanation: Mapped[str] = mapped_column(Text, default="")
     signals: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     model_outputs: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

@@ -1,0 +1,46 @@
+# Mutation gate for the money path (ADR-023): zero surviving logic mutants in app/policy.
+name: mutation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/policy/**"
+      - "scripts/mutmut_gate.py"
+      - ".github/workflows/mutation.yml"
+  pull_request:
+    paths:
+      - "app/policy/**"
+      - "scripts/mutmut_gate.py"
+      - ".github/workflows/mutation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutmut-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python and dependencies
+        run: |
+          uv python install 3.12
+          uv sync --frozen
+      - name: Mutation gate
+        run: make mutmut-gate
+      - name: Upload mutation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-meta
+          path: mutants/**/*.meta
+          if-no-files-found: ignore

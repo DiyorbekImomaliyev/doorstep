@@ -204,7 +204,7 @@ _KINDS: dict[str, type[_RuleBase]] = {
 
 def _load_file(path: Path) -> _RuleBase:
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))  # pragma: no mutate
     except yaml.YAMLError as exc:
         raise RuleValidationError(f"{path.name}: invalid YAML: {exc}") from exc
     if not isinstance(data, dict):

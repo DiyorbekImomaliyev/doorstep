@@ -513,7 +513,6 @@ def test_PO_12_refund_job_for_money_action_without_reference_fails(
     assert fake_paypal.refund_calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-021: payload without money_action_id is retried")
 def test_PO_12_orphaned_refund_job_without_payload_id_fails_and_logs_error(
     db, clock, run_refunds, caplog
 ):

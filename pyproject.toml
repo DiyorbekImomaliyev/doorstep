@@ -53,6 +53,7 @@ ignore = ["N802", "N818", "S101"]  # N818: exception names fixed by ACCEPTANCE (
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S107", "S311", "S603"]
 "evals/**" = ["S311"]
+"app/policy/reasons.py" = ["E501"]  # one message table, every line marked `# pragma: no mutate`
 
 [tool.pyright]
 include = ["app", "tuning", "scripts"]

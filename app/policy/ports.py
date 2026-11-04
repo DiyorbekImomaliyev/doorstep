@@ -12,7 +12,12 @@ class RefundGateway(Protocol):
     def get_capture_state(self, paypal_order_id: str, capture_id: str) -> CaptureState: ...
 
     def refund_capture(
-        self, capture_id: str, *, amount: Money | None, request_id: str
+        self,
+        capture_id: str,
+        *,
+        amount: Money | None,
+        request_id: str,
+        custom_id: str | None = None,
     ) -> RefundResult: ...
 
     def provide_dispute_evidence(

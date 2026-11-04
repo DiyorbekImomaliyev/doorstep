@@ -9,7 +9,7 @@ from app.money import Money
 from app.paypal_client.client import PayPalClient
 from app.paypal_client.errors import PayPalClientError, PayPalServerError
 from app.paypal_client.sdk_models import captures, decode_order, money_from_sdk, refunds, text
-from app.paypal_client.types import CaptureState
+from app.paypal_client.types import CaptureState, RefundInfo
 
 # Refund statuses that hold or have moved money. FAILED/CANCELLED refunds don't count (PP-08).
 COUNTED_REFUND_STATUSES = frozenset({"COMPLETED", "PENDING"})
@@ -39,12 +39,26 @@ def get_capture_state(client: PayPalClient, paypal_order_id: str, capture_id: st
     if amount is None or status is None:  # outcome unknown: never guess a capture state
         raise PayPalServerError(None, f"capture {capture_id} has no amount or status")
     refunded = Money(amount_minor=0, currency=amount.currency)
+    listed: list[RefundInfo] = []
     for refund in refunds(order):
         value = money_from_sdk(refund.amount)
-        if text(refund.status) in COUNTED_REFUND_STATUSES and value is not None:
+        refund_status = text(refund.status)
+        if refund_status in COUNTED_REFUND_STATUSES and value is not None:
             refunded = refunded + value  # CurrencyMismatch if PayPal mixed currencies
+            listed.append(
+                RefundInfo(
+                    refund_id=text(refund.id) or "",
+                    status=refund_status,
+                    amount=value,
+                    custom_id=text(refund.custom_id),
+                )
+            )
     return CaptureState(
-        capture_id=capture_id, status=status, amount=amount, refunded_total=refunded
+        capture_id=capture_id,
+        status=status,
+        amount=amount,
+        refunded_total=refunded,
+        refunds=listed,
     )
 
 

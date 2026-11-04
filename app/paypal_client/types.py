@@ -23,11 +23,21 @@ class CaptureResult(BaseModel):
     amount: Money | None = None
 
 
+class RefundInfo(BaseModel):
+    """One refund on a capture, as PayPal reports it (ADR-022)."""
+
+    refund_id: str
+    status: str
+    amount: Money
+    custom_id: str | None = None  # our money_action id when Doorstep sent the refund
+
+
 class CaptureState(BaseModel):
     capture_id: str
     status: str
     amount: Money
     refunded_total: Money
+    refunds: list[RefundInfo] = []
 
 
 class RefundResult(BaseModel):

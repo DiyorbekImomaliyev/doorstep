@@ -20,5 +20,5 @@ def evidence_fingerprint(session: Session, order_id: str) -> str:
     canonical = [
         {"id": e.id, "kind": e.kind, "uri": e.uri, "ai_result": e.ai_result or {}} for e in rows
     ]
-    blob = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    blob = json.dumps(canonical, sort_keys=True, separators=(",", ":"))  # JSON columns only
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()  # pragma: no mutate

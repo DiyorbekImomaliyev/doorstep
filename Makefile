@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-explore mutmut test-integration trace locked evals
+.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals
 
 setup:
 	uv sync
@@ -32,6 +32,11 @@ test-explore:
 mutmut:
 	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run mutmut run
 	uv run mutmut results
+
+# Gate (ADR-023): zero surviving logic mutants in the money path; text-only survivors allowed.
+mutmut-gate:
+	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run mutmut run
+	uv run python scripts/mutmut_gate.py
 
 # Recorded sandbox replays + Postgres-only tests. Postgres tests skip unless DATABASE_URL points
 # at Postgres; CI sets REQUIRE_PG=1 so they cannot be skipped there.

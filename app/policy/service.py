@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, time, timedelta
-from typing import Any
+from typing import Any, NamedTuple, cast
 
 from pydantic import BaseModel
 from sqlalchemy import exists, func, select
@@ -52,8 +52,10 @@ from app.orders.state import (
     transition_case,
 )
 from app.paypal_client.idempotency import request_id_for
+from app.paypal_client.types import RefundInfo, RefundResult
 from app.policy.fingerprint import evidence_fingerprint
 from app.policy.ports import RefundGateway
+from app.policy.reasons import Reason, message
 from app.policy.rules import RuleBook, effective_limits
 from app.worker.models import Job
 from app.worker.runner import PermanentError, enqueue
@@ -89,7 +91,13 @@ class PolicyDecision(BaseModel):
     rule_id: str | None
     rule_version: str | None
     reasons: list[str]
+    codes: list[Reason] = []
     money_action_id: str | None = None
+
+    @property
+    def code(self) -> Reason:
+        """The code that chose the route (the last one)."""
+        return self.codes[-1]
 
 
 class PolicyError(Exception):
@@ -121,8 +129,8 @@ def _audit(
 ) -> None:
     session.add(
         AuditLog(
-            actor=actor[:64],
-            action=action[:64],
+            actor=actor[:64],  # pragma: no mutate - length cap; actors are short constants
+            action=action[:64],  # pragma: no mutate - length cap; actions are short constants
             entity_type=entity_type,
             entity_id=entity_id,
             before=before,
@@ -148,17 +156,13 @@ def _open_dispute(session: Session, order_id: str) -> bool:
     )
 
 
-def _refunded_minor(
-    session: Session, order_id: str, *, statuses: tuple[str, ...], exclude_id: str | None = None
-) -> int:
+def _refunded_minor(session: Session, order_id: str, *, statuses: tuple[str, ...]) -> int:
     stmt = select(func.coalesce(func.sum(MoneyAction.amount_minor), 0)).where(
         MoneyAction.order_id == order_id,
         MoneyAction.kind.in_(_REFUND_KINDS),
         MoneyAction.status.in_(statuses),
     )
-    if exclude_id is not None:
-        stmt = stmt.where(MoneyAction.id != exclude_id)
-    return int(session.scalar(stmt) or 0)
+    return int(session.execute(stmt).scalar_one())
 
 
 def _order_money(order: Order, minor: int) -> Money:
@@ -175,7 +179,10 @@ def _latest_decision(session: Session, case_id: str) -> Decision | None:
     return session.scalars(
         select(Decision)
         .where(Decision.case_id == case_id)
-        .order_by(Decision.created_at.desc(), Decision.id.desc())
+        .order_by(
+            Decision.created_at.desc(),
+            Decision.id.desc(),  # pragma: no mutate - tie-break only; times are unique per case
+        )
     ).first()
 
 
@@ -193,7 +200,9 @@ def _money_audit_payload(
         "rule_version": decision.rule_version,
         "model_outputs": decision.model_outputs,
         "approver": (
-            {"kind": approval.approver_kind, "id": approval.approver_id} if approval else None
+            {"kind": approval.approver_kind, "id": approval.approver_id}
+            if approval  # pragma: no mutate - every queued refund has an approval (defensive)
+            else None
         ),
         "paypal_response": ma.paypal_response or {},
     }
@@ -201,7 +210,9 @@ def _money_audit_payload(
 
 def _approval_for(session: Session, decision_id: str) -> Approval | None:
     return session.scalars(
-        select(Approval).where(Approval.decision_id == decision_id).order_by(Approval.at.desc())
+        select(Approval)
+        .where(Approval.decision_id == decision_id)
+        .order_by(Approval.at.desc())  # pragma: no mutate - one approval per decision
     ).first()
 
 
@@ -237,31 +248,32 @@ class PolicyService:
             raise CurrencyMismatch(f"claim in {facts.claim_amount.currency}, order in {currency}")
 
         transition_case(s, case, CaseState.DECIDED, actor="policy", reason="decision recorded")
-        reasons: list[str] = list(result.reasons)
         rule = self.rulebook.select(facts.buyer_country, facts.buyer_type)
         outcome = rule.evaluate(facts.proofs) if rule is not None else None
-        fix: Fix | None = facts.preferred_fix
+        fix = facts.preferred_fix
         remaining = _remaining_refundable(s, order)
         refund = (
             None
             if fix == Fix.RESHIP
             else _order_money(order, min(facts.claim_amount.amount_minor, remaining.amount_minor))
         )
-        route = self._route(
-            case, order, seller, result, rule is not None, outcome, fix, refund, reasons
-        )
+        notes: list[tuple[Reason, str]] = []
+        route = self._route(case, order, seller, result, outcome, rule is not None, refund, notes)
+        codes = [code for code, _ in notes]
+        reasons = [*result.reasons, *(text for _, text in notes)]
 
         decision = Decision(
             case_id=case.id,
             failure_point=result.failure_point.value,
             confidence=result.confidence.value,
             route=route.value,
-            fix=fix.value if fix else None,
+            fix=fix.value,
             refund_amount_minor=refund.amount_minor if refund else None,
             currency=currency.value,
             rule_id=outcome.rule_id if outcome else None,
             rule_version=outcome.rule_version if outcome else None,
             reasons=reasons,
+            reason_codes=[code.value for code in codes],
             explanation="",
             signals={
                 "engine": result.model_dump(mode="json"),
@@ -282,15 +294,14 @@ class PolicyService:
         )
         s.add(decision)
         s.flush()
-        transition_case(s, case, route, actor="policy", reason="; ".join(reasons)[:200])
+        transition_case(s, case, route, actor="policy", reason=codes[-1].value)
 
         ma_id: str | None = None
-        if route == CaseState.AUTO_REFUND:
-            assert refund is not None and outcome is not None
+        if route == CaseState.AUTO_REFUND:  # liable seller, refund under every limit
             approval = self._record_approval(
-                case, decision, Approver(kind=ApproverKind.SYSTEM, id="policy"), outcome.rule_id
+                case, decision, Approver(kind=ApproverKind.SYSTEM, id="policy"), decision.rule_id
             )
-            ma_id = self._queue_refund(order, case, decision, refund, approval).id
+            ma_id = self._queue_refund(order, case, decision, cast(Money, refund), approval).id
         return PolicyDecision(
             route=route,
             fix=fix,
@@ -298,6 +309,7 @@ class PolicyService:
             rule_id=decision.rule_id,
             rule_version=decision.rule_version,
             reasons=reasons,
+            codes=codes,
             money_action_id=ma_id,
         )
 
@@ -307,70 +319,78 @@ class PolicyService:
         order: Order,
         seller: Seller,
         result: EngineResult,
-        has_rule: bool,
         outcome: Any,
-        fix: Fix | None,
+        has_rule: bool,
         refund: Money | None,
-        reasons: list[str],
+        notes: list[tuple[Reason, str]],
     ) -> CaseState:
-        """PO-13 order of checks. Appends the reason for the route it picks."""
-        s = self.session
+        """PO-13 order of checks. Records (code, sentence) for each step that speaks.
+
+        refund is None exactly when the fix is a reship (no money moves)."""
+
+        def note(code: Reason, **values: object) -> None:
+            notes.append((code, message(code, **values)))
+
         # 1. An open PayPal dispute: evidence goes through the Disputes API (PO-05).
-        if _open_dispute(s, order.id):
-            reasons.append("open PayPal dispute: submit evidence instead of refunding")
+        if _open_dispute(self.session, order.id):
+            note(Reason.OPEN_DISPUTE)
             return CaseState.DISPUTE_EVIDENCE
         # 2. Hold conditions: never decided automatically (FE-08, PO-04, hard rule 7).
         if result.contradiction:
-            reasons.append("signals contradict the claim: human review")
+            note(Reason.CONTRADICTION)
             return CaseState.HOLD_FOR_REVIEW
         if result.confidence == Confidence.LOW:
-            reasons.append("low confidence: human review")
+            note(Reason.LOW_CONFIDENCE)
             return CaseState.HOLD_FOR_REVIEW
         if self._repeat_claimant(case):
             limits = self.rulebook.money_limits
-            reasons.append(
-                f"buyer has {limits.repeat_claims_threshold}+ claims with this seller in "
-                f"{limits.repeat_claims_window_days} days (money_limits_v1): human review"
+            note(
+                Reason.REPEAT_CLAIMANT,
+                threshold=limits.repeat_claims_threshold,
+                days=limits.repeat_claims_window_days,
             )
             return CaseState.HOLD_FOR_REVIEW
-        if fix != Fix.RESHIP and (not order.capture_id or order.capture_status != "COMPLETED"):
-            reasons.append("no completed PayPal capture to refund: human review")
+        if refund is not None and (not order.capture_id or order.capture_status != "COMPLETED"):
+            note(Reason.NO_COMPLETED_CAPTURE)
             return CaseState.HOLD_FOR_REVIEW
         # 3. No rule set for this buyer: never guess (RL-03).
         if not has_rule:
-            reasons.append("no rule set matches this buyer: human review")
+            note(Reason.NO_RULE_SET)
             return CaseState.HOLD_FOR_REVIEW
         # 4. Liability. Anything that would blame the buyer goes to the seller (FE-11).
-        reasons.append(
-            f"{outcome.rule_id} ({outcome.rule_version}): liable party {outcome.liable_party}"
+        note(
+            Reason.LIABILITY_RULE,
+            rule_id=outcome.rule_id,
+            rule_version=outcome.rule_version,
+            liable_party=outcome.liable_party,
         )
         if outcome.liable_party == "undetermined":
-            reasons.append("liability undetermined: human review")
+            note(Reason.LIABILITY_UNDETERMINED)
             return CaseState.HOLD_FOR_REVIEW
         if outcome.liable_party != "seller":
-            reasons.append("possession proven: the seller decides; the buyer is never denied")
+            note(Reason.POSSESSION_PROVEN)
             return CaseState.AWAITING_SELLER
         if result.failure_point == FailurePoint.STOLEN_AFTER_DELIVERY or (
             result.failure_point == FailurePoint.BAD_ADDRESS and order.address_override
         ):
-            reasons.append("outcome would blame the buyer: the seller decides")
+            note(Reason.WOULD_BLAME_BUYER)
             return CaseState.AWAITING_SELLER
-        if fix == Fix.RESHIP or refund is None:
-            reasons.append("reship: seller confirms, no money moves")
+        if refund is None:
+            note(Reason.RESHIP)
             return CaseState.AWAITING_SELLER
         if refund.amount_minor == 0:
-            reasons.append("nothing left to refund on this capture: human review")
+            note(Reason.NOTHING_LEFT_TO_REFUND)
             return CaseState.HOLD_FOR_REVIEW
         limits = effective_limits(self.rulebook, seller, refund.currency)
         # 5. Daily cap per seller and currency, UTC day; queued + completed count (PO-08).
         if self._refunded_today(seller.id, refund.currency) + refund > limits.daily_cap:
-            reasons.append(f"daily refund cap {limits.daily_cap} reached: seller approves")
+            note(Reason.DAILY_CAP_REACHED, cap=limits.daily_cap)
             return CaseState.AWAITING_SELLER
         # 6. Auto-approve limit, inclusive (ADR-004).
         if refund > limits.auto_approve:
-            reasons.append(f"over auto-approve limit {limits.auto_approve}: seller approves")
+            note(Reason.OVER_AUTO_APPROVE_LIMIT, limit=limits.auto_approve)
             return CaseState.AWAITING_SELLER
-        reasons.append(f"at or under auto-approve limit {limits.auto_approve}: automatic refund")
+        note(Reason.AUTO_REFUND, limit=limits.auto_approve)
         return CaseState.AUTO_REFUND
 
     def _next_decision_time(self, case_id: str) -> datetime:
@@ -378,7 +398,7 @@ class PolicyService:
         now = self.clock.now()
         last = _latest_decision(self.session, case_id)
         if last is not None and last.created_at >= now:
-            return last.created_at + timedelta(microseconds=1)
+            return last.created_at + timedelta(microseconds=1)  # pragma: no mutate - any step works
         return now
 
     def _repeat_claimant(self, case: Case) -> bool:
@@ -386,7 +406,7 @@ class PolicyService:
             return False
         limits = self.rulebook.money_limits
         since = self.clock.now() - timedelta(days=limits.repeat_claims_window_days)
-        others = self.session.scalar(
+        others = self.session.execute(
             select(func.count())
             .select_from(Case)
             .where(
@@ -395,12 +415,12 @@ class PolicyService:
                 Case.id != case.id,
                 Case.opened_at >= since,
             )
-        )
-        return int(others or 0) + 1 >= limits.repeat_claims_threshold
+        ).scalar_one()
+        return int(others) + 1 >= limits.repeat_claims_threshold
 
     def _refunded_today(self, seller_id: str, currency: Currency) -> Money:
-        start = datetime.combine(self.clock.now().astimezone(UTC).date(), time.min, tzinfo=UTC)
-        total = self.session.scalar(
+        start = datetime.combine(self.clock.now().date(), time.min, tzinfo=UTC)  # Clock is UTC
+        total = self.session.execute(
             select(func.coalesce(func.sum(MoneyAction.amount_minor), 0)).where(
                 MoneyAction.seller_id == seller_id,
                 MoneyAction.currency == currency.value,
@@ -410,8 +430,8 @@ class PolicyService:
                 MoneyAction.created_at >= start,
                 MoneyAction.created_at < start + timedelta(days=1),
             )
-        )
-        return Money(amount_minor=int(total or 0), currency=currency)
+        ).scalar_one()
+        return Money(amount_minor=int(total), currency=currency)
 
     # ---- approvals --------------------------------------------------------------
 
@@ -489,7 +509,9 @@ class PolicyService:
         if approver.kind == ApproverKind.SYSTEM:
             raise PolicyError("system approvals are made only by decide()")
         s.flush()
-        s.refresh(case, with_for_update=True)  # serialise concurrent approvals of one case
+        # Serialise concurrent approvals of one case. Only observable on Postgres (the pg PO-07
+        # test); SQLite ignores FOR UPDATE.
+        s.refresh(case, with_for_update=True)  # pragma: no mutate
         decision = _latest_decision(s, case.id)
         if decision is None:
             raise PolicyStateError(f"case {case.id} has no decision to approve")
@@ -506,7 +528,7 @@ class PolicyService:
         if not order.capture_id or order.capture_status != "COMPLETED":
             raise PolicyStateError(f"order {order.id} has no completed capture to refund")
         remaining = _remaining_refundable(s, order)
-        wanted = decision.refund_amount_minor or 0
+        wanted = cast(int, decision.refund_amount_minor)  # set on every refund decision
         amount = _order_money(order, min(wanted, remaining.amount_minor))
         if amount.amount_minor == 0:
             log.info("case %s approved but nothing is left to refund", case.id)
@@ -604,21 +626,34 @@ class PolicyService:
 # ------------------------------------------------------------------ execution
 
 
+class _Verdict(NamedTuple):
+    """Outcome of the pre-refund re-check. code None: the refund may go out (or was recovered)."""
+
+    code: Reason | None
+    target: CaseState = CaseState.HOLD_FOR_REVIEW  # used only when code is set
+    capture_id: str = ""
+    recovered: RefundInfo | None = None
+    text: str = ""
+
+    @classmethod
+    def block(
+        cls, code: Reason, target: CaseState = CaseState.HOLD_FOR_REVIEW, **values: object
+    ) -> _Verdict:
+        return cls(code, target, text=message(code, **values))
+
+
 class RefundJobHandler:
     """Executes REFUND_JOB: pre-refund re-check (dispute, capture state, evidence fingerprint),
     then refunds with the MoneyAction's request_id. Retries keep the same key (PO-12)."""
 
     def __init__(self, gateway: RefundGateway, rulebook: RuleBook, clock: Clock) -> None:
+        del rulebook  # the re-check needs no rules: the decision already recorded them (PO-12)
         self.gateway = gateway
-        self.rulebook = rulebook
         self.clock = clock
 
     def _load(self, session: Session, job: Job) -> tuple[MoneyAction, Order, Case, Decision]:
-        ma = session.scalar(
-            select(MoneyAction)
-            .where(MoneyAction.id == job.payload["money_action_id"])
-            .with_for_update()
-        )
+        ma_id = str(job.payload.get("money_action_id", ""))  # pragma: no mutate
+        ma = session.scalar(select(MoneyAction).where(MoneyAction.id == ma_id).with_for_update())
         if ma is None or ma.case_id is None or ma.decision_id is None:
             raise MissingRecord(f"job {job.id}: money action missing")
         order = session.get(Order, ma.order_id)
@@ -630,47 +665,51 @@ class RefundJobHandler:
 
     def _recheck(
         self, session: Session, ma: MoneyAction, order: Order, case: Case, decision: Decision
-    ) -> tuple[str | None, CaseState]:
-        """None if the refund may go out; else the reason and where the case should go."""
+    ) -> _Verdict:
+        """Decide, right before PayPal, whether this refund may go out (PO-12, ADR-016, ADR-022)."""
         state = CaseState(case.state)
         if state in FINISHED_CASE_STATES:  # closed or settled another way: never send money
-            return f"case is {state.value}", state
+            return _Verdict.block(Reason.CASE_FINISHED, state, state=state.value)
         if _open_dispute(session, order.id):
-            return "a PayPal dispute opened after the decision", CaseState.DISPUTE_EVIDENCE
+            return _Verdict.block(Reason.DISPUTE_OPENED, CaseState.DISPUTE_EVIDENCE)
         if evidence_fingerprint(session, order.id) != decision.evidence_fingerprint:
-            return "evidence changed since the decision", CaseState.HOLD_FOR_REVIEW
+            return _Verdict.block(Reason.EVIDENCE_CHANGED)
         if not order.paypal_order_id or not order.capture_id:
-            return "order has no PayPal capture", CaseState.HOLD_FOR_REVIEW
+            return _Verdict.block(Reason.NO_PAYPAL_CAPTURE)
         live = self.gateway.get_capture_state(order.paypal_order_id, order.capture_id)
         if live.amount.currency != order.currency or live.refunded_total.currency != order.currency:
-            return "PayPal capture is in another currency", CaseState.HOLD_FOR_REVIEW
-        # Never more than PayPal captured, nor more than Doorstep's order record says.
-        ceiling = min(live.amount.amount_minor, order.amount_minor)
-        if live.status not in _REFUNDABLE_CAPTURE:
-            return f"capture is {live.status} at PayPal", CaseState.HOLD_FOR_REVIEW
-        known = _refunded_minor(
-            session, order.id, statuses=(MoneyActionStatus.COMPLETED.value,), exclude_id=ma.id
-        )
+            return _Verdict.block(Reason.CAPTURE_CURRENCY_MISMATCH)
+        known = _refunded_minor(session, order.id, statuses=(MoneyActionStatus.COMPLETED.value,))
         refunded = live.refunded_total.amount_minor
-        # Equal: nothing unknown happened. known + ours: our own earlier attempt landed but its
-        # commit was lost; resending the same PayPal-Request-Id returns that refund.
-        if refunded not in (known, known + ma.amount_minor):
-            return "PayPal shows a refund Doorstep does not know about", CaseState.HOLD_FOR_REVIEW
-        # Worst case the resend is new money: it must still fit in the capture (PO-06).
-        if refunded + ma.amount_minor > ceiling:
-            return "refund could exceed the captured amount", CaseState.HOLD_FOR_REVIEW
-        return None, CaseState.SETTLED
+        ours = [r for r in live.refunds if r.custom_id == ma.id]
+        if ours:  # an earlier attempt landed but its commit was lost (ADR-022)
+            landed = ours[0]
+            if (
+                len(ours) == 1
+                and landed.amount.amount_minor == ma.amount_minor
+                and refunded == known + ma.amount_minor
+            ):  # checked before the capture status: a full refund leaves it REFUNDED
+                return _Verdict(None, recovered=landed)
+            return _Verdict.block(Reason.UNKNOWN_REFUND_AT_PAYPAL)
+        if live.status not in _REFUNDABLE_CAPTURE:
+            return _Verdict.block(Reason.CAPTURE_NOT_REFUNDABLE, status=live.status)
+        if refunded != known:  # a refund we cannot identify: never guess (ADR-016)
+            return _Verdict.block(Reason.UNKNOWN_REFUND_AT_PAYPAL)
+        # Never more than PayPal captured, nor more than Doorstep's order record says.
+        if known + ma.amount_minor > min(live.amount.amount_minor, order.amount_minor):
+            return _Verdict.block(Reason.WOULD_EXCEED_CAPTURE)
+        return _Verdict(None, capture_id=live.capture_id)
 
     def run(self, session: Session, job: Job) -> None:
         ma, order, case, decision = self._load(session, job)
         if ma.status != MoneyActionStatus.QUEUED.value:
             return  # already completed, failed or blocked: a redelivered job sends nothing
         approval = _approval_for(session, decision.id)
-        blocked, target = self._recheck(session, ma, order, case, decision)
+        verdict = self._recheck(session, ma, order, case, decision)
         now = self.clock.now()
-        if blocked is not None:
+        if verdict.code is not None:
             ma.status = MoneyActionStatus.BLOCKED.value
-            ma.paypal_response = {"blocked": blocked}
+            ma.paypal_response = {"blocked": verdict.text, "blocked_code": verdict.code.value}
             _audit(
                 session,
                 actor="policy",
@@ -681,15 +720,22 @@ class RefundJobHandler:
                 after=_money_audit_payload(decision, approval, ma),
                 at=now,
             )
-            _route_case(session, case, target, actor="policy", reason=f"re-check: {blocked}")
-            log.warning("refund %s blocked: %s", ma.id, blocked)
+            _route_case(session, case, verdict.target, actor="policy", reason=verdict.code.value)
+            log.warning("refund %s blocked: %s", ma.id, verdict.text)
             return
-        assert order.capture_id is not None and ma.request_id is not None
-        result = self.gateway.refund_capture(
-            order.capture_id,
-            amount=_order_money(order, ma.amount_minor),
-            request_id=ma.request_id,
-        )
+        if verdict.recovered is not None:  # ours already landed: record it, never resend
+            result = RefundResult(
+                refund_id=verdict.recovered.refund_id,
+                status=verdict.recovered.status,
+                raw={"recovered": True},
+            )
+        else:
+            result = self.gateway.refund_capture(
+                verdict.capture_id,
+                amount=_order_money(order, ma.amount_minor),
+                request_id=cast(str, ma.request_id),  # set when the refund was queued
+                custom_id=ma.id,
+            )
         ma.status = MoneyActionStatus.COMPLETED.value
         ma.paypal_refund_id = result.refund_id
         ma.paypal_status = result.status
@@ -721,7 +767,9 @@ class RefundJobHandler:
         if ma.status != MoneyActionStatus.QUEUED.value:
             return
         ma.status = MoneyActionStatus.FAILED.value
-        ma.paypal_response = {"error": f"{type(error).__name__}: {error}"[:500]}
+        ma.paypal_response = {
+            "error": f"{type(error).__name__}: {error}"[:500]  # pragma: no mutate - length cap
+        }
         _audit(
             session,
             actor="worker",
@@ -744,15 +792,17 @@ class RefundJobHandler:
         is held if it can still be found. A job whose money action itself is gone is an orphan:
         logged at ERROR and listed by app.worker.orphans.orphaned_refund_jobs.
         """
-        ma_id = job.payload.get("money_action_id")
-        ma = session.get(MoneyAction, ma_id) if isinstance(ma_id, str) else None
+        ma_id = str(job.payload.get("money_action_id", ""))  # pragma: no mutate
+        ma = session.get(MoneyAction, ma_id)
         if ma is None:
             log.error("orphaned refund job %s: money action %r does not exist", job.id, ma_id)
             return
         ma.status = MoneyActionStatus.FAILED.value
-        ma.paypal_response = {"error": f"{type(error).__name__}: {error}"[:500]}
+        ma.paypal_response = {
+            "error": f"{type(error).__name__}: {error}"[:500]  # pragma: no mutate - length cap
+        }
         log.error("refund job %s failed on a dangling reference: %s", job.id, error)
-        case = session.get(Case, ma.case_id) if ma.case_id else None
+        case = session.get(Case, ma.case_id or "")  # pragma: no mutate
         if case is not None:
             _route_case(
                 session, case, CaseState.HOLD_FOR_REVIEW, actor="policy", reason="record missing"

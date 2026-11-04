@@ -76,7 +76,6 @@ def _client(httpserver: HTTPServer) -> PayPalClient:
 # ---------------------------------------------------------------- sending
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-022: custom_id not sent yet")
 def test_PO_07_refund_carries_money_action_id_as_custom_id(db, queued, run_refunds, fake_paypal):
     _, _, ma = queued()
     run_refunds()
@@ -84,7 +83,6 @@ def test_PO_07_refund_carries_money_action_id_as_custom_id(db, queued, run_refun
     assert [rid for _, _, rid in fake_paypal.refund_calls] == [ma.request_id]
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-022: custom_id not sent yet")
 def test_PO_07_retry_reuses_request_id_and_custom_id(
     db, queued, run_refunds, fake_paypal, settings
 ):
@@ -96,7 +94,6 @@ def test_PO_07_retry_reuses_request_id_and_custom_id(
     assert db.get(MoneyAction, ma.id).status == MoneyActionStatus.COMPLETED
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-022: custom_id not sent yet")
 def test_PP_07_refund_request_body_carries_custom_id(httpserver: HTTPServer):
     from app.paypal_client.writes import money as money_writes
 
@@ -112,7 +109,6 @@ def test_PP_07_refund_request_body_carries_custom_id(httpserver: HTTPServer):
     assert sent.headers["PayPal-Request-Id"] == "k-1"
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-022: refunds not read with custom_id yet")
 def test_PP_08_capture_state_lists_refunds_with_custom_id(httpserver: HTTPServer):
     from app.paypal_client import reads
 
@@ -152,7 +148,6 @@ def test_PP_08_capture_state_lists_refunds_with_custom_id(httpserver: HTTPServer
 # ---------------------------------------------------------------- crash recovery
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-022: crash recovery not built yet")
 def test_PO_07_crash_recovery_records_our_landed_full_refund_without_resend(
     db, queued, run_refunds, fake_paypal
 ):
@@ -174,7 +169,6 @@ def test_PO_07_crash_recovery_records_our_landed_full_refund_without_resend(
     assert audit.after["paypal_response"]["recovered"] is True
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-022: crash recovery not built yet")
 def test_PO_07_landed_partial_refund_with_our_custom_id_is_recovered(
     db, queued, run_refunds, fake_paypal
 ):
@@ -211,7 +205,6 @@ def test_PO_07_landed_refund_without_custom_id_blocks_and_holds(
     assert db.get(Case, case.id).state == CaseState.HOLD_FOR_REVIEW
 
 
-@pytest.mark.xfail(strict=True, reason="ADR-022: unidentified partial refunds must block")
 def test_PO_07_landed_partial_refund_without_custom_id_blocks_and_holds(
     db, queued, run_refunds, fake_paypal
 ):

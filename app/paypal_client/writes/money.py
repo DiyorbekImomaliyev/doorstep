@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 
-from paypal.models import Money as SdkMoney
 from paypal.models import Refund as SdkRefund
-from paypal.models import RefundRequest
+from paypal.models import RefundRequest, RefundRequestDict
 
 from app.money import Money
 from app.paypal_client.client import PayPalClient
@@ -18,16 +17,25 @@ PREFER_FULL = {"Prefer": "return=representation"}
 
 
 def refund_capture(
-    client: PayPalClient, capture_id: str, *, amount: Money | None, request_id: str
+    client: PayPalClient,
+    capture_id: str,
+    *,
+    amount: Money | None,
+    request_id: str,
+    custom_id: str | None = None,
 ) -> RefundResult:
-    """amount=None is a full refund. 4xx -> PayPalClientError; 5xx/timeout -> PayPalServerError."""
-    request = (
-        RefundRequest()
-        if amount is None
-        else RefundRequest(
-            amount=SdkMoney(currency_code=amount.currency.value, value=amount.to_paypal_value())
-        )
-    )
+    """amount=None is a full refund. custom_id carries our money_action id, so a landed refund
+    can be recognised after a crash (ADR-022).
+    4xx -> PayPalClientError; 5xx/timeout -> PayPalServerError."""
+    fields: RefundRequestDict = {}
+    if custom_id is not None:
+        fields["custom_id"] = custom_id
+    if amount is not None:
+        fields["amount"] = {
+            "currency_code": amount.currency.value,
+            "value": amount.to_paypal_value(),
+        }
+    request = RefundRequest.model_validate(fields)
     body = client.request(
         "POST",
         f"/v2/payments/captures/{capture_id}/refund",

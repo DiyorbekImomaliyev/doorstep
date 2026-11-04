@@ -341,3 +341,30 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
   `custom_id`. The locked `test_PO_07_crash_after_paypal_success_retries_with_same_key` fakes
   a landed refund without `custom_id`, so under this ADR it is blocked. The test still passes,
   since it asserts no double refund and the same request id.
+
+## ADR-023 — Reason codes, and a mutation gate on the money path
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** mutmut on `app/policy` left 356 survivors. Most only changed human sentences, so
+  tests could not tell "the reason changed" from "the wording changed", and real logic gaps
+  were hidden among them.
+- **Decision:**
+  - **Reason codes:** policy decisions and blocked refunds carry machine codes
+    (`app/policy/reasons.py`, `Reason` StrEnum). `PolicyDecision.codes` and
+    `decisions.reason_codes` hold every code in order. The case transition reason and the
+    blocked money action (`paypal_response.blocked_code`) carry the final code. Tests assert
+    codes. The sentences live only in `MESSAGES`, marked `# pragma: no mutate`.
+  - **Gate:** zero surviving logic mutants in `app/policy`. `make mutmut-gate` runs mutmut,
+    then `scripts/mutmut_gate.py`, which compares each surviving mutant's function with the
+    original as an AST. A survivor is text-only (allowed) only if the difference is inside a
+    logger call, a raised exception's arguments, or the placeholder values of `message()`,
+    `note()` or `_Verdict.block()`. Anything else, including a changed string in a
+    comparison or an audit key, fails. Crashed or unchecked mutants also fail.
+  - **Equivalents:** a mutant that can't change behaviour is excluded at the source with
+    `# pragma: no mutate` and listed in `docs/mutation-report.md` with a one-line reason. A
+    pragma without an entry there is a review failure.
+  - **CI:** `.github/workflows/mutation.yml` runs `make mutmut-gate` on ubuntu-latest when
+    `app/policy/**` (or the gate) changes.
+- **Trade-off:** A full mutation run takes minutes, so it only runs when the money path
+  changes. The text-only rule is narrow on purpose; a new text-only position (e.g. a new
+  helper) must be added to the gate in review, not guessed.
