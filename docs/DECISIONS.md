@@ -416,3 +416,20 @@ simulated, and its status reads `simulated` everywhere (PR-08). `/healthz` lists
 refund comes from a real sandbox checkout.
 **Trade-off.** Scratch refunds prove the decision path, not PayPal's refund API; the sandbox
 smoke test (E2E-03) and the filmed demo cover the real call.
+
+## ADR-028 — Render blueprint: web + worker + Postgres; the worker also sweeps
+
+**Context.** SPEC section 11 asks for a one-click deploy with a web service, worker, cron job and
+Postgres. Receipts and links must verify in every process, and secrets must never be in the repo.
+**Decision.** `render.yaml` defines `doorstep` (FastAPI, also serves the built React app),
+`doorstep-worker` (inbox, jobs, and the stale-tracking sweep every 5 minutes, so no separate
+cron service) and `doorstep-db`. A shared env group generates `SIGNING_SECRET` and
+`RECEIPT_SIGNING_KEY` once; any secret that is not a raw seed is stretched with SHA-256, so both
+processes derive the same Ed25519 key. API keys are `sync: false` (typed in the dashboard).
+`EMBEDDED_WORKER=1` runs the worker loop inside the web process for a one-service deploy.
+In development, the receipt key is stored beside the local SQLite file (gitignored) so stored
+receipts keep verifying across restarts. `POST /demo/seed?scratch=0` (the filmed demo) is
+development-only; `make demo` prints the filmed links privately.
+**Trade-off.** Render workers have no free plan (starter instances cost money); the embedded
+option avoids that at the cost of sharing one process. Postgres tables are created at startup
+(ADR-024), not migrated.

@@ -414,6 +414,10 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         """PR-06: scratch=1 gives a fresh isolated copy; scratch=0 returns the filmed demo."""
         import uuid
 
+        if not scratch and services.environment != "development":
+            # The filmed demo's links are printed by `make demo`; a public caller must never
+            # be able to approve or decline the cases shown in the video.
+            raise HTTPException(403, "the filmed demo is not public; use scratch=1")
         tag = uuid.uuid4().hex[:12] if scratch else DEMO_TAG
         return _seed(s, tag)
 

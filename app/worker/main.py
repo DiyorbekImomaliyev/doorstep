@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import signal
 import time
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -106,21 +107,13 @@ def sweep(rt: Runtime) -> int:
         return len(flagged)
 
 
-def main(poll_s: float = 2.0) -> None:  # pragma: no cover - process loop
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    rt = build_runtime()
+def run_loop(rt: Runtime, should_stop: Callable[[], bool], poll_s: float = 2.0) -> None:
+    """The worker loop. Used by the worker process and, on a one-service deploy, by a thread
+    inside the web process (EMBEDDED_WORKER=1). Every step is idempotent, so both are safe."""
     inbox, runner = build_worker(rt)
-    stop = False
-
-    def _stop(*_: Any) -> None:
-        nonlocal stop
-        stop = True
-
-    signal.signal(signal.SIGTERM, _stop)
-    signal.signal(signal.SIGINT, _stop)
     last_sweep = 0.0
     log.info("worker started")
-    while not stop:
+    while not should_stop():
         try:
             done = inbox.run_pending() + runner.run_due()
             if time.monotonic() - last_sweep > SWEEP_EVERY_S:
@@ -133,6 +126,19 @@ def main(poll_s: float = 2.0) -> None:  # pragma: no cover - process loop
         if not done:
             time.sleep(poll_s)
     log.info("worker stopped")
+
+
+def main(poll_s: float = 2.0) -> None:  # pragma: no cover - process loop
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    stop = False
+
+    def _stop(*_: Any) -> None:
+        nonlocal stop
+        stop = True
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+    run_loop(build_runtime(), lambda: stop, poll_s)
 
 
 if __name__ == "__main__":  # pragma: no cover

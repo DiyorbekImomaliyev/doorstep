@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals
+.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals web-build dev demo e2e
 
 setup:
 	uv sync
@@ -53,3 +53,28 @@ locked:
 
 evals:
 	uv run pytest evals -q -m eval
+
+# ---------------------------------------------------------------- app
+
+# Local run: API (serves web/dist when built) + worker + Vite dev server with hot reload.
+# Reads .env if present; without keys, checkout says 503 and explanations use templates.
+ENV_FILE := $(if $(wildcard .env),--env-file .env,)
+
+web-build:
+	cd web && npm ci && npm run build
+
+dev:
+	@trap 'kill 0' INT TERM EXIT; \
+	uv run uvicorn app.asgi:app --reload --port 8000 $(ENV_FILE) & \
+	uv run $(if $(wildcard .env),--env-file .env,) python -m app.worker.main & \
+	(cd web && npm run dev) & \
+	wait
+
+# E2E-02: seed the filmed Sam and Maria scenario and print its private links.
+demo:
+	PYTHONPATH=. uv run $(if $(wildcard .env),--env-file .env,) python scripts/seed_demo.py
+
+# E2E-01 in a real browser against a running server (default http://localhost:8000).
+E2E_BASE_URL ?= http://localhost:8000
+e2e:
+	cd web && E2E_BASE_URL=$(E2E_BASE_URL) npx playwright test

@@ -8,6 +8,9 @@ key stops startup, because receipts signed by a throwaway key could never be ver
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import logging
 import os
 from dataclasses import dataclass
@@ -61,11 +64,32 @@ class Runtime:
     shippo: Any  # ShippoClient | None
 
 
+def _app_base_url() -> str:
+    """APP_BASE_URL, else the URL Render gives the service, else local development."""
+    url = env("APP_BASE_URL") or env("RENDER_EXTERNAL_URL") or "http://localhost:8000"
+    return url.rstrip("/")
+
+
 def _settings() -> Settings:
     return Settings(
         shippo_webhook_token=env("SHIPPO_WEBHOOK_TOKEN"),
         stale_tracking_hours=int(env("STALE_TRACKING_HOURS", "72")),
     )
+
+
+def _signer_from_secret(secret: str) -> ReceiptSigner:
+    """A base64 Ed25519 seed is used as is. Any other secret (e.g. one a host generated) is
+    stretched with SHA-256 into a seed, so every process given the same secret gets one key."""
+    try:
+        raw = base64.b64decode(secret, validate=True)
+    except binascii.Error:
+        raw = b""
+    if len(raw) == 32:
+        return ReceiptSigner.from_seed_b64(secret)
+    if len(secret) < 16:
+        raise ConfigError("RECEIPT_SIGNING_KEY must be a base64 32-byte seed or 16+ characters")
+    seed = hashlib.sha256(b"doorstep-receipt-key:" + secret.encode()).digest()
+    return ReceiptSigner.from_seed_b64(base64.b64encode(seed).decode("ascii"))
 
 
 def _dev_key_file(database_url: str) -> Path | None:
@@ -83,7 +107,7 @@ def _dev_key_file(database_url: str) -> Path | None:
 def _receipt_signer(environment: str, database_url: str = "") -> ReceiptSigner:
     seed = env("RECEIPT_SIGNING_KEY")
     if seed:
-        return ReceiptSigner.from_seed_b64(seed)
+        return _signer_from_secret(seed)
     if environment == "production":
         raise ConfigError("RECEIPT_SIGNING_KEY is required in production")
     key_file = _dev_key_file(database_url)
@@ -142,7 +166,7 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
             ),
             clock,
         )
-        app_url = env("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+        app_url = _app_base_url()
         orders = RestOrdersGateway(
             paypal, return_url=f"{app_url}/return", cancel_url=f"{app_url}/return?cancelled=1"
         )
@@ -169,7 +193,7 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
         address_validator=validator,
         explainer=Explainer(llm),
         environment=environment,
-        app_base_url=env("APP_BASE_URL", "http://localhost:8000").rstrip("/"),
+        app_base_url=_app_base_url(),
     )
     deps = AppDeps(
         settings=settings,
