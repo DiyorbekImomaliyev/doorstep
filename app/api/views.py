@@ -149,6 +149,16 @@ class TimelineItem(BaseModel):
     detail: str = ""
 
 
+_AGENT_TITLES = {
+    "get_order_details": "read the PayPal order",
+    "get_shipment_tracking": "read tracking on the PayPal payment",
+    "list_disputes": "checked PayPal disputes",
+    "get_dispute": "read the PayPal dispute",
+    "request_refund": "asked the policy for the refund",
+    "finish": "finished",
+}
+
+
 def _state_title(entity: str, after: dict[str, Any], action: str) -> str:
     state = after.get("state")
     if entity == "order" and isinstance(state, str):
@@ -187,6 +197,16 @@ def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]
                     at=row.at, kind="state", title=_state_title("order", row.after, row.action)
                 )
             )
+        elif row.entity_type == "case" and "agent" in row.after:
+            if not for_buyer:  # AT-05: the agent's steps, for the seller only
+                items.append(
+                    TimelineItem(
+                        at=row.at,
+                        kind="agent",
+                        title=f"Agent: {_AGENT_TITLES.get(row.after['agent'], row.after['agent'])}",
+                        detail=str(row.after.get("summary", "")),
+                    )
+                )
         elif row.entity_type == "case" and not for_buyer:
             items.append(
                 TimelineItem(

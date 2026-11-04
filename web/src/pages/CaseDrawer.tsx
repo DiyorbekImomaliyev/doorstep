@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type OrderRow, type PackingResult } from "../api";
+import { api, type AgentRun, type OrderRow, type PackingResult } from "../api";
 import { ErrorBox, Loading, Meter, Pill, Timeline, useAsync } from "../components/ui";
 import { FAILURE_POINT, METHOD, ROUTE, money, stateTone } from "../format";
 
@@ -109,6 +109,8 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
             ))}
           </section>
         )}
+
+        <AgentPanel token={token} caseId={c.case_id} onDone={reload} />
 
         <section className="col">
           <div className="spread">
@@ -279,6 +281,61 @@ function PackingCheck({ token, row, onChanged }: { token: string; row: OrderRow;
       )}
       {err && <ErrorBox message={err} />}
       {flagged && <button className="btn" disabled={busy} onClick={clear}>I checked it, it's right</button>}
+    </section>
+  );
+}
+
+const AGENT_STEP: Record<string, string> = {
+  get_order_details: "Read the PayPal order",
+  get_shipment_tracking: "Read tracking on the PayPal payment",
+  list_disputes: "Checked PayPal disputes",
+  get_dispute: "Read the PayPal dispute",
+  request_refund: "Asked Doorstep's policy",
+  finish: "Finished",
+};
+
+const AGENT_OUTCOME: Record<string, { tone: "good" | "warn" | "info" | "neutral"; label: string }> = {
+  refund_queued: { tone: "good", label: "Refund queued by policy" },
+  escalated_to_seller: { tone: "warn", label: "Escalated to you" },
+  held_for_review: { tone: "warn", label: "Held for review" },
+  dispute_path: { tone: "info", label: "Dispute path" },
+  not_refundable: { tone: "neutral", label: "Not refundable" },
+};
+
+/** AT-01..05: the agent reads the PayPal side (Agent Toolkit, read-only) and asks the policy. */
+function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; onDone: () => void }) {
+  const [run, setRun] = useState<AgentRun | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function go() {
+    setBusy(true); setErr(null);
+    try { setRun(await api.runAgent(token, caseId)); onDone(); }
+    catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
+  }
+  const outcome = run?.outcome ? AGENT_OUTCOME[run.outcome] : null;
+  return (
+    <section className="card col" aria-label="Doorstep agent">
+      <div className="spread">
+        <h3>Doorstep agent</h3>
+        {outcome && <Pill tone={outcome.tone}>{outcome.label}</Pill>}
+      </div>
+      <p className="muted" style={{ margin: 0 }}>
+        Checks the PayPal order, tracking and disputes with PayPal's Agent Toolkit (read-only), then asks
+        Doorstep's policy. It can't refund above your limit or approve anything for you.
+      </p>
+      {!run && <button className="btn" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Working…" : "Run the agent"}</button>}
+      {err && <ErrorBox message={err} />}
+      {run && (
+        <ol className="agent-steps">
+          {run.steps.map((s, i) => (
+            <li key={i}>
+              <strong>{AGENT_STEP[s.tool] ?? s.tool}</strong>
+              <span className="muted">{s.summary}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline below.</span>}
     </section>
   );
 }

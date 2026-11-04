@@ -70,6 +70,13 @@ export type OrderRow = {
   packing_cleared: boolean;
 };
 
+export type AgentRun = {
+  case_id: string;
+  planner: string;
+  outcome: string | null;
+  steps: { tool: string; reason: string; summary: string }[];
+};
+
 export type PackingResult = {
   verdict: "match" | "mismatch" | "check";
   attribute: string | null;
@@ -209,6 +216,8 @@ export const api = {
     call<OrderRow>("POST", `/api/seller/${t}/orders/${orderId}/ship`, {
       carrier: "shippo", tracking_number: trackingNumber, label_weight_g: weight,
     }),
+  runAgent: (t: string, caseId: string) =>
+    call<AgentRun>("POST", `/api/seller/${t}/agent/cases/${caseId}`),
   packingCheck: (t: string, orderId: string, imageB64: string, mediaType: string) =>
     call<PackingResult>("POST", `/api/seller/${t}/orders/${orderId}/packing-check`, {
       image_b64: imageB64, media_type: mediaType,

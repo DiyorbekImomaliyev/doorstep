@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agent.runner import AgentRun, DoorstepAgent, simulated_tools
 from app.ai.explainer import Explainer
 from app.ai.llm import Image
 from app.ai.packing import PackingChecker
@@ -51,6 +52,7 @@ from app.proof.receipts import VerifyReport, verify_chain
 from app.security.links import InvalidLink
 from app.shipping.packing import PackingError, PackingService
 from app.shipping.service import ShippingError, ShippingService
+from app.worker.simulated import is_simulated
 
 log = logging.getLogger("doorstep.api")
 
@@ -419,6 +421,20 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return ActionOut(
             case_id=case.id, state=case.state, money_action_id=money.id if money else None
         )
+
+    @router.post("/api/seller/{token}/agent/cases/{case_id}", response_model=AgentRun)
+    def run_agent(token: str, case_id: str, s: Db) -> AgentRun:
+        """AT-01..05: the Doorstep agent reads the PayPal side and asks the policy; it stops
+        at the seller's limit. Seeded demo orders use simulated reads."""
+        case = _seller_case(s, _seller(s, token), case_id)
+        order = s.get(Order, case.order_id)
+        assert order is not None
+        real = services.agent_tools
+        tools = real if real is not None and not is_simulated(order.capture_id) else None
+        agent = DoorstepAgent(tools or simulated_tools(s, order), llm=services.agent_llm)
+        run = agent.run(s, case, clock=deps.clock)
+        s.commit()
+        return run
 
     @router.post("/api/seller/{token}/orders/{order_id}/ship", response_model=OrderRow)
     def ship(token: str, order_id: str, body: ShipIn, s: Db) -> OrderRow:

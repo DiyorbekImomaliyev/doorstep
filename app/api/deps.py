@@ -56,6 +56,8 @@ class Services:
     address_validator: Any = None  # app.checkout.ports.AddressValidator
     explainer: Any = None  # app.ai.explainer.Explainer; None -> template only
     packing: Any = None  # app.ai.packing.PackingChecker; None -> every photo is "check"
+    agent_llm: Any = None  # planner for the case agent; None -> the fixed plan
+    agent_tools: Any = None  # PayPal read tools (Agent Toolkit); None -> simulated reads only
     environment: str = "development"  # development | production
     app_base_url: str = "http://localhost:8000"
     reset_phrase: str = "RESET DEMO DATA"

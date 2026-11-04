@@ -183,6 +183,12 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
         shippo = ShippoClient(api_key=env("SHIPPO_API_KEY"))
         validator = shippo
 
+    agent_tools = None
+    if paypal is not None:
+        from app.agent.toolkit import paypal_tools
+
+        agent_tools = paypal_tools(env("PAYPAL_CLIENT_ID"), env("PAYPAL_CLIENT_SECRET"))
+
     from app.ai.llm import adapter_from_env
 
     llm = adapter_from_env(purpose="runtime")
@@ -194,6 +200,8 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
         address_validator=validator,
         explainer=Explainer(llm),
         packing=PackingChecker(llm),
+        agent_llm=llm,
+        agent_tools=agent_tools,
         environment=environment,
         app_base_url=_app_base_url(),
     )

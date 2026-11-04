@@ -464,3 +464,26 @@ its lifespan runs inside the API's.
 **Trade-off.** Stateless mode keeps deploys simple but has no server-to-client notifications;
 the agent polls `get_delivery_status`. A report under the auto-approve limit can still end in
 an automatic refund, exactly as the buyer's own tap would: the policy decides, not the agent.
+
+## ADR-031 — Case agent: Agent Toolkit reads, one policy-gated money tool, our model adapter
+
+**Context.** AT-01..05 and the agentic-commerce track: an agent that acts, inside the seller's
+mandate. CLAUDE.md asks for the PayPal Agent Toolkit (LangChain adapter with Claude) with an
+allowlist of orders get, shipment create/show, disputes list/get. Two hard rules conflict with a
+literal reading: every model call goes through `app/ai/llm.py`, and every PayPal write goes
+through the jobs outbox with a `PayPal-Request-Id` (hard rule 4).
+**Decision.** `app/agent/toolkit.py` builds the toolkit's LangChain tools with an explicit
+allowlist of *reads* only (orders get, shipment get, disputes list/get) and refuses any other
+tool. Shipment *create* is left off: tracking is already registered by the outbox job (TR-05),
+with idempotency, so the agent never writes to PayPal directly. The planner is not LangChain's
+chat model: each step is an `AgentStep` (Pydantic) from the configured provider through
+`app/ai/llm.py`; with no model, or after a failed retry, a fixed plan runs the same steps. The
+model never chooses ids (code fills them from the case's order; a dispute must be one PayPal
+listed), steps are capped, and tool answers are reduced to short summaries with no personal
+data. The only money tool, `request_refund`, is `app/policy/agent_gate.py`: it reports what the
+policy decided (refund queued under the limit, escalated, held, dispute path) and creates
+nothing. Each step writes an audit row shown in the seller's case timeline. Seeded orders use
+simulated reads in the toolkit's shape, labelled simulated. Import-linter now covers `app.agent`.
+**Trade-off.** The agent cannot create shipment tracking itself, and it never adds a refund the
+policy did not already decide; its value is evidence gathering, a clear trail, and a safe
+"ask, then stop" at the seller's limit.

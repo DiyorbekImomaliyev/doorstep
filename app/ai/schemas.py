@@ -42,3 +42,19 @@ class PolicyAnswer(BaseModel):
 
     answer: str = Field(min_length=1, max_length=1500)
     cited_passage_ids: list[str] = Field(default_factory=list)
+
+
+class AgentStep(BaseModel):
+    """One planned step of the Doorstep agent (AT-02). Ids are never chosen by the model:
+    code fills them from the case's own order; a dispute id must be one PayPal listed."""
+
+    tool: Literal[
+        "get_order_details",
+        "get_shipment_tracking",
+        "list_disputes",
+        "get_dispute",
+        "request_refund",
+        "finish",
+    ]
+    reason: str = Field(max_length=200)
+    dispute_id: str | None = Field(default=None, max_length=64)

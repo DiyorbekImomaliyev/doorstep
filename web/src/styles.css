@@ -170,3 +170,8 @@ details[open] summary { margin-bottom: 8px; }
 .skeleton { background: linear-gradient(90deg, var(--surface-2), #e9ecef, var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: var(--r); }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #15191e; color: #fff; padding: 10px 16px; border-radius: var(--r); z-index: 60; box-shadow: var(--shadow-lg); font-size: 13px; }
+
+/* agent */
+.timeline .k-agent .tdot { background: var(--accent); }
+.agent-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.agent-steps li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }

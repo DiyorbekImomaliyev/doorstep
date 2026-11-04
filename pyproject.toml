@@ -15,6 +15,7 @@ dependencies = [
   "cryptography>=50.0.2",
   "anthropic>=2.4.0",
   "fastmcp>=2.12",
+  "paypal-agent-toolkit>=1.11.0",
 ]
 
 [dependency-groups]
@@ -27,6 +28,7 @@ dev = [
   "pytest-cov>=5.0",
   "pytest-httpserver>=1.1",
   "ruff>=0.6",
+  "schemathesis>=4",
 ]
 
 [tool.uv]
@@ -70,21 +72,21 @@ root_package = "app"
 [[tool.importlinter.contracts]]
 name = "PO-01 only app.policy and app.worker import PayPal write modules"
 type = "forbidden"
-source_modules = ["app.api", "app.ai", "app.cases", "app.mcp", "app.orders", "app.shipping"]
+source_modules = ["app.agent", "app.api", "app.ai", "app.cases", "app.mcp", "app.orders", "app.shipping"]
 forbidden_modules = ["app.paypal_client.writes"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "PO-01 only app.policy imports refund and dispute writes"
 type = "forbidden"
-source_modules = ["app.api", "app.ai", "app.cases", "app.checkout", "app.demo", "app.mcp", "app.orders", "app.proof", "app.security", "app.shipping", "app.worker"]
+source_modules = ["app.agent", "app.api", "app.ai", "app.cases", "app.checkout", "app.demo", "app.mcp", "app.orders", "app.proof", "app.security", "app.shipping", "app.worker"]
 forbidden_modules = ["app.paypal_client.writes.money"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "PO-01 AI and MCP code never reach any PayPal write, even indirectly"
+name = "PO-01 AI, agent and MCP code never reach any PayPal write, even indirectly"
 type = "forbidden"
-source_modules = ["app.ai", "app.mcp"]
+source_modules = ["app.agent", "app.ai", "app.mcp"]
 forbidden_modules = ["app.paypal_client.writes"]
 
 [tool.mutmut]
