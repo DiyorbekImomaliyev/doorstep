@@ -31,3 +31,4 @@ data/
 
 # Claude Code (local, per-user)
 .claude/settings.local.json
+.hypothesis/
