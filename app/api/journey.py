@@ -12,11 +12,12 @@ import base64
 import binascii
 import logging
 from collections.abc import Iterator
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agent.runner import AgentRun, DoorstepAgent, simulated_tools
@@ -53,6 +54,7 @@ from app.proof.receipts import VerifyReport, verify_chain
 from app.security.links import InvalidLink
 from app.shipping.packing import PackingError, PackingService
 from app.shipping.service import ShippingError, ShippingService
+from app.worker.models import WebhookInbox
 from app.worker.simulated import is_simulated
 
 log = logging.getLogger("doorstep.api")
@@ -183,6 +185,15 @@ class ResetIn(BaseModel):
     confirm: str
 
 
+class WebhookStat(BaseModel):
+    """Counts and times only: no payloads, ids or personal data."""
+
+    received: int
+    last_received_at: datetime | None
+    last_event_type: str | None
+    last_status: str | None
+
+
 class Health(BaseModel):
     ok: bool
     environment: str
@@ -190,6 +201,7 @@ class Health(BaseModel):
     simulated: dict[str, str]
     receipts_public_key: str
     model: str
+    webhooks: dict[str, WebhookStat] = {}
 
 
 def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) -> APIRouter:
@@ -237,8 +249,26 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     # ------------------------------------------------------------ public
 
     @router.get("/healthz", response_model=Health)
-    def healthz() -> Health:
+    def healthz(s: Db) -> Health:
+        webhooks = {}
+        for source in ("paypal", "shippo"):
+            count = s.scalar(
+                select(func.count(WebhookInbox.id)).where(WebhookInbox.source == source)
+            )
+            last = s.scalars(
+                select(WebhookInbox)
+                .where(WebhookInbox.source == source)
+                .order_by(WebhookInbox.received_at.desc())
+                .limit(1)
+            ).first()
+            webhooks[source] = WebhookStat(
+                received=count or 0,
+                last_received_at=last.received_at if last else None,
+                last_event_type=last.event_type if last else None,
+                last_status=last.status if last else None,
+            )
         return Health(
+            webhooks=webhooks,
             ok=True,
             environment=services.environment,
             rules=sorted(rulebook.rule_ids),
