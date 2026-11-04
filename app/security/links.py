@@ -47,6 +47,8 @@ class LinkSigner:
 
     def verify(self, token: str, *, scope: str) -> str:
         """The order id the token is scoped to, or InvalidLink."""
+        if not token.isascii():  # tokens are base64url text; anything else is forged
+            raise InvalidLink("malformed token")
         body, dot, sig = token.partition(".")
         if not dot or not body or not sig or "." in sig:
             raise InvalidLink("malformed token")

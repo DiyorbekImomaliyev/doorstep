@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals web-build dev demo e2e
+.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals web-build dev demo e2e fuzz
 
 setup:
 	uv sync
@@ -78,3 +78,7 @@ demo:
 E2E_BASE_URL ?= http://localhost:8000
 e2e:
 	cd web && E2E_BASE_URL=$(E2E_BASE_URL) npx playwright test
+
+# SE-04: Schemathesis against the in-process OpenAPI schema (no server needed).
+fuzz:
+	uv run pytest tests/fuzz -q -p no:randomly --hypothesis-seed=$(HYPOTHESIS_SEED)
