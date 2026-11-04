@@ -26,6 +26,12 @@ PATTERNS = {
 def _tracked_files() -> list[Path]:
     git = shutil.which("git")
     assert git is not None
+    top = subprocess.run(
+        [git, "rev-parse", "--show-toplevel"], cwd=ROOT, capture_output=True, text=True
+    ).stdout.strip()
+    if not top or Path(top).resolve() != ROOT:
+        # e.g. mutmut's `mutants/` copy: not the repository, so there is nothing to scan here.
+        pytest.skip("not run from the repository work tree")
     out = subprocess.run(
         [git, "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
     ).stdout.decode()

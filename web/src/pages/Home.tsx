@@ -5,7 +5,7 @@ import { Brand, ErrorBox, useAsync } from "../components/ui";
 const STAGES = [
   { n: "1", title: "Prevent", text: "Catches a missing flat number before payment and suggests a locker or signature when the order is risky." },
   { n: "2", title: "Prove", text: "Adds tracking to the PayPal payment and records every handover: scan, locker code, signature, buyer's tap." },
-  { n: "3", title: "Resolve", text: "Finds the likely failure point, applies the local law (UK CRA s.29) and settles through PayPal after one tap." },
+  { n: "3", title: "Resolve", text: "Finds the likely failure point, applies the local law (UK CRA s.29) and settles through PayPal. An agent on PayPal's Agent Toolkit gathers the evidence and stops at your limit." },
 ];
 
 export default function Home() {
@@ -46,7 +46,7 @@ export default function Home() {
           <div className="spread wrap">
             <div className="col" style={{ gap: 2 }}>
               <h2>Try it in 30 seconds</h2>
-              <p className="muted">Get your own copy of Maria's shop with nine orders. Nothing you do touches anyone else's demo.</p>
+              <p className="muted">Get your own copy of Maria's shop with {seed ? seed.summary.orders.length : 10} orders. Nothing you do touches anyone else's demo.</p>
             </div>
             {!seed && <button className="btn primary lg" disabled={busy} onClick={start}>{busy ? "Setting up…" : "Open my demo shop"}</button>}
           </div>
@@ -54,7 +54,7 @@ export default function Home() {
           {seed && (
             <div className="col">
               <a className="btn primary lg block" href={`/seller/${seed.seller_token}`}>1 · Open Maria's Control Room</a>
-              <a className="btn lg block" href={`/t/${seed.buyers["sam-jacket"]}`} target="_blank" rel="noreferrer">2 · Be Sam: his jacket says "Delivered" but it isn't there</a>
+              <a className="btn lg block" href={`/t/${seed.buyers["sam-jacket"]}`} target="_blank" rel="noreferrer">2 · Be Sam: the jacket says "Delivered" but it isn't there</a>
               <a className="btn lg block" href={`/t/${seed.buyers["failed-attempt"]}`} target="_blank" rel="noreferrer">3 · Be Priya: the courier couldn't deliver</a>
               <a className="btn lg block" href={`/shop/${seed.summary.seller_id}`} target="_blank" rel="noreferrer">4 · Buy something with PayPal (sandbox)</a>
               <p className="faint">Tip: tap "Not here" as Sam, then approve the refund in the Control Room and open the signed receipt check.</p>
