@@ -487,3 +487,23 @@ simulated reads in the toolkit's shape, labelled simulated. Import-linter now co
 **Trade-off.** The agent cannot create shipment tracking itself, and it never adds a refund the
 policy did not already decide; its value is evidence gathering, a clear trail, and a safe
 "ask, then stop" at the seller's limit.
+
+## ADR-032 — Risk model: XGBoost with built-in TreeSHAP, trained on synthetic data
+
+**Context.** SPEC section 10 asks for a calibrated XGBoost + SHAP delivery-risk model (RK-01..03).
+We have no real outcomes yet. Render's free tier makes a large build costly: the default Linux
+`xgboost` wheel pulls CUDA/NCCL, and `shap` pulls numba and llvmlite.
+**Decision.**
+- Packages: `xgboost-cpu` on Linux (about 6 MB) and `xgboost` elsewhere.
+- Reasons: exact Shapley values from XGBoost's own `pred_contribs`, with no `shap` package.
+- Calibration: Platt scaling written in numpy, so no scikit-learn.
+- Data: synthetic, from a stated ground truth seeded from published rates (`TRUTH` in
+  `app/ai/risk_train.py`).
+- Constraints: monotone, so a locker never looks riskier and a pricier parcel never looks safer.
+- The model is committed and deterministic. A test retrains it and fails if
+  `tuning/engine_config.py` changed without `make risk-model`.
+- Checkout scores doorstep delivery with the model and falls back to the rule of thumb if the
+  model is missing.
+- No postcode or address features.
+**Trade-off.** Accuracy is only proven on the synthetic world: PR-AUC 0.155 against a 0.156
+ceiling. Real effect sizes need real seller outcomes. The model card states this.

@@ -16,6 +16,8 @@ dependencies = [
   "anthropic>=2.4.0",
   "fastmcp>=2.12",
   "paypal-agent-toolkit>=1.11.0",
+  "xgboost>=2.1 ; sys_platform != 'linux'",
+  "xgboost-cpu>=2.1 ; sys_platform == 'linux'",
 ]
 
 [dependency-groups]

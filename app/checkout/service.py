@@ -84,7 +84,7 @@ class CheckoutService:
     # ---- CK-03 ------------------------------------------------------------------
     def quote(self, seller_id: str, amount: Money, *, buyer_country: str) -> DeliveryQuote:
         options = shipping_options(amount)
-        estimate = risk.estimate(self.session, seller_id, amount)
+        estimate = risk.estimate(self.session, seller_id, amount, buyer_country=buyer_country)
         reasons = list(estimate.reasons)
         sp = self.rulebook.seller_protection
         if sp.signature_recommended(amount):

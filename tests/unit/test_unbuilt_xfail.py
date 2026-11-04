@@ -35,23 +35,6 @@ def test_RG_03_ragas_faithfulness():
     _unbuilt()
 
 
-@pytest.mark.xfail(
-    strict=True, reason="XGBoost risk model not built (checkout uses rule-of-thumb risk)"
-)
-def test_RK_01_calibrated_probabilities_and_report():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason="XGBoost + SHAP risk model not built")
-def test_RK_02_scores_return_top_shap_reasons():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason="risk model card not written (model not built)")
-def test_RK_03_model_card_states_synthetic_training_data():
-    _unbuilt()
-
-
 _AS = NEEDS_HUMAN + "AG Studio licence; Control Room runs on AG Grid Community today"
 
 

@@ -85,6 +85,20 @@ RISK_VALUE_CAP_MAJOR: float = 500.0
 RISK_HISTORY_WEIGHT: float = 0.5
 RISK_HISTORY_PRIOR_CASES: float = 1.0  # Laplace-style prior: 1 case in 50 orders
 RISK_HISTORY_PRIOR_ORDERS: float = 50.0
+# ---- Trained risk model (RK, app/ai/risk.py). Retrain with `make risk-model` after a change.
+RISK_MODEL_PARAMS: dict[str, float | int | str] = {
+    "max_depth": 3,
+    "eta": 0.05,
+    "min_child_weight": 20,
+    "subsample": 0.8,
+    "colsample_bytree": 1.0,
+    "lambda": 1.0,
+    "tree_method": "hist",
+}
+RISK_MODEL_ROUNDS: int = 600
+RISK_MODEL_TRAIN_ROWS: int = 120_000
+RISK_MODEL_SEED: int = 20261107
+
 # At or above this probability the safer locker option is recommended over home delivery.
 LOCKER_RISK_THRESHOLD: float = 0.05
 

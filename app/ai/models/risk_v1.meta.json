@@ -1,0 +1,95 @@
+{
+  "features": [
+    "order_value",
+    "buyer_in_us",
+    "seller_case_rate",
+    "new_shop",
+    "method_locker",
+    "method_signature",
+    "address_overridden"
+  ],
+  "metrics": {
+    "base_rate_test": 0.0564,
+    "brier_test": 0.05069,
+    "ece_test": 0.0048,
+    "n_test": 24000,
+    "n_train": 72000,
+    "n_validation": 24000,
+    "pr_auc_oracle_test": 0.1563,
+    "pr_auc_test": 0.1546,
+    "trees": 186
+  },
+  "params": {
+    "colsample_bytree": 1.0,
+    "eta": 0.05,
+    "eval_metric": "logloss",
+    "lambda": 1.0,
+    "max_depth": 3,
+    "min_child_weight": 20,
+    "monotone_constraints": "(1,0,1,1,-1,-1,1)",
+    "objective": "binary:logistic",
+    "seed": 20261107,
+    "subsample": 0.8,
+    "tree_method": "hist"
+  },
+  "platt": {
+    "a": 0.9632547129698912,
+    "b": -0.09850342621870685
+  },
+  "reliability_test": [
+    {
+      "count": 2400,
+      "mean_predicted": 0.00806089024990797,
+      "observed_rate": 0.009583333333333333
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.016535062342882156,
+      "observed_rate": 0.017916666666666668
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.0243103988468647,
+      "observed_rate": 0.025416666666666667
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.031741198152303696,
+      "observed_rate": 0.02875
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.03976350277662277,
+      "observed_rate": 0.0375
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.047019172459840775,
+      "observed_rate": 0.044583333333333336
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.05619482696056366,
+      "observed_rate": 0.04375
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.07103648036718369,
+      "observed_rate": 0.0825
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.09524369239807129,
+      "observed_rate": 0.09375
+    },
+    {
+      "count": 2400,
+      "mean_predicted": 0.1686822474002838,
+      "observed_rate": 0.18
+    }
+  ],
+  "rounds": 186,
+  "seed": 20261107,
+  "trained_on": "synthetic data seeded from published rates (docs/MODEL_CARD_risk.md)",
+  "version": "risk_v1"
+}
