@@ -23,6 +23,7 @@ from app.orders.models import (
     Evidence,
     MoneyAction,
     Order,
+    Seller,
     Shipment,
     TrackingEvent,
 )
@@ -42,6 +43,8 @@ _POSSESSION = {
     EvidenceKind.BUYER_CONFIRMATION.value,
 }
 
+_CARRIER_DRIVEN = {"SHIPPED", "IN_TRANSIT", "EXCEPTION", "DELIVERED", "PICKED_UP"}
+
 # Buyer-facing status words (plain language, no internal state names).
 BUYER_STATUS = {
     "CREATED": "Waiting for payment",
@@ -56,6 +59,7 @@ BUYER_STATUS = {
     "CASE_OPEN": "We're sorting it out",
     "RESOLVED": "Resolved",
 }
+SELLER_STATUS = {**BUYER_STATUS, "PAID": "Paid, ready to ship", "CASE_OPEN": "Case open"}
 
 
 def postcode_district(postcode: str) -> str:
@@ -162,7 +166,16 @@ def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]
             )
         )
     )
+    has_carrier_events = bool(shipment_ids) and (
+        s.scalar(
+            select(TrackingEvent.id).where(TrackingEvent.shipment_id.in_(shipment_ids)).limit(1)
+        )
+        is not None
+    )
     for row in audit:
+        carrier_state = row.after.get("state") in _CARRIER_DRIVEN
+        if row.entity_type == "order" and carrier_state and has_carrier_events:
+            continue  # the carrier event itself is shown; skip the duplicate state row
         if row.entity_type == "order" and "state" in row.after:
             items.append(
                 TimelineItem(
@@ -239,9 +252,32 @@ class BuyerView(BaseModel):
     can_report: bool
     address_check: str
     address_issues: list[dict[str, Any]]
+    # The buyer's own address, only while they can still fix it (before capture).
+    address: dict[str, Any] | None = None
+    seller_name: str = ""
     case_open: bool
     case_message: str | None
     timeline: list[TimelineItem]
+    # Where the parcel got to before any case: drives the progress bar, so a "Not here" report
+    # never shows the parcel as received.
+    progress_state: str = ""
+
+
+_CASE_STATES = {OrderState.CASE_OPEN.value, OrderState.RESOLVED.value}
+
+
+def progress_state(s: Session, order: Order) -> str:
+    if order.state not in _CASE_STATES:
+        return order.state
+    opened = s.scalars(
+        select(AuditLog)
+        .where(AuditLog.entity_type == "order", AuditLog.entity_id == order.id)
+        .order_by(AuditLog.at)
+    ).all()
+    for row in opened:
+        if row.after.get("state") == OrderState.CASE_OPEN.value:
+            return str(row.before.get("state", ""))
+    return ""
 
 
 def buyer_view(s: Session, order: Order) -> BuyerView:
@@ -260,6 +296,7 @@ def buyer_view(s: Session, order: Order) -> BuyerView:
         currency=order.currency,
         status=BUYER_STATUS.get(order.state, order.state),
         state=order.state,
+        progress_state=progress_state(s, order),
         method=order.shipping_method,
         tracking_number=shipment.tracking_number if shipment else None,
         carrier=shipment.carrier if shipment else None,
@@ -271,6 +308,10 @@ def buyer_view(s: Session, order: Order) -> BuyerView:
         can_report=order.state in reportable,
         address_check=order.address_check,
         address_issues=list(order.address_issues or []),
+        address=dict(order.shipping_address)
+        if order.state == OrderState.CREATED.value and order.address_check == "invalid"
+        else None,
+        seller_name=seller.name if (seller := s.get(Seller, order.seller_id)) else "",
         case_open=case is not None and case.state in _OPEN_CASE,
         case_message=message,
         timeline=timeline(s, order, for_buyer=True),
@@ -336,7 +377,7 @@ def order_row(s: Session, order: Order) -> OrderRow:
         recommended_method=order.recommended_method,
         risk=order.risk_score,
         state=order.state,
-        status=BUYER_STATUS.get(order.state, order.state),
+        status=SELLER_STATUS.get(order.state, order.state),
         address_check=order.address_check,
         evidence=evidence_completeness(s, order),
         case_id=case.id if case else None,

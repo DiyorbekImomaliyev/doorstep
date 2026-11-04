@@ -108,24 +108,38 @@ class Explanation(BaseModel):
     provider: str | None = None  # which model provider answered (CLAUDE.md fallback rule)
 
 
+_SYMBOL = {"GBP": "£", "USD": "$"}
+
+
+def money_text(m: Money) -> str:
+    major = m.to_paypal_value()
+    symbol = _SYMBOL.get(m.currency.value)
+    return f"{symbol}{major}" if symbol else f"{major} {m.currency.value}"
+
+
+def _source_name(source: str) -> str:
+    """'Consumer Rights Act 2015 s.29 — https://...' -> 'Consumer Rights Act 2015 s.29'."""
+    return re.split(r"\s+[—-]\s+https?://|\s+https?://", source, maxsplit=1)[0].strip()
+
+
 def _fix_text(ctx: ExplainContext) -> str:
     if ctx.reship:
         return "reship the order"
     if ctx.refund is not None:
-        return f"refund {ctx.refund}"
+        return f"refund {money_text(ctx.refund)}"
     return "decide the fix"
 
 
 def template(ctx: ExplainContext, blocked_reason: str | None = None) -> Explanation:
     rule = f"{ctx.rule_id} ({ctx.rule_version})" if ctx.rule_id else "no matching rule set"
-    basis = f" Source: {ctx.rule_source}." if ctx.rule_source else ""
-    liable = f" Liable party under this rule: {ctx.liable_party}." if ctx.liable_party else ""
-    evidence = "; ".join(ctx.reasons[:4])
+    basis = f", {_source_name(ctx.rule_source)}" if ctx.rule_source else ""
+    liable = f" The {ctx.liable_party} is responsible under this rule." if ctx.liable_party else ""
+    evidence = "; ".join(ctx.reasons[:2])
     summary = (
-        f"Most likely failure point: {_FP_TEXT[ctx.failure_point]} "
-        f"(confidence {ctx.confidence}). Evidence: {evidence or 'not enough signals'}. "
-        f"Rule applied: {rule}.{basis}{liable} Recommended fix: {_fix_text(ctx)}. "
-        f"Next: {_NEXT_STEP.get(ctx.route, 'pending')}. {ctx.disclaimer}"
+        f"Most likely {_FP_TEXT[ctx.failure_point]} ({ctx.confidence} confidence: "
+        f"{evidence or 'not enough signals'}). Rule: {rule}{basis}.{liable} "
+        f"Recommended fix: {_fix_text(ctx)}. Next, {_NEXT_STEP.get(ctx.route, 'pending')}. "
+        f"{ctx.disclaimer}"
     )
     buyer = (
         f"Thanks for telling us about order {ctx.order_ref}. We checked the delivery record "

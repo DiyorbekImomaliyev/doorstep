@@ -1,10 +1,29 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 
 from app.api.deps import AppDeps
 from app.api.webhooks import build_router
 from app.policy.rules import load_rules
+
+WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"
+
+
+def _mount_web(app: FastAPI) -> None:
+    """Serve the built React app (web/dist) with a single-page fallback. API routes win."""
+    index = WEB_DIST / "index.html"
+    if not index.exists():
+        return
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str) -> FileResponse:
+        return FileResponse(index)
 
 
 def create_app(deps: AppDeps) -> FastAPI:
@@ -35,6 +54,7 @@ def create_app(deps: AppDeps) -> FastAPI:
             )
 
         app.include_router(build_journey_router(deps, deps.services, rulebook))
+        _mount_web(app)
     else:
 
         @app.get("/healthz")

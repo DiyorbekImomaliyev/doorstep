@@ -68,12 +68,33 @@ def _settings() -> Settings:
     )
 
 
-def _receipt_signer(environment: str) -> ReceiptSigner:
+def _dev_key_file(database_url: str) -> Path | None:
+    """A local SQLite file keeps its development receipt key beside it (gitignored).
+
+    Receipts outlive the process; a key that changed on every restart would make yesterday's
+    receipts fail verification. In-memory and server databases get a throwaway key instead.
+    """
+    prefix = "sqlite:///"
+    if not database_url.startswith(prefix) or ":memory:" in database_url:
+        return None
+    return Path(database_url.removeprefix(prefix) + ".receipt-key")
+
+
+def _receipt_signer(environment: str, database_url: str = "") -> ReceiptSigner:
     seed = env("RECEIPT_SIGNING_KEY")
     if seed:
         return ReceiptSigner.from_seed_b64(seed)
     if environment == "production":
         raise ConfigError("RECEIPT_SIGNING_KEY is required in production")
+    key_file = _dev_key_file(database_url)
+    if key_file is not None:
+        if key_file.exists():
+            return ReceiptSigner.from_seed_b64(key_file.read_text().strip())
+        signer = ReceiptSigner.generate()
+        key_file.write_text(signer.seed_b64)
+        key_file.chmod(0o600)
+        log.warning("RECEIPT_SIGNING_KEY not set: development key stored beside the database")
+        return signer
     log.warning("RECEIPT_SIGNING_KEY not set: using a throwaway key (development only)")
     return ReceiptSigner.generate()
 
@@ -93,7 +114,8 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
     clock = SystemClock()
     settings = _settings()
     import_all_models()
-    engine = make_engine(env("DATABASE_URL", f"sqlite:///{ROOT / 'doorstep.db'}"))
+    database_url = env("DATABASE_URL", f"sqlite:///{ROOT / 'doorstep.db'}")
+    engine = make_engine(database_url)
     if create_tables:
         Base.metadata.create_all(engine)  # ADR-024: no migrations in the hackathon build
     session_factory = make_session_factory(engine)
@@ -141,7 +163,7 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
     llm = adapter_from_env(purpose="runtime")
     services = Services(
         links=LinkSigner(_link_secret(environment), clock),
-        receipts=_receipt_signer(environment),
+        receipts=_receipt_signer(environment, database_url),
         orders=orders,
         approved=approved,
         address_validator=validator,

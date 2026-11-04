@@ -32,3 +32,7 @@ data/
 # Claude Code (local, per-user)
 .claude/settings.local.json
 .hypothesis/
+
+# Local dev receipt keys (stored beside the SQLite file)
+*.receipt-key
+doorstep.db

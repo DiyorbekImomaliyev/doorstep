@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.explainer import Explainer
@@ -26,7 +27,7 @@ from app.cases.signals import EvidenceKind
 from app.clock import Clock
 from app.config import Settings
 from app.orders.enums import OrderState
-from app.orders.models import Evidence, Order, Seller, Shipment, TrackingEvent
+from app.orders.models import AuditLog, Evidence, Order, Seller, Shipment, TrackingEvent
 from app.orders.state import transition_order
 from app.policy.rules import RuleBook
 from app.proof.receipts import ReceiptSigner
@@ -231,6 +232,22 @@ def _id(tag: str, key: str) -> str:
     return str(uuid.uuid5(_NS, f"{tag}:{key}"))
 
 
+def _backdate_last_transition(session: Session, order_id: str, at: datetime) -> None:
+    """Seeded history happened in the past: date its audit row like its carrier event.
+
+    Only the demo seed does this, inside the transaction that writes the row, so the simulated
+    timeline reads in order. Real transitions keep the time they actually happened.
+    """
+    row = session.scalars(
+        select(AuditLog)
+        .where(AuditLog.entity_type == "order", AuditLog.entity_id == order_id)
+        .where(AuditLog.actor == "demo-seed", AuditLog.at > at)
+        .order_by(AuditLog.at.desc())
+    ).first()
+    if row is not None:
+        row.at = at
+
+
 def seed_scenario(
     session: Session,
     *,
@@ -319,6 +336,7 @@ def _build(
         step = timedelta(hours=max(1, spec.hours_ago // (len(path) + 1)))
         for i, to in enumerate(path):
             transition_order(session, order, to, actor="demo-seed", reason=f"seeded {to.value}")
+            _backdate_last_transition(session, oid, created + step * (i + 1))
             status = _CARRIER_STATUS.get(to)
             if status is None or (spec.stale and to == _O.IN_TRANSIT):
                 continue

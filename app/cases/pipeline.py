@@ -155,7 +155,7 @@ class CasePipeline:
         liability = decision.signals.get("liability") or {}
         explanation = self.explainer.explain(
             ExplainContext(
-                order_ref=order.id[:8],
+                order_ref=order.id[:8].upper(),
                 item=order.item_description or "",
                 failure_point=result.failure_point,
                 confidence=result.confidence.value,

@@ -1,0 +1,171 @@
+import { useMemo, useState } from "react";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type ICellRendererParams } from "ag-grid-community";
+import { api, type OrderRow } from "../api";
+import { Brand, ErrorBox, Loading, Meter, Pill, Toast, useAsync } from "../components/ui";
+import { FAILURE_POINT, METHOD, ROUTE, ago, money, stateTone } from "../format";
+import CaseDrawer from "./CaseDrawer";
+
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+const theme = themeQuartz.withParams({
+  fontFamily: "inherit",
+  fontSize: 13,
+  headerFontWeight: 600,
+  headerBackgroundColor: "#f6f7f9",
+  headerTextColor: "#4a535e",
+  borderColor: "#e3e6ea",
+  rowHoverColor: "#f3f8f7",
+  selectedRowBackgroundColor: "#e3f1ef",
+  accentColor: "#0f5f5c",
+  wrapperBorder: false,
+  wrapperBorderRadius: 0,
+  rowHeight: 56,
+  headerHeight: 40,
+  spacing: 6,
+});
+
+type Filter = "action" | "flight" | "cases" | "all";
+
+const IN_FLIGHT = ["SHIPPED", "IN_TRANSIT", "EXCEPTION", "DELIVERED", "PICKED_UP"];
+
+function filterRows(rows: OrderRow[], f: Filter): OrderRow[] {
+  if (f === "action") return rows.filter((r) => r.needs_action);
+  if (f === "flight") return rows.filter((r) => IN_FLIGHT.includes(r.state));
+  if (f === "cases") return rows.filter((r) => r.case_id);
+  return rows;
+}
+
+function sumStake(rows: OrderRow[]): string {
+  const by: Record<string, number> = {};
+  rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
+  const parts = Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => money(v, c));
+  return parts.length ? parts.join(" + ") : money(0, "GBP");
+}
+
+export default function Seller({ token }: { token: string }) {
+  const me = useAsync(() => api.me(token), [token]);
+  const { data: rows, error, reload } = useAsync(() => api.orders(token), [token]);
+  const [filter, setFilter] = useState<Filter | null>(null);
+  const [open, setOpen] = useState<OrderRow | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const counts = useMemo(() => {
+    const r = rows ?? [];
+    return { action: filterRows(r, "action").length, flight: filterRows(r, "flight").length, cases: filterRows(r, "cases").length, all: r.length };
+  }, [rows]);
+  const active: Filter = filter ?? (counts.action > 0 ? "action" : "all");
+  const shown = useMemo(() => filterRows(rows ?? [], active), [rows, active]);
+
+  const columns = useMemo<ColDef<OrderRow>[]>(() => [
+    {
+      headerName: "Order", field: "item", flex: 2, minWidth: 220,
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => (
+        <div className="cell-two"><span>{p.data!.item}</span><span className="sub">{p.data!.order_ref} · {p.data!.buyer_area || p.data!.buyer_country}</span></div>
+      ),
+    },
+    {
+      headerName: "Status", field: "status", width: 170,
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => <Pill tone={stateTone(p.data!.state)}>{p.data!.status}</Pill>,
+    },
+    {
+      headerName: "Next step", field: "route", flex: 1.3, minWidth: 190,
+      valueGetter: (p) => p.data?.case_state ?? p.data?.route ?? "",
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => {
+        const r = p.data!;
+        const key = r.case_state && ROUTE[r.case_state] ? r.case_state : r.route;
+        if (!key || !ROUTE[key]) return r.state === "PAID" ? <Pill tone="warn">Ship it</Pill> : <span className="faint">—</span>;
+        return (
+          <div className="cell-two">
+            <span><Pill tone={ROUTE[key].tone}>{ROUTE[key].label}</Pill></span>
+            {r.failure_point && <span className="sub">{FAILURE_POINT[r.failure_point] ?? r.failure_point}</span>}
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Evidence", width: 150,
+      valueGetter: (p) => p.data?.evidence.score ?? 0,
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => <div style={{ display: "flex", alignItems: "center", height: "100%" }} title={`Missing: ${p.data!.evidence.missing.join(", ") || "nothing"}`}><Meter value={p.data!.evidence.score} /></div>,
+    },
+    {
+      headerName: "Delivery", field: "method", width: 120,
+      valueFormatter: (p) => (p.value ? METHOD[p.value as string] ?? String(p.value) : "—"),
+    },
+    {
+      headerName: "At stake", field: "money_at_stake_minor", width: 110, type: "rightAligned",
+      valueFormatter: (p) => (p.data && p.data.money_at_stake_minor ? money(p.data.money_at_stake_minor, p.data.currency) : "—"),
+    },
+    {
+      headerName: "Updated", field: "last_update", width: 120, sort: "desc",
+      valueFormatter: (p) => (p.value ? ago(String(p.value)) : ""),
+    },
+  ], []);
+
+  const evidenceAvg = rows && rows.length ? rows.reduce((a, r) => a + r.evidence.score, 0) / rows.length : 0;
+  const settled = (rows ?? []).filter((r) => r.case_state === "SETTLED").length;
+
+  return (
+    <>
+      <Brand right={<span className="muted">{me.data?.name ?? ""}</span>} />
+      <main className="page stack-lg">
+        <div className="spread wrap">
+          <div className="col" style={{ gap: 2 }}>
+            <h1>Delivery Control Room</h1>
+            <p className="muted">Every order, its proof, and anything that needs you.</p>
+          </div>
+          <button className="btn" onClick={reload}>Refresh</button>
+        </div>
+
+        {error && <ErrorBox message="This seller link isn't valid. Open a fresh demo from the home page." />}
+        {!rows && !error && <Loading height={300} />}
+
+        {rows && (
+          <>
+            <section className="kpis" aria-label="Summary">
+              <div className={`kpi ${counts.action ? "attention" : ""}`}><div className="label">Needs you</div><div className="value">{counts.action}</div><div className="sub">approvals and reviews</div></div>
+              <div className="kpi"><div className="label">In flight</div><div className="value">{counts.flight}</div><div className="sub">shipped, not yet received</div></div>
+              <div className="kpi"><div className="label">Money at stake</div><div className="value" style={{ fontSize: 22 }}>{sumStake(rows)}</div><div className="sub">open cases + in flight</div></div>
+              <div className="kpi"><div className="label">Evidence coverage</div><div className="value">{Math.round(evidenceAvg * 100)}%</div><div className="sub">proof per order, average</div></div>
+              <div className="kpi"><div className="label">Cases settled</div><div className="value">{settled}</div><div className="sub">with signed receipts</div></div>
+            </section>
+
+            <div className="spread wrap">
+              <div className="seg" role="group" aria-label="Filter orders">
+                {([["action", "Needs you"], ["flight", "In flight"], ["cases", "Cases"], ["all", "All"]] as [Filter, string][]).map(([k, label]) => (
+                  <button key={k} aria-pressed={active === k} onClick={() => setFilter(k)}>
+                    {label}<span className="count">{counts[k]}</span>
+                  </button>
+                ))}
+              </div>
+              {rows.some((r) => r.simulated) && <span className="faint">Seeded demo orders: refunds on them are simulated.</span>}
+            </div>
+
+            <div className="grid-wrap">
+              <AgGridReact<OrderRow>
+                theme={theme}
+                rowData={shown}
+                columnDefs={columns}
+                getRowId={(p) => p.data.order_id}
+                onRowClicked={(e) => e.data && setOpen(e.data)}
+                rowStyle={{ cursor: "pointer" }}
+                overlayNoRowsTemplate="<span style='color:#7a838e'>Nothing here. You're all caught up.</span>"
+                suppressCellFocus
+                domLayout="autoHeight"
+              />
+            </div>
+          </>
+        )}
+      </main>
+      {open && (
+        <CaseDrawer
+          token={token}
+          row={open}
+          onClose={() => setOpen(null)}
+          onChanged={(msg) => { setToast(msg); reload(); }}
+        />
+      )}
+      <Toast message={toast} onDone={() => setToast(null)} />
+    </>
+  );
+}
