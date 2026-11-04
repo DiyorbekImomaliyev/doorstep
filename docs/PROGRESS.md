@@ -119,6 +119,14 @@ Tracked against the day's definition of done (SPEC section 16).
   - Checks: `make lint` clean; `make test` 834 passed, 19 strict xfail; `make fuzz` clean;
     trace 129/129; Playwright 5 passed; mutmut on `app/policy`: 0 logic survivors.
 
+- Nov 5: live deploy at https://doorstep-ojmg.onrender.com (healthz ok, model configured).
+  - `make smoke` passed against the real sandbox (US seller app; the first app's account country
+    refused every payment with COMPLIANCE_VIOLATION): order 53D940861H351721X captured
+    0F366549UK2172723 -> tracking -> "Not here" -> us_seller_policy_v1 AUTO_REFUND -> PayPal
+    refund 7JK794112L462524K completed -> receipt chain ok.
+  - PayPal sent PAYMENT.CAPTURE.COMPLETED to the live webhook; a forged event is rejected (400).
+    A wrong Shippo token is rejected (404).
+
 ### In progress
 - Waiting on the human:
   - `tests-locked-core` is still at 48f38bd (local and origin), so `make locked` fails;
