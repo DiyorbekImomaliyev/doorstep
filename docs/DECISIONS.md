@@ -163,3 +163,32 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
   - Postgres-only tests run against `<DATABASE_URL db>_test` (or `TEST_DATABASE_URL`) and refuse
     any database whose name does not end in `_test`, because they drop all tables.
 - **Trade-off:** Fakes can drift from PayPal until the phase-D contract test exists.
+
+## ADR-014 — PayPal Python SDK: APIMatic context-plugins git SDK, pinned to a commit SHA
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved rule: PyPI if the APIMatic skill
+  guidance applies to it, otherwise git pinned to a SHA)
+- **Context:** CLAUDE.md says to use the PayPal Server SDK for Orders/Payments, guided by the APIMatic
+  Context Plugin. There are two candidates:
+  - PyPI `paypal-server-sdk` 2.4.0 (2026-08-21): import root `paypalserversdk`, built on
+    apimatic-core. It ships no `sdk-map.md` and no `map/operations/`.
+  - `github.com/context-plugins/paypal-python-sdk`: HEAD `143e57f2a3729d7df3727386b8c9ddf023d9a5df`
+    (2026-10-13), dist `paypal` 2.29, import root `paypal`, Python >=3.10. Deps: httpx2
+    (pydantic/httpx2), pydantic 2, certifi, typing-extensions. It ships `sdk-map.md` and
+    `map/operations/` (orders, payments, subscriptions, transaction_search, vault).
+  The APIMatic `python-*` skills need import root `paypal` and the SDK map at the SDK root. That
+  matches only the git SDK.
+- **Decision:**
+  - Use `paypal @ git+https://github.com/context-plugins/paypal-python-sdk.git@143e57f2a3729d7df3727386b8c9ddf023d9a5df`.
+    Never pin to `@main`; changing the SHA needs a PR.
+  - The dependency is added in phase C, when the first SDK code is written.
+  - SDK code follows the APIMatic workflow: `paypal-plan.md` at the repo root (contract sheet), SDK-map
+    lookups, no facts from memory.
+  - Tracking, disputes and webhook verification stay REST (`app/paypal_client`).
+- **Trade-off:**
+  - The SDK comes from a beta code generator, the repo has only 4 commits and no tags, and the
+    package is published by APIMatic, not PayPal.
+  - Its dist name `paypal` collides with an unrelated old PyPI package (`paypal` 1.2.5). Only the
+    git URL may be used.
+  - Tests fake PayPal over HTTP (ADR-013), so falling back to PyPI 2.4.0 (`paypalserversdk`)
+    changes only `app/paypal_client` internals.

@@ -28,3 +28,6 @@ web/dist/
 # Local data
 data/
 *.sqlite3
+
+# Claude Code (local, per-user)
+.claude/settings.local.json

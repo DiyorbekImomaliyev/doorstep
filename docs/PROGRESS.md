@@ -17,8 +17,14 @@ Tracked against the day's definition of done (SPEC section 16).
   The 3 Postgres concurrency tests run against `doorstep_test`.
 - ADR-012 (approvals, disputes), ADR-013 (refund execution, fakes, test DB).
 
+- Tag `tests-locked-core` moved to 55d625a and pushed (human).
+- PayPal sandbox token generated (REST OAuth works). ADR-014: PayPal SDK = APIMatic git SDK pinned
+  to 143e57f; SDK code follows paypal-plan.md + the APIMatic workflow.
+- `.claude/settings.json` committed (plugin enablement only, no secrets); `settings.local.json`
+  ignored.
+
 ### In progress
-- Waiting for the human to move tag `tests-locked-core` to the tests commit, then phase C.
+- Next: phase C (implement until green). Not started.
 
 ### Not started (day-1 definition of done)
 - [ ] Sandbox order with shipping options → capture → tracking → partial refund → sandbox dispute settled
@@ -26,6 +32,7 @@ Tracked against the day's definition of done (SPEC section 16).
 - [ ] Repo, Render blueprint and CI skeleton live
 
 ### Notes
-- Tag `tests-locked-core` was created before any tests existed; it must be moved to the commit
-  with the approved tests (human action).
+- PayPal sandbox MCP fails on every tool with `PAYPAL_API_SETUP_ERROR: Unsupported cache mode:
+  default`. This is a server-side bug at PayPal; the token is valid via REST. Report it upstream.
+- `PAYPAL_WEBHOOK_ID` is not set yet; webhook verification can't be tested live until it is.
 - Phase D must add a contract test: fake PayPal responses match recorded sandbox shapes.
