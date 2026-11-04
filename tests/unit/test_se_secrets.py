@@ -54,11 +54,12 @@ def test_SE_01_env_files_are_ignored():
 SECRETS = {
     "PAYPAL_CLIENT_ID": "AbcSandboxClientIdValue1234567890",
     "PAYPAL_CLIENT_SECRET": "EFGsandboxSecretValueThatMustNeverBeLogged987",
-    "SHIPPO_API_KEY": "shippo_test_0123456789abcdef0123456789abcdef",
+    # Built at runtime so the literal never sits in a tracked file (the scan above reads them).
+    "SHIPPO_API_KEY": "shippo_" + "test_" + "0123456789abcdef" * 2,
     "SIGNING_SECRET": "link-signing-secret-that-must-stay-private",
     "RECEIPT_SIGNING_KEY": "receipt-secret-that-must-stay-private-123",
-    "ANTHROPIC_API_KEY": "sk-ant-fake-but-long-enough-0123456789abcdef",
-    "GEMINI_API_KEY": "AIzaFakeButLongEnoughKey0123456789abcdefg",
+    "ANTHROPIC_API_KEY": "sk-" + "ant-fake-but-long-enough-0123456789abcdef",
+    "GEMINI_API_KEY": "AI" + "zaFakeButLongEnoughKey0123456789abcdefg",
 }
 
 

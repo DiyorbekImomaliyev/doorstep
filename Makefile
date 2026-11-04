@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals web-build dev demo e2e fuzz
+.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals web-build dev demo e2e fuzz smoke
 
 setup:
 	uv sync
@@ -82,3 +82,9 @@ e2e:
 # SE-04: Schemathesis against the in-process OpenAPI schema (no server needed).
 fuzz:
 	uv run pytest tests/fuzz -q -p no:randomly --hypothesis-seed=$(HYPOTHESIS_SEED)
+
+# E2E-03: real sandbox loop (capture -> tracking -> "Not here" -> policy refund -> receipts).
+# If card payments are not enabled on the sandbox app, it prints a PayPal link to approve as
+# the sandbox buyer, then finishes on its own.
+smoke:
+	uv run $(if $(wildcard .env),--env-file .env,) python scripts/sandbox_smoke.py
