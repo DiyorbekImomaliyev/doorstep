@@ -8,40 +8,78 @@ test marked `xfail(reason="AC-ID: limitation ...")` — that is our list of know
 Numbers marked (config) are targets kept in config, not hardcoded.
 
 ## PP — PayPal client
-- PP-01 OAuth token is cached and reused until shortly before expiry; one retry on 401.
+- PP-01 The OAuth token is cached and reused until less than `token_refresh_margin_s` (config,
+  default 300) remains. On a 401 the token is refreshed and the call retried once; a second 401
+  raises `PayPalAuthError` (no loop).
 - PP-02 `create_order` sends intent CAPTURE, amount, currency and shipping options
-  Home / Locker / Signature with exactly one selected; returns order id and approve link.
-- PP-03 `capture` stores `capture_id` on the order and moves it to PAID.
-- PP-04 `add_tracking` sends carrier + tracking number; failures are retried by the job
-  runner with backoff, max attempts (config).
-- PP-05 Every write sends `PayPal-Request-Id`; the key is derived from case id + action, so a
-  retry reuses the same key.
-- PP-06 Every call is logged with request id, status and latency; secrets are never logged.
+  Home / Locker / Signature with exactly one `selected: true` (the buyer's chosen option).
+  Amounts are converted from integer minor units to an exact decimal string, never via float.
+  Returns order id and approve link.
+- PP-03 `capture` stores `capture_id` and the capture status. The order moves to PAID (through
+  `app/orders/state.py`) only when the status is COMPLETED; PENDING or DECLINED stores the status
+  and does not move to PAID. A declined capture is covered by a recorded sandbox test.
+- PP-04 `add_tracking` sends carrier + tracking number. Failures are retried by the job runner
+  with backoff (tested with a fake clock); after `max_attempts` (config) the job is marked
+  `failed` and an audit row is written. A job is never dropped silently.
+- PP-05 Every write sends `PayPal-Request-Id` = `{entity}:{id}:{action}[:{money_action_id}]`,
+  within PayPal's header length limit. A retry reuses the same key; two partial refunds on one
+  case get different keys. The live smoke test confirms the Server SDK sends the header.
+- PP-06 Every call is logged with request id, status and latency. Captured logs never contain the
+  client secret, the access token or the `Authorization` header.
+- PP-07 Refund (full or partial): 4xx responses are not retried; 5xx and timeouts are retried
+  with the same key up to `max_attempts` (config).
+- PP-08 The client reads a capture's status and the total already refunded (used by PR-04).
+- PP-09 Dispute `provide-evidence` is supported. `make-offer` is not built (xfail limitation).
+- PP-10 `update_shipping_address` PATCHes the PayPal order's shipping address before capture.
+  The live smoke test verifies PATCH; if PayPal behaves differently, write an ADR first.
 
 ## WH — Webhooks
 - WH-01 PayPal webhook with an invalid signature → 400 and nothing stored.
-- WH-02 Valid webhook → stored in `webhook_inbox`, 200 returned, processing done by the worker.
-- WH-03 Duplicate `event_id` → 200 and not processed again.
-- WH-04 Shippo webhook with a wrong URL token → rejected, nothing stored.
+- WH-02 Valid webhook → stored in `webhook_inbox`, 200 returned; the handler runs no processing,
+  the worker does.
+- WH-03 Duplicate `event_id` → 200 and not processed again. Enforced by the DB unique
+  constraint; two concurrent deliveries of one event produce exactly one processed event.
+- WH-04 Shippo webhook with a wrong URL token → 404, nothing stored; the token compare is
+  constant-time.
 - WH-05 Unknown event types are stored and ignored without errors.
+- WH-06 PayPal's verify-signature endpoint fails or times out → 503 and nothing stored, so PayPal
+  retries.
+- WH-07 A processing failure is retried by the worker up to `max_attempts` (config), then the
+  inbox row is marked `failed`; it is never lost. Malformed JSON or a body over
+  `max_webhook_body_bytes` (config) → 400, never 500.
+- WH-08 When a Shippo payload has no unique event id, `event_id` =
+  `sha256(tracking_number|status|status_date)`. Verified in the live smoke test; ADR if Shippo
+  differs.
 
-## SM — Order state machine
-- SM-01 Only the transitions listed in SPEC section 8 are allowed.
-- SM-02 Any other transition raises and changes nothing.
-- SM-03 Every transition writes an `audit_log` row.
-- SM-04 Property test: no random event sequence reaches a refunded state without PAID first.
-- SM-05 Only the case transitions listed in SPEC section 8 are allowed
+## SM — Order and case state machines
+- SM-01 Only the order transitions in the SPEC section 8 order transition table are allowed.
+- SM-02 Any other transition (order or case) raises `IllegalTransition` and changes nothing.
+- SM-03 Every transition (order or case) writes an `audit_log` row in the same DB transaction.
+- SM-04 Property test: no event sequence creates a refund `money_action` for an order that never
+  reached PAID.
+- SM-05 Only the case transitions in the SPEC section 8 case transition table are allowed
   (OPEN → GATHERING_EVIDENCE → DECIDED → AUTO_REFUND | AWAITING_SELLER | HOLD_FOR_REVIEW |
-  DISPUTE_EVIDENCE → SETTLED or CLOSED); any other case transition raises and changes nothing.
-- SM-06 Property test: a case can never reach SETTLED without a recorded decision and its
-  approval path (auto-approve under limit, seller approval, or reviewer approval).
+  DISPUTE_EVIDENCE → SETTLED or CLOSED, plus the four extra transitions in ADR-005).
+- SM-06 Property test: a case can never reach SETTLED without a recorded decision and an
+  approval record (system under the limit with the rule id, a seller id, or a reviewer id); if
+  money moved, a `money_action` with PayPal status COMPLETED must also exist.
+- SM-07 Order and case stay in sync: opening a case moves the order to CASE_OPEN; the case
+  reaching SETTLED or CLOSED moves the order to RESOLVED; at most one open case per order.
+- SM-08 Concurrent transitions on the same order are serialised with a row lock; no lost update
+  (Postgres test).
+- SM-09 Carrier events: a repeat event for the current state is a logged no-op; an event that
+  would move the order backwards is recorded with no transition and does not fail the webhook.
 
 ## CK — Checkout (prevent)
-- CK-01 When address validation flags a missing unit/flat, the buyer sees a fix prompt.
-- CK-02 The buyer can keep the original address; the override is stored as a signal.
+- CK-01 After PayPal approval and before capture, the shipping address PayPal returns is
+  validated; when a missing unit/flat is flagged, the buyer sees a fix prompt.
+- CK-02 The buyer can keep the original address; the explicit override is stored as a signal and
+  capture proceeds.
 - CK-03 Home, Locker and Signature are offered; the recommended option follows the risk rule.
 - CK-04 The chosen method is stored on the order and shipment.
 - CK-05 The PayPal order contains the chosen shipping option.
+- CK-06 A buyer-confirmed fix is PATCHed onto the PayPal order (PP-10) before capture. Capture
+  never runs on an unvalidated address unless the buyer explicitly overrode it (CK-02).
 
 ## PK — Packing check (vision)
 - PK-01 Output always matches the Pydantic schema in SPEC section 10.
@@ -65,39 +103,88 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - BC-04 A signed link for one order cannot read or act on another order.
 
 ## RL — Rules
-- RL-01 Rule files are schema-validated at startup; an invalid file stops startup.
-- RL-02 Every rule has `id`, `version` and `source`.
-- RL-03 The rule set is chosen by buyer country and buyer type.
+- RL-01 Rule files are validated at startup against a Pydantic model (required: `id`, `version`,
+  `source`, `region`, `applies_if`, `disclaimer` and the outcome fields); an invalid file stops
+  startup.
+- RL-02 Every rule has `id`, `version` and `source`. `version` is a quoted string; an unquoted
+  YAML date fails validation.
+- RL-03 The rule set is chosen by buyer country and buyer type (`buyer_type` defaults to
+  `consumer`; the EU country list lives in the EU rule file). No matching rule set →
+  HOLD_FOR_REVIEW, never a guess. Two rule sets matching the same order → startup fails.
 - RL-04 UK/EU consumer, no possession proof → seller liable.
 - RL-05 UK/EU, locker code used or signature present → possession proven.
-- RL-06 US → the seller's written policy decides.
-- RL-07 PayPal Seller Protection: delivery to a redirected address is flagged.
+- RL-06 US → the seller's structured policy fields in `us_seller_policy_v1.yaml` (e.g.
+  `proof_required`) decide; the free-text policy is used only for RAG and explanations; no model
+  call is part of the decision.
+- RL-07 PayPal Seller Protection: a shipment delivery address that differs from the PayPal order's
+  shipping address is flagged as redirected.
 - RL-08 Every decision stores the rule id and version used.
+- RL-09 Every rule file has at least one passing and one failing case test.
+- RL-10 PayPal signature guidance: an order over the threshold in `paypal_sp_v1.yaml` gets
+  signature recommended.
+- RL-11 `rules/money_limits_v1.yaml` holds the default auto-approve limits and daily caps per
+  currency and the repeat-claim threshold (3 claims in 90 days); per-seller overrides live in
+  `sellers`. None of these values appear in `tuning/engine_config.py` or in Python code.
 
 ## FE — Failure-point engine
-- FE-01 … FE-06 Each row of the SPEC section 7 table is detected from its typical signals
-  (one test per row: bad address, carrier lost, damaged, stolen after safe delivery,
-  wrong item, contradicting claim).
-- FE-07 Every decision has a confidence label (high / medium / low) with reasons.
+- FE-01 Bad address: address check failed or was overridden by the buyer, or a carrier
+  address-issue event → BAD_ADDRESS.
+- FE-02 Carrier lost / misdelivered: no delivered scan after the stale limit (config), or a
+  delivered scan with no possession proof → CARRIER_LOST.
+- FE-03 Damaged in transit: packing check matched and the buyer photo shows damage →
+  DAMAGED_IN_TRANSIT.
+- FE-04 Stolen after safe delivery: locker code used or signature present, and the buyer reports
+  "Not here" → STOLEN_AFTER_DELIVERY.
+- FE-05 Wrong item packed: packing check mismatch that was not cleared before shipping →
+  WRONG_ITEM.
+- FE-06 Claim contradicts evidence: e.g. "empty box" but label weight and packing photo match →
+  CLAIM_CONTRADICTS_EVIDENCE.
+- FE-07 Every decision has a confidence label (high / medium / low) with reasons; thresholds are
+  config; when several failure points match, a fixed priority order breaks the tie; a missing
+  signal lowers confidence and is never treated as a match.
 - FE-08 Contradicting signals or low confidence → HOLD_FOR_REVIEW.
 - FE-09 Eval: failure-point accuracy ≥ 0.85 (config) on the 60-case set; hold-out reported
-  separately.
+  separately. Runs on `EVAL_LLM_PROVIDER`; `scripts/trace.py` counts tests under `evals/`.
+- FE-10 The engine is deterministic code using weights from `tuning/engine_config.py`; it never
+  calls a model.
+- FE-11 Outcomes that would put the blame on the buyer (bad address after a buyer override,
+  stolen after safe delivery) route to AWAITING_SELLER with the explanation attached; never an
+  automatic denial.
 
 ## PO — Policy service (money)
-- PO-01 Only `app/policy` can call refund or dispute writes (enforced by an import-linter
-  contract test).
-- PO-02 Seller liable and amount under the auto-approve limit → refund job created.
-- PO-03 Over the limit → waits for seller approval.
-- PO-04 Buyer with 3+ claims in 90 days (config) → human review, never auto-deny.
-- PO-05 An open PayPal dispute → evidence path, not a separate refund.
-- PO-06 Property test: total refunds never exceed the captured amount.
-- PO-07 Approving the same case twice → exactly one refund.
-- PO-08 Daily refund cap per seller (config) is enforced.
-- PO-09 Every money action writes an audit record with signals, rule, approver, PayPal response.
+- PO-01 `app/paypal_client` is split into `reads` and `writes`; only `app/policy` and
+  `app/worker` may import `writes` (enforced by an import-linter contract test).
+- PO-02 Seller liable, amount at or under the auto-approve limit, and within the daily cap →
+  refund job created (case → AUTO_REFUND).
+- PO-03 Over the limit → AWAITING_SELLER; the seller's tap approves. A seller decline → CLOSED
+  (a human decision, not an automatic denial).
+- PO-04 Buyer with 3+ claims in 90 days (from `money_limits_v1.yaml`), counted as cases opened by
+  the same PayPal payer id with this seller, whatever the outcome → HOLD_FOR_REVIEW, never
+  auto-deny.
+- PO-05 An open PayPal dispute → DISPUTE_EVIDENCE, not a separate refund. The pre-refund
+  re-check (PR-04) also blocks the refund if a dispute opened after the decision.
+- PO-06 Property test: total refunds never exceed the captured amount, counting refunds made
+  outside Doorstep (from `PAYMENT.CAPTURE.REFUNDED` webhooks).
+- PO-07 Approving the same case twice, one after the other or at the same moment → exactly one
+  refund (DB unique constraint on case + action).
+- PO-08 Daily refund cap per seller and per currency (UTC day; queued and completed refunds both
+  count) is enforced; hitting the cap → AWAITING_SELLER, never dropped.
+- PO-09 Every money action writes an audit record with signals, rule id + version, model outputs,
+  approver and PayPal response.
 - PO-10 All money is integer minor units plus an ISO 4217 currency code (no floats anywhere in
-  the money path); auto-approve limits and daily caps are per seller and per currency (config;
-  defaults GBP 50 / USD 50 auto-approve, GBP 500 / USD 500 daily cap); amounts in different
-  currencies are never compared or summed.
+  the money path). Only GBP and USD are supported; any other currency is rejected at checkout.
+  Auto-approve limits and daily caps are per seller and per currency (defaults GBP 50 / USD 50
+  auto-approve, GBP 500 / USD 500 daily cap); amounts in different currencies are never compared
+  or summed.
+- PO-11 Seller liable with a reship fix → no `money_action`; the case settles with the reship
+  recorded.
+- PO-12 A failed refund: 5xx and timeouts are first retried with the same key up to
+  `max_attempts` (PP-07); only then is the `money_action` marked `failed` and the case moved to
+  HOLD_FOR_REVIEW. A 4xx marks it `failed` and moves the case to HOLD_FOR_REVIEW at once. A
+  refund is never retried with a new key.
+- PO-13 Checks run in this order: open dispute → hold conditions (contradiction, low confidence,
+  repeat claimant) → no matching rule set → liability → daily cap → auto-approve limit →
+  pre-refund re-check.
 
 ## EX — Explainer and drafts
 - EX-01 Every explanation names the rule id it used.

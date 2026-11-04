@@ -91,9 +91,9 @@ One order passes through four stages; each step has one trigger, one AI job, one
 
 | Step | Trigger | Buyer / seller does | AI does | PayPal does | Output |
 | --- | --- | --- | --- | --- | --- |
-| 1. Address check | Checkout opens | Sam taps "Add flat number" | Validates address; flags missing unit | — | Corrected address |
+| 1. Address check | Sam approves in PayPal (before capture) | Sam taps "Add flat number" (or explicitly keeps his address) | Validates the shipping address PayPal returned; flags missing unit | Fixed address PATCHed onto the order | Corrected address on the PayPal order |
 | 2. Safe delivery | Checkout | Sam picks home, locker or signature | Suggests the safe option from order value + Maria's own history | Choice is a shipping option in the PayPal order | Delivery method on the order |
-| 3. Payment | Sam approves | — | — | Order created and captured; webhook fires | Order record |
+| 3. Payment | Address validated (or explicitly overridden) | — | — | Order captured; webhook fires | Order record |
 | 4. Packing check | Maria packs | Maria takes one photo | Compares photo to the order (item, colour, size label) | — | "Match" or "Check before shipping" |
 | 5. Ship | Label bought | — | — | Tracking added to the payment (proof of shipment) | Tracking on PayPal |
 | 6. Watch | Carrier event | Sam answers a choice if asked | Detects delay / failed attempt / exception | — | Intervention offered |
@@ -131,7 +131,7 @@ Rules live in versioned YAML files that code reads; the AI can quote a rule but 
 id: uk_possession_v1
 region: GB
 source: "Consumer Rights Act 2015 s.29"
-version: 2026-11-04
+version: "2026-11-04"   # quoted: an unquoted date is not a valid version
 applies_if: {buyer_country: GB, buyer_type: consumer}
 possession_proof: [signature, locker_pickup_code, photo_at_buyer_address]
 when_no_possession_proof:
@@ -145,6 +145,9 @@ disclaimer: "Information, not legal advice. Seller decides."
 
 - Each decision stores `rule_id` + `version`, so any past decision can be replayed.
 - Rule files are covered by unit tests (one passing and one failing case per rule).
+- Rule files are validated at startup; an invalid file stops startup. No matching rule set for an order → `HOLD_FOR_REVIEW`; two rule sets matching the same order → startup fails. `buyer_type` defaults to `consumer`.
+- US decisions use structured seller policy fields in `us_seller_policy_v1.yaml` (e.g. `proof_required`); the free-text policy is only for RAG and explanations.
+- `rules/money_limits_v1.yaml` holds default auto-approve limits and daily caps per currency and the repeat-claim threshold (3 in 90 days); per-seller overrides live in `sellers`.
 - Changing a rule needs a pull request; no runtime edits.
 
 ## 7. Failure-point engine and money decision policy
@@ -164,11 +167,16 @@ The engine names the most likely failure point from several signals, then a code
 
 **Money decision policy (code, not AI):**
 
-1. If the rule set says the seller is liable **and** the amount is under the seller's auto-approve limit (per seller and per currency; defaults GBP 50 / USD 50) → auto-refund, notify both. A daily refund cap also applies per seller and per currency (defaults GBP 500 / USD 500). All money is integer minor units plus an ISO 4217 currency code, never floats.
+1. If the rule set says the seller is liable **and** the amount is at or under the seller's auto-approve limit (per seller and per currency; defaults GBP 50 / USD 50) → auto-refund, notify both. A daily refund cap also applies per seller and per currency (defaults GBP 500 / USD 500). All money is integer minor units plus an ISO 4217 currency code, never floats. Only GBP and USD are supported; other currencies are rejected at checkout.
 2. If the amount is over the limit → seller approves with one tap.
 3. If signals contradict, or the buyer has 3+ claims in 90 days → hold for human review, ask for more evidence; never deny automatically.
 4. If a PayPal dispute is already open → submit evidence through the Disputes API instead of refunding outside it.
-5. Every action writes an audit record: signals, rule id + version, model outputs, who approved, PayPal response. Immediately before a refund, the policy service re-checks the capture state and the evidence fingerprint; if either changed since the decision, the refund is blocked for re-review.
+5. Seller liable with a reship fix → no money moves; the case settles with the reship recorded. A refund that fails is retried with the same idempotency key (5xx/timeouts, up to `max_attempts`); then it is marked failed and the case goes to `HOLD_FOR_REVIEW`.
+6. Every action writes an audit record: signals, rule id + version, model outputs, who approved, PayPal response. Immediately before a refund, the policy service re-checks the capture state and the evidence fingerprint; if either changed since the decision, the refund is blocked for re-review.
+
+**Order of checks:** open dispute → hold conditions (contradiction, low confidence, repeat claimant) → no matching rule set → liability → daily cap → auto-approve limit → pre-refund re-check (capture state, evidence fingerprint, new dispute).
+
+**Engine is code:** the failure-point engine is deterministic, with weights from `tuning/engine_config.py`; it never calls a model. Outcomes that would blame the buyer (bad address after a buyer override, stolen after safe delivery) go to the seller (`AWAITING_SELLER`) with the explanation; never an automatic denial.
 
 **Confidence:** the engine reports a confidence label (high / medium / low) with its reasons; low confidence always routes to a human.
 
@@ -188,6 +196,37 @@ PayPal and Shippo events land in the API's inbox first, the worker runs each ste
 - **Outbox + idempotency:** every PayPal write is a stored job with a `PayPal-Request-Id`; retries never double-refund.
 - **Explicit state machine:** `CREATED → PAID → PACKED → SHIPPED → IN_TRANSIT → DELIVERED / PICKED_UP → CONFIRMED`, with `EXCEPTION` and `CASE_OPEN → RESOLVED` branches; illegal transitions raise errors.
 - **Case state machine (separate from the order):** `OPEN → GATHERING_EVIDENCE → DECIDED → one of AUTO_REFUND | AWAITING_SELLER | HOLD_FOR_REVIEW | DISPUTE_EVIDENCE → SETTLED or CLOSED`. `HOLD_FOR_REVIEW` is a case state, not an order state. Illegal case transitions raise errors; a case can never be `SETTLED` without a recorded decision and its approval path.
+- **Sync rule:** opening a case moves the order to `CASE_OPEN`; the case reaching `SETTLED` or `CLOSED` moves the order to `RESOLVED`; at most one open case per order. Every transition writes an `audit_log` row in the same DB transaction; concurrent transitions on one order are serialised with a row lock. Repeat carrier events are logged no-ops; backward carrier events are recorded without a transition.
+
+**Order transition table** (the only allowed order transitions):
+
+| From | To |
+| --- | --- |
+| CREATED | PAID |
+| PAID | PACKED, SHIPPED |
+| PACKED | SHIPPED |
+| SHIPPED | IN\_TRANSIT, DELIVERED, PICKED\_UP, EXCEPTION |
+| IN\_TRANSIT | DELIVERED, PICKED\_UP, EXCEPTION, CASE\_OPEN |
+| EXCEPTION | IN\_TRANSIT, DELIVERED, PICKED\_UP, CASE\_OPEN |
+| DELIVERED | CONFIRMED, CASE\_OPEN |
+| PICKED\_UP | CONFIRMED, CASE\_OPEN |
+| CONFIRMED | CASE\_OPEN |
+| CASE\_OPEN | RESOLVED |
+| RESOLVED | — (terminal) |
+
+**Case transition table** (the only allowed case transitions):
+
+| From | To |
+| --- | --- |
+| OPEN | GATHERING\_EVIDENCE |
+| GATHERING\_EVIDENCE | DECIDED |
+| DECIDED | AUTO\_REFUND, AWAITING\_SELLER, HOLD\_FOR\_REVIEW, DISPUTE\_EVIDENCE |
+| AUTO\_REFUND | SETTLED, CLOSED, HOLD\_FOR\_REVIEW (re-check blocked or refund failed), DISPUTE\_EVIDENCE (dispute opened) |
+| AWAITING\_SELLER | SETTLED, CLOSED (seller declined), HOLD\_FOR\_REVIEW (re-check blocked or refund failed), DISPUTE\_EVIDENCE (dispute opened) |
+| HOLD\_FOR\_REVIEW | SETTLED, CLOSED, GATHERING\_EVIDENCE (reviewer asks for more evidence) |
+| DISPUTE\_EVIDENCE | SETTLED, CLOSED |
+| SETTLED, CLOSED | — (terminal) |
+
 - **Append-only events:** decisions can be replayed with the rule version they used. Each money decision also gets an Ed25519-signed receipt chained by hash to the previous one; a public \`GET /cases/{id}/verify\` re-checks the chain, and a tamper demo shows the check failing.
 - **Clear modules:** `checkout`, `shipping`, `cases`, `policy`, `ai`, `paypal_client`, `mcp` — split into services later only if load demands it.
 
@@ -215,10 +254,11 @@ PayPal is load-bearing in four places: the delivery choice at checkout, proof of
 | Stage | PayPal capability | Call / event | Why it matters |
 | --- | --- | --- | --- |
 | Checkout | Orders v2 with shipping options | `POST /v2/checkout/orders` with `purchase_units[].shipping.options` (Home / Locker / Signature) | Delivery choice is part of the payment, not an afterthought |
+| Checkout | Address fix | `PATCH /v2/checkout/orders/{id}` (shipping address), after approval and before capture | Delivery address matches the PayPal order, keeping Seller Protection |
 | Checkout | Capture | `POST /v2/checkout/orders/{id}/capture` | Creates the capture id used for refunds |
 | Ship | Shipment tracking | Add tracking to the order (Agent Toolkit `create_shipment_tracking`) | Proof of shipment for Seller Protection; buyer sees tracking in PayPal |
 | Resolve | Refunds | `POST /v2/payments/captures/{capture_id}/refund` (full or partial) | Settles the case after approval |
-| Resolve | Disputes | `GET /v1/customer/disputes/{id}`, `provide-evidence`, `make-offer`, `accept-claim` | Backup path when a dispute is already open |
+| Resolve | Disputes | `GET /v1/customer/disputes/{id}`, `provide-evidence` (`make-offer` and `accept-claim` are not built in the hackathon) | Backup path when a dispute is already open |
 | Demo | Sandbox dispute tools | Sandbox-only create and settle endpoints ([PayPal test guide](https://developer.paypal.com/platforms/disputes/test-go-live)) | Lets judges watch a real dispute end to end |
 | All | Webhooks | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED`, `CUSTOMER.DISPUTE.CREATED/UPDATED/RESOLVED` | Zero-typing automation |
 | All | Webhook verification | `POST /v1/notifications/verify-webhook-signature` | Blocks forged events |

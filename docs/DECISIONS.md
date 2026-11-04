@@ -41,3 +41,98 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
 - **Trade-off:** Conversion at every boundary (PayPal sends decimal strings, e.g. `"60.00"`), so
   parsing must be exact (Decimal → minor units) and tested; currencies with non-2-decimal minor
   units are out of scope for GBP/USD but the type must not assume 2 silently.
+
+## ADR-004 — Auto-approve limit is inclusive ("at or under")
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** The spec said "under the limit" and "over the limit", leaving an amount exactly
+  at the limit undefined.
+- **Decision:** An amount at or under the seller's auto-approve limit (same currency) auto-refunds.
+- **Trade-off:** A £50.00 refund is automatic under the default; sellers who want a strict cap
+  set their limit one minor unit lower.
+
+## ADR-005 — Extra case transitions and an explicit order transition table
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** ADR-001's case flow had no path for "reviewer needs more evidence", a blocked or
+  failed refund, a dispute opening mid-flow, or a seller declining. SM-01 also pointed at a single
+  arrow chain rather than a real transition list.
+- **Decision:** Add `HOLD_FOR_REVIEW → GATHERING_EVIDENCE`; `AUTO_REFUND | AWAITING_SELLER →
+  HOLD_FOR_REVIEW`; `AUTO_REFUND | AWAITING_SELLER → DISPUTE_EVIDENCE`; `AWAITING_SELLER →
+  CLOSED`. SPEC §8 now has explicit order and case transition tables, a sync rule (case opened →
+  order CASE_OPEN; case SETTLED/CLOSED → order RESOLVED; one open case per order), and handling
+  for repeat (no-op) and backward (recorded, no transition) carrier events. `PACKED` is optional
+  (`PAID → SHIPPED` allowed) because the packing check is on the cut list. `EXCEPTION` may go to
+  `DELIVERED`/`PICKED_UP` because a rebooked delivery can arrive with no transit scan.
+- **Trade-off:** More transitions to test; `RESOLVED` is terminal, so a second problem after
+  resolution is out of scope for the hackathon.
+
+## ADR-006 — Money limits live in `rules/money_limits_v1.yaml`
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** Hard rule 2 puts business rules in `rules/*.yaml`; ADR-003 said "config".
+- **Decision:** `rules/money_limits_v1.yaml` (with `id`, `version`, `source`) holds default
+  auto-approve limits and daily caps per currency and the repeat-claim threshold (3 in 90 days).
+  Per-seller overrides live in the `sellers` table. These values never appear in Python or in
+  `tuning/engine_config.py`, so the autoresearch loop cannot change them.
+- **Trade-off:** One more rule file to validate at startup; changing a default needs a PR.
+
+## ADR-007 — Validate the address after PayPal approval, PATCH before capture
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved); PATCH to be verified live
+- **Context:** The shipping address usually comes from the buyer's PayPal approval, so it cannot
+  be checked "when checkout opens". Shipping to an address that differs from the PayPal order
+  voids Seller Protection (RL-07).
+- **Decision:** After approval and before capture, validate the address PayPal returned. If a fix
+  is needed, the buyer confirms it, Doorstep PATCHes the order's shipping address
+  (`PATCH /v2/checkout/orders/{id}`), then captures. Never capture an unvalidated address unless
+  the buyer explicitly overrides (stored as a signal). New criteria: CK-06, PP-10.
+- **Trade-off:** An extra buyer step between approval and capture. If the sandbox rejects the
+  PATCH, stop and record it here, then use the SPEC §17 fallback.
+
+## ADR-008 — GBP and USD only
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** Launch markets are the UK and US; limits and caps are per currency.
+- **Decision:** Only GBP and USD are supported; any other currency is rejected at checkout
+  (PO-10).
+- **Trade-off:** EU (EUR) needs a config change and new limit defaults later; the money type
+  still carries a currency code so adding one is not a refactor.
+
+## ADR-009 — Disputes: provide-evidence only
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** The spec listed provide-evidence, make-offer and accept-claim; time is short.
+- **Decision:** Build `provide-evidence` (PP-09). `make-offer` stays an `xfail` limitation;
+  `accept-claim` is not built.
+- **Trade-off:** Sellers settle open disputes in PayPal directly for offers.
+
+## ADR-010 — Failed refunds: retry with the same key, then hold for review
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** A refund can fail transiently (5xx, timeout) or permanently (4xx, e.g. balance).
+- **Decision:** 5xx and timeouts are retried with the same `PayPal-Request-Id` up to
+  `max_attempts` (PP-07). Only then is the `money_action` marked `failed` and the case moved to
+  `HOLD_FOR_REVIEW`. A 4xx fails at once and goes to review. Never retry with a new key (PO-12).
+- **Trade-off:** A transient outage delays the refund by the backoff window; no risk of a double
+  refund.
+
+## ADR-011 — Phase A gap fixes for PP, WH, SM, RL, FE, PO
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** Phase A review found untestable or missing criteria in the core modules.
+- **Decision (summary; full text in specs/ACCEPTANCE.md):**
+  - Idempotency key = `{entity}:{id}:{action}[:{money_action_id}]` (PP-05).
+  - `paypal_client` split into `reads`/`writes`; only `app/policy` and `app/worker` import
+    `writes` (PO-01).
+  - PayPal verify endpoint down → 503, nothing stored (WH-06); Shippo wrong token → 404 (WH-04);
+    Shippo event id derived as `sha256(tracking_number|status|status_date)` if the payload has
+    none, to be verified live (WH-08).
+  - Rule version is a quoted string; no matching rule set → `HOLD_FOR_REVIEW` (RL-02, RL-03);
+    US decisions use structured policy fields, never an LLM (RL-06).
+  - Engine is deterministic code; buyer-blaming outcomes go to the seller, never auto-deny
+    (FE-10, FE-11).
+  - Fixed check order in the policy service (PO-13); daily cap uses UTC days (PO-08); repeat
+    claims counted per PayPal payer id per seller (PO-04).
+- **Trade-off:** About 20 more criteria to test on day 1, in exchange for fewer surprises in the
+  sandbox and no ambiguous money behaviour.
