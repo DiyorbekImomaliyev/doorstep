@@ -90,8 +90,6 @@ CARRIER_TARGET: dict[CarrierStatus, OrderState | None] = {
     CarrierStatus.RETURNED: O.EXCEPTION,
     CarrierStatus.UNKNOWN: None,
 }
-# A carrier scan proves the parcel left: an order not yet marked shipped is moved there first.
-_NOT_YET_SHIPPED = frozenset({O.PAID, O.PACKED})
 
 
 def _audit(
@@ -122,9 +120,6 @@ def _action(reason: str) -> str:
 
 def _lock(session: Session, entity: Order | Case) -> None:
     """Flush pending changes, then reload the row under a lock (no-op lock on SQLite)."""
-    if entity in session.new:
-        session.flush()
-        return
     session.flush()
     session.refresh(entity, with_for_update=True)
 
@@ -250,9 +245,6 @@ def apply_carrier_event(
     if target is None or target == current:
         log.info("carrier event %s is a no-op for order %s in %s", status, order.id, current)
         return CarrierEventOutcome.NOOP
-    if current in _NOT_YET_SHIPPED and target != O.SHIPPED:
-        transition_order(session, order, O.SHIPPED, actor=actor, reason=f"carrier {status}")
-        current = O.SHIPPED
     if target in ORDER_TRANSITIONS[current]:
         transition_order(session, order, target, actor=actor, reason=f"carrier {status}")
         return CarrierEventOutcome.APPLIED
