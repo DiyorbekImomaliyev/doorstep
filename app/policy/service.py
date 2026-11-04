@@ -622,9 +622,10 @@ class RefundJobHandler:
         if not order.paypal_order_id or not order.capture_id:
             return "order has no PayPal capture", CaseState.HOLD_FOR_REVIEW
         live = self.gateway.get_capture_state(order.paypal_order_id, order.capture_id)
-        captured = _order_money(order, order.amount_minor)
-        if live.amount != captured or live.refunded_total.currency != captured.currency:
-            return "captured amount differs from PayPal", CaseState.HOLD_FOR_REVIEW
+        if live.amount.currency != order.currency or live.refunded_total.currency != order.currency:
+            return "PayPal capture is in another currency", CaseState.HOLD_FOR_REVIEW
+        # Never more than PayPal captured, nor more than Doorstep's order record says.
+        ceiling = min(live.amount.amount_minor, order.amount_minor)
         if live.status not in _REFUNDABLE_CAPTURE:
             return f"capture is {live.status} at PayPal", CaseState.HOLD_FOR_REVIEW
         known = _refunded_minor(
@@ -636,7 +637,7 @@ class RefundJobHandler:
         if refunded not in (known, known + ma.amount_minor):
             return "PayPal shows a refund Doorstep does not know about", CaseState.HOLD_FOR_REVIEW
         # Worst case the resend is new money: it must still fit in the capture (PO-06).
-        if refunded + ma.amount_minor > captured.amount_minor:
+        if refunded + ma.amount_minor > ceiling:
             return "refund could exceed the captured amount", CaseState.HOLD_FOR_REVIEW
         return None, CaseState.SETTLED
 

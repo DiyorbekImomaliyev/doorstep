@@ -10,6 +10,7 @@ from app.orders.enums import ShippingMethod
 from app.orders.schemas import Address
 from app.paypal_client.client import PayPalClient
 from app.paypal_client.types import CaptureResult, CreatedOrder, ShippingOption
+from app.paypal_client.writes import orders as order_writes
 
 
 class OrdersGateway(Protocol):
@@ -40,6 +41,8 @@ class OrdersGateway(Protocol):
 
 
 class RestOrdersGateway:
+    """OrdersGateway over app.paypal_client.writes.orders (never writes.money, PO-01)."""
+
     def __init__(self, client: PayPalClient) -> None:
         self.client = client
 
@@ -51,15 +54,19 @@ class RestOrdersGateway:
         selected: ShippingMethod,
         request_id: str,
     ) -> CreatedOrder:
-        raise NotImplementedError
+        return order_writes.create_order(
+            self.client, amount=amount, options=options, selected=selected, request_id=request_id
+        )
 
     def update_shipping_address(
         self, paypal_order_id: str, address: Address, *, request_id: str
     ) -> None:
-        raise NotImplementedError
+        order_writes.update_shipping_address(
+            self.client, paypal_order_id, address, request_id=request_id
+        )
 
     def capture_order(self, paypal_order_id: str, *, request_id: str) -> CaptureResult:
-        raise NotImplementedError
+        return order_writes.capture_order(self.client, paypal_order_id, request_id=request_id)
 
     def add_tracking(
         self,
@@ -70,4 +77,11 @@ class RestOrdersGateway:
         tracking_number: str,
         request_id: str,
     ) -> None:
-        raise NotImplementedError
+        order_writes.add_tracking(
+            self.client,
+            paypal_order_id=paypal_order_id,
+            capture_id=capture_id,
+            carrier=carrier,
+            tracking_number=tracking_number,
+            request_id=request_id,
+        )
