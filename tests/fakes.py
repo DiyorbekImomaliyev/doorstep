@@ -45,6 +45,7 @@ class FakeRefund:
     amount_minor: int
     refund_id: str
     external: bool = False
+    custom_id: str | None = None  # our money_action id when Doorstep sent it (ADR-022)
 
 
 @dataclass
@@ -71,6 +72,7 @@ class FakePayPal:
     def __init__(self) -> None:
         self.captures: dict[str, FakeCapture] = {}
         self.refund_calls: list[tuple[str, int | None, str]] = []
+        self.refund_custom_ids: list[str | None] = []
         self.capture_calls: list[tuple[str, str]] = []
         self.tracking_calls: list[dict[str, str]] = []
         self.address_calls: list[tuple[str, Address, str]] = []
@@ -119,14 +121,29 @@ class FakePayPal:
             status=status,
             amount=Money(amount_minor=cap.amount_minor, currency=cap.currency),
             refunded_total=Money(amount_minor=refunded, currency=cap.currency),
+            refunds=[
+                {
+                    "refund_id": r.refund_id,
+                    "status": "COMPLETED",
+                    "amount": Money(amount_minor=r.amount_minor, currency=cap.currency),
+                    "custom_id": r.custom_id,
+                }
+                for r in cap.refunds
+            ],
         )
 
     def refund_capture(
-        self, capture_id: str, *, amount: Money | None, request_id: str
+        self,
+        capture_id: str,
+        *,
+        amount: Money | None,
+        request_id: str,
+        custom_id: str | None = None,
     ) -> RefundResult:
         self.refund_calls.append(
             (capture_id, None if amount is None else amount.amount_minor, request_id)
         )
+        self.refund_custom_ids.append(custom_id)
         if self.refund_failures:
             raise self.refund_failures.popleft()
         cap = self.captures[capture_id]
@@ -134,7 +151,7 @@ class FakePayPal:
             if r.request_id == request_id:
                 return RefundResult(refund_id=r.refund_id, status="COMPLETED")
         minor = cap.amount_minor - cap.refunded_minor if amount is None else amount.amount_minor
-        refund = FakeRefund(request_id, minor, self._new_id("R"))
+        refund = FakeRefund(request_id, minor, self._new_id("R"), custom_id=custom_id)
         cap.refunds.append(refund)
         return RefundResult(
             refund_id=refund.refund_id, status="COMPLETED", raw={"id": refund.refund_id}
