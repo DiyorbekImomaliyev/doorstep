@@ -232,7 +232,6 @@ def test_PO_03_decline_outside_awaiting_seller_raises(policy, scenario):
         policy.decline(case, SELLER)
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-1: decline allowed while a refund is queued")
 def test_PO_03_decline_after_approval_is_refused_while_refund_queued(db, policy, scenario):
     """Money is already in flight once the seller approves; a later decline must not orphan it."""
     _, case = _awaiting_seller(policy, scenario)
@@ -375,7 +374,6 @@ def test_PO_12_recheck_blocks_on_capture_currency_mismatch(
     assert db.get(Case, case.id).state == CaseState.HOLD_FOR_REVIEW
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-2: re-check ignores a finished case")
 def test_PO_12_refund_job_for_closed_case_sends_no_money(
     db, policy, scenario, run_refunds, fake_paypal
 ):
@@ -390,7 +388,6 @@ def test_PO_12_refund_job_for_closed_case_sends_no_money(
     assert db.get(Case, case.id).state == CaseState.CLOSED
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-2: re-check ignores a finished case")
 def test_PO_12_refund_job_for_settled_case_sends_no_money(
     db, policy, scenario, run_refunds, fake_paypal
 ):
@@ -415,7 +412,6 @@ def _job_failed_audit(db, job: Job) -> list[AuditLog]:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-3: missing row is retried, on_failed raises")
 def test_PO_12_refund_job_for_missing_money_action_fails_permanently(
     db, clock, settings, run_refunds
 ):
@@ -428,7 +424,6 @@ def test_PO_12_refund_job_for_missing_money_action_fails_permanently(
     assert len(_job_failed_audit(db, job)) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-3: missing row is retried, on_failed raises")
 @pytest.mark.parametrize("missing", ["decision_id", "order_id"])
 def test_PO_12_refund_job_with_dangling_reference_fails_and_holds_case(
     db, policy, scenario, run_refunds, fake_paypal, missing
@@ -449,7 +444,6 @@ def test_PO_12_refund_job_with_dangling_reference_fails_and_holds_case(
     assert db.get(Case, case.id).state == CaseState.HOLD_FOR_REVIEW
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-3: one bad job crashes the worker loop")
 def test_PO_12_worker_survives_a_bad_refund_job(
     db, policy, scenario, run_refunds, fake_paypal, clock, settings
 ):
@@ -462,7 +456,6 @@ def test_PO_12_worker_survives_a_bad_refund_job(
     assert db.get(Case, case.id).state == CaseState.SETTLED
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-3: one bad job crashes the worker loop")
 def test_PP_04_worker_survives_a_handler_whose_on_failed_raises(
     db, session_factory, clock, settings
 ):

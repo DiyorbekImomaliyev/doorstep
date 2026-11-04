@@ -45,13 +45,18 @@ from app.orders.models import (
     Order,
     Seller,
 )
-from app.orders.state import CASE_TRANSITIONS, transition_case
+from app.orders.state import (
+    CASE_TRANSITIONS,
+    FINISHED_CASE_STATES,
+    IllegalTransition,
+    transition_case,
+)
 from app.paypal_client.idempotency import request_id_for
 from app.policy.fingerprint import evidence_fingerprint
 from app.policy.ports import RefundGateway
 from app.policy.rules import RuleBook, effective_limits
 from app.worker.models import Job
-from app.worker.runner import enqueue
+from app.worker.runner import PermanentError, enqueue
 
 log = logging.getLogger("doorstep.policy")
 
@@ -89,6 +94,15 @@ class PolicyDecision(BaseModel):
 
 class PolicyError(Exception):
     """A request the policy cannot act on (wrong state, missing decision)."""
+
+
+class PolicyStateError(PolicyError, IllegalTransition):
+    """approve/decline asked for in a state that does not allow it (ADR-020): an illegal
+    transition request, so callers that tolerate IllegalTransition tolerate this too."""
+
+
+class MissingRecord(PolicyError, PermanentError):
+    """A refund job points at a row that no longer exists. Retrying cannot help (PO-12)."""
 
 
 # ------------------------------------------------------------------ shared helpers
@@ -478,19 +492,19 @@ class PolicyService:
         s.refresh(case, with_for_update=True)  # serialise concurrent approvals of one case
         decision = _latest_decision(s, case.id)
         if decision is None:
-            raise PolicyError(f"case {case.id} has no decision to approve")
+            raise PolicyStateError(f"case {case.id} has no decision to approve")
         existing = self._existing_refund(decision)
         if existing is not None:
             return existing
         if CaseState(case.state) not in (CaseState.AWAITING_SELLER, CaseState.HOLD_FOR_REVIEW):
-            raise PolicyError(f"case {case.id} in {case.state} cannot be approved")
+            raise PolicyStateError(f"case {case.id} in {case.state} cannot be approved")
         if decision.fix == Fix.RESHIP.value:
             self.settle_with_reship(case, approver)
             return None
         order = s.get(Order, case.order_id)
         assert order is not None
         if not order.capture_id or order.capture_status != "COMPLETED":
-            raise PolicyError(f"order {order.id} has no completed capture to refund")
+            raise PolicyStateError(f"order {order.id} has no completed capture to refund")
         remaining = _remaining_refundable(s, order)
         wanted = decision.refund_amount_minor or 0
         amount = _order_money(order, min(wanted, remaining.amount_minor))
@@ -502,14 +516,17 @@ class PolicyService:
             return self._queue_refund(order, case, decision, amount, approval)
         except IntegrityError:
             found = self._existing_refund(decision)
-            if found is None:  # pragma: no cover - the constraint names exactly this row
+            if found is None:  # the claim was rejected for a reason we cannot explain
                 raise
             return found
 
     def decline(self, case: Case, approver: Approver) -> None:
         """Seller declines: AWAITING_SELLER -> CLOSED, no money moves (PO-03)."""
         if CaseState(case.state) != CaseState.AWAITING_SELLER:
-            raise PolicyError(f"case {case.id} in {case.state} cannot be declined")
+            raise PolicyStateError(f"case {case.id} in {case.state} cannot be declined")
+        decision = _latest_decision(self.session, case.id)
+        if decision is not None and self._existing_refund(decision) is not None:
+            raise PolicyStateError(f"case {case.id}: refund already approved, cannot decline")
         transition_case(
             self.session,
             case,
@@ -603,18 +620,21 @@ class RefundJobHandler:
             .with_for_update()
         )
         if ma is None or ma.case_id is None or ma.decision_id is None:
-            raise PolicyError(f"job {job.id}: money action missing")
+            raise MissingRecord(f"job {job.id}: money action missing")
         order = session.get(Order, ma.order_id)
         case = session.get(Case, ma.case_id)
         decision = session.get(Decision, ma.decision_id)
         if order is None or case is None or decision is None:
-            raise PolicyError(f"job {job.id}: order, case or decision missing")
+            raise MissingRecord(f"job {job.id}: order, case or decision missing")
         return ma, order, case, decision
 
     def _recheck(
-        self, session: Session, ma: MoneyAction, order: Order, decision: Decision
+        self, session: Session, ma: MoneyAction, order: Order, case: Case, decision: Decision
     ) -> tuple[str | None, CaseState]:
         """None if the refund may go out; else the reason and where the case should go."""
+        state = CaseState(case.state)
+        if state in FINISHED_CASE_STATES:  # closed or settled another way: never send money
+            return f"case is {state.value}", state
         if _open_dispute(session, order.id):
             return "a PayPal dispute opened after the decision", CaseState.DISPUTE_EVIDENCE
         if evidence_fingerprint(session, order.id) != decision.evidence_fingerprint:
@@ -646,7 +666,7 @@ class RefundJobHandler:
         if ma.status != MoneyActionStatus.QUEUED.value:
             return  # already completed, failed or blocked: a redelivered job sends nothing
         approval = _approval_for(session, decision.id)
-        blocked, target = self._recheck(session, ma, order, decision)
+        blocked, target = self._recheck(session, ma, order, case, decision)
         now = self.clock.now()
         if blocked is not None:
             ma.status = MoneyActionStatus.BLOCKED.value
@@ -693,7 +713,11 @@ class RefundJobHandler:
 
     def on_failed(self, session: Session, job: Job, error: Exception) -> None:
         """Retries exhausted or a 4xx: mark failed, never retry with a new key, hold (PO-12)."""
-        ma, _order, case, decision = self._load(session, job)
+        try:
+            ma, _order, case, decision = self._load(session, job)
+        except MissingRecord:
+            self._fail_dangling(session, job, error)
+            return
         if ma.status != MoneyActionStatus.QUEUED.value:
             return
         ma.status = MoneyActionStatus.FAILED.value
@@ -711,3 +735,25 @@ class RefundJobHandler:
         _route_case(
             session, case, CaseState.HOLD_FOR_REVIEW, actor="policy", reason="refund failed"
         )
+
+    def _fail_dangling(self, session: Session, job: Job, error: Exception) -> None:
+        """A row behind the job is gone, so no refund is ever sent for it (ADR-021).
+
+        The job only fails while its money action is queued (a completed refund commits with the
+        job's done status), so the money action is marked failed without a status check. The case
+        is held if it can still be found. A job whose money action itself is gone is an orphan:
+        logged at ERROR and listed by app.worker.orphans.orphaned_refund_jobs.
+        """
+        ma_id = job.payload.get("money_action_id")
+        ma = session.get(MoneyAction, ma_id) if isinstance(ma_id, str) else None
+        if ma is None:
+            log.error("orphaned refund job %s: money action %r does not exist", job.id, ma_id)
+            return
+        ma.status = MoneyActionStatus.FAILED.value
+        ma.paypal_response = {"error": f"{type(error).__name__}: {error}"[:500]}
+        log.error("refund job %s failed on a dangling reference: %s", job.id, error)
+        case = session.get(Case, ma.case_id) if ma.case_id else None
+        if case is not None:
+            _route_case(
+                session, case, CaseState.HOLD_FOR_REVIEW, actor="policy", reason="record missing"
+            )

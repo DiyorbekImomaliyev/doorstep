@@ -118,7 +118,13 @@ class JobRunner:
                     .order_by(Job.run_at, Job.created_at)
                 )
             )
-        return sum(1 for job_id in due if self._run_one(job_id))
+        ran = 0
+        for job_id in due:
+            try:
+                ran += self._run_one(job_id)
+            except Exception:  # one bad job never stops the loop; it stays queued for later
+                log.exception("job %s could not be run or recorded", job_id)
+        return ran
 
     def _claim(self, session: Session, job_id: str) -> Job | None:
         """Lock the job row; skip it if another worker holds it or it is no longer due."""
@@ -155,7 +161,11 @@ class JobRunner:
             exhausted = job.attempts >= self.settings.max_attempts
             if is_permanent(error) or exhausted:
                 job.status = FAILED
-                handler.on_failed(session, job, error)
+                try:
+                    with session.begin_nested():  # a broken hook must not keep the job queued
+                        handler.on_failed(session, job, error)
+                except Exception:
+                    log.exception("job %s (%s): on_failed hook raised", job.id, job.kind)
                 session.add(
                     AuditLog(
                         actor="worker",

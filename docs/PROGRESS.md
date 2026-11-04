@@ -41,22 +41,33 @@ Tracked against the day's definition of done (SPEC section 16).
 - `/paypal:doctor`: no critical findings. Fixed one warning (`debug_id` was not logged).
   Open warning: `PAYPAL_WEBHOOK_ID` unset.
 
-### In progress
-- Blocked on human decisions: the 3 locked tests below, and the coverage test addendum.
+- Locked-test fixes (human-approved, 7271c42). The coverage addendum
+  `tests/unit/test_po_policy_errors.py` (5e218a6) found 3 money-safety bugs, now fixed (ADR-021):
+  - a decline while a refund is queued is refused;
+  - a CLOSED or SETTLED case never sends money (pre-refund re-check);
+  - a refund job with a missing row fails permanently (audit row, ERROR log, case held when it
+    still exists); orphans are listed by `app.worker.orphans.orphaned_refund_jobs`;
+  - the worker survives any single bad job.
+- Deterministic gate (ADR-020): `make test` uses a fixed Hypothesis seed; `make test-explore`
+  runs random seeds. Approve/decline wrong-state errors are `IllegalTransition`s, which fixes
+  the flaky `test_SM_04_no_refund_without_paid_property`.
+- Checks after the fixes:
+  - `make lint` clean;
+  - `make test` 476 passed, 1 xfailed, 3 runs in a row;
+  - `make test-explore` 3 random-seed runs green.
+- Branch coverage: `state.py` 100%; `app/policy` 99%. The one partial branch is
+  `service.py` `_fail_dangling`, the "case row gone" path: reachable by fault injection, but no
+  test yet.
+- mutmut on app/policy (`make mutmut`; macOS needs forkserver + `OBJC_DISABLE_INITIALIZE_FORK_SAFETY`):
+  - 1441 mutants: 1085 killed, 356 survived (75%);
+  - 254 survivors change only strings, logs, audit text or args to None;
+  - about 102 change logic, mostly assertion gaps (daily-cap boundary and filters, dispute
+    scoped to the order, the bad-address override, refund kind on external refunds);
+  - a test addendum is needed (human approval).
 
-### Locked tests that look wrong (not edited; human decision needed)
-1. `test_PO_08_daily_cap_routes_to_awaiting_seller`: its helper opens two earlier cases with the
-   same default payer, so with this case the buyer reaches 3 claims → PO-04 repeat-claimant hold.
-   PO-13 puts the hold before the cap, so the code returns HOLD_FOR_REVIEW. Fix: give the helper's
-   cases distinct payer ids.
-2. `test_PP_05_retry_reuses_same_request_id`: it registers /track with `expect_ordered_request`
-   next to a permanent token handler. pytest-httpserver checks ordered handlers first, so the token
-   POST hits the ordered slot and the job fails permanently. Fix: add the token to the ordered
-   list, or use non-ordered handlers for /track.
-3. `test_PP_07_partial_refund_sends_amount_full_refund_sends_none`: passes alone. It fails after
-   `test_PP_07_refund_timeout`, whose 1 s slow handler finishes into the shared httpserver log
-   (3 refund requests seen). Fix: clear the log or wait for the slow handler in the timeout test,
-   or filter by request id.
+### In progress
+- Waiting on the human: tag move for the xfail-mark removal; approval of the
+  mutation-killing and `case_id` fault-injection tests.
 
 ### Not started (day-1 definition of done)
 - [ ] Sandbox order with shipping options → capture → tracking → partial refund → sandbox dispute settled

@@ -272,3 +272,47 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
   - the PATCH path `/purchase_units/@reference_id=='default'/shipping/address`;
   - `admin_area_1` rules for US addresses;
   - real webhook payload shapes for capture, refund and dispute events.
+
+## ADR-020 — Deterministic test gate; exploration is separate
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** `test_SM_04_no_refund_without_paid_property` passed or failed depending on
+  Hypothesis's random examples. `approve` before `decide` raised `PolicyError`, which the
+  property tolerates only as `IllegalTransition`. A gate that depends on luck is not a gate.
+- **Decision:**
+  - The wrong-state errors from `approve` and `decline` are `PolicyStateError`, a subclass of
+    both `PolicyError` and `IllegalTransition`: no decision, wrong case state, no completed
+    capture, refund already approved.
+  - `make test` passes a fixed `--hypothesis-seed` (Makefile `HYPOTHESIS_SEED`, default
+    20261104). It runs the same examples every time.
+  - `make test-explore` runs the property suite `EXPLORE_RUNS` times (default 20), each with
+    a fresh random seed. It is not a gate. A failure prints the seed, so it can be replayed
+    with `make test HYPOTHESIS_SEED=<seed>` and pinned as an `@example` in a reviewed test.
+  - mutmut (`make mutmut`, `[tool.mutmut]`) uses the same fixed seed.
+- **Trade-off:** The gate sees a fixed sample. New counterexamples come only from exploration
+  runs, so someone must run `make test-explore` (CI can run it nightly). A local
+  `.hypothesis/` database can still replay a saved failure; CI starts without one.
+
+## ADR-021 — Refund jobs: finished cases, in-flight declines, missing rows
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved; bugs found by the coverage
+  addendum)
+- **Decision:**
+  - **Decline:** `decline` is refused (`PolicyStateError`) once the latest decision has a
+    refund money action. Money already in flight is never orphaned by a decline.
+  - **Re-check:** the pre-refund re-check first requires the case to be unfinished. A CLOSED
+    or SETTLED case never sends money: the money action becomes BLOCKED and the case stays
+    as it is.
+  - **Missing rows:** a refund job whose money action, order, case or decision is missing
+    raises `MissingRecord`, a `PermanentError`. The job fails on its first attempt, and the
+    runner writes the `job.failed` audit row. `on_failed` then:
+    - marks the money action FAILED;
+    - logs at ERROR;
+    - holds the case if it still exists.
+    If the money action itself is gone, the job is an orphan: logged at ERROR and listed by
+    `app.worker.orphans.orphaned_refund_jobs` for the Control Room. The job payload holds
+    only `money_action_id` (pinned by PO-02), so no case can be held for an orphan.
+  - **Worker:** the runner runs `on_failed` inside a savepoint and catches its exceptions,
+    and `run_due` catches per-job exceptions. One bad job never stops the loop.
+- **Trade-off:** A broken `on_failed` hook is logged, not retried. Its job is still marked
+  failed with an audit row.
