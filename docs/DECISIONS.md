@@ -316,3 +316,28 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
     and `run_due` catches per-job exceptions. One bad job never stops the loop.
 - **Trade-off:** A broken `on_failed` hook is logged, not retried. Its job is still marked
   failed with an audit row.
+
+## ADR-022 — Refund identity: our money_action id in PayPal's custom_id
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved: option b with a safe fallback)
+- **Context:** If PayPal applies a refund but our commit is lost, the job is retried. ADR-016's
+  worst-case ceiling can't tell our landed refund from an unknown one of the same amount. So a
+  full refund in that state is always blocked, and PO-07's "retry with the same key" never
+  settles it.
+- **Decision:**
+  - Every refund request carries `custom_id = money_action.id`. Every retry reuses the same
+    `PayPal-Request-Id` and the same `custom_id`.
+  - `get_capture_state` also returns the capture's refunds: id, status, amount, custom_id.
+  - Crash recovery, before any send:
+    - a refund with our `custom_id` and the same amount is ours: record it COMPLETED, write
+      `paypal_response.recovered = true` and settle the case, with no resend;
+    - a refund with our `custom_id` but another amount, without a `custom_id`, or with
+      someone else's `custom_id`, can't be identified: BLOCKED, HOLD_FOR_REVIEW (ADR-016);
+    - an unidentified refund blocks even when a resend would fit under the ceiling.
+- **Phase D:** in the live sandbox, check that `custom_id` comes back when reading refunds
+  (GET order → `purchase_units[].payments.refunds[]`). If it doesn't, fall back to option (a)
+  (always block on an unexplained refunded amount) and record that here.
+- **Trade-off:** One more field on every refund, and recovery depends on PayPal echoing
+  `custom_id`. The locked `test_PO_07_crash_after_paypal_success_retries_with_same_key` fakes
+  a landed refund without `custom_id`, so under this ADR it is blocked. The test still passes,
+  since it asserts no double refund and the same request id.
