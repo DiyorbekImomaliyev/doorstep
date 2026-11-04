@@ -75,7 +75,7 @@ automatically (sandbox only, never a real account). Fallback: you click Approve.
 | Time | Phase | You do | Done when |
 |---|---|---|---|
 | 08:00–08:30 | Review overnight branch | Merge only if the hold-out score improved | Merged or dropped |
-| 08:30–09:00 | B. Tests first | Approve tests for CR, BR, MC, RG, RK, SE, E2E; tag | Tests exist and fail |
+| 08:30–09:00 | B. Tests first | Approve tests for AS, AT, BR, MC, RG, RK, SE, PR, SB, E2E; tag | Tests exist and fail |
 | 09:00–14:00 | C. Implement (2 sessions) | Session 1: AG Studio Control Room (theme, custom widgets, custom agent) + Bryntum + pages. Session 2: bounded agent (Agent Toolkit), MCP, RAG, risk model | Green |
 | 14:00–16:00 | Safety | Nothing | Red-team 100%, Schemathesis clean, mutmut clean |
 | 16:00–18:00 | D. Live end to end | Watch the demo run | E2E-01..03 pass on Render |

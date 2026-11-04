@@ -30,6 +30,11 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - SM-02 Any other transition raises and changes nothing.
 - SM-03 Every transition writes an `audit_log` row.
 - SM-04 Property test: no random event sequence reaches a refunded state without PAID first.
+- SM-05 Only the case transitions listed in SPEC section 8 are allowed
+  (OPEN → GATHERING_EVIDENCE → DECIDED → AUTO_REFUND | AWAITING_SELLER | HOLD_FOR_REVIEW |
+  DISPUTE_EVIDENCE → SETTLED or CLOSED); any other case transition raises and changes nothing.
+- SM-06 Property test: a case can never reach SETTLED without a recorded decision and its
+  approval path (auto-approve under limit, seller approval, or reviewer approval).
 
 ## CK — Checkout (prevent)
 - CK-01 When address validation flags a missing unit/flat, the buyer sees a fix prompt.
@@ -89,6 +94,10 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - PO-07 Approving the same case twice → exactly one refund.
 - PO-08 Daily refund cap per seller (config) is enforced.
 - PO-09 Every money action writes an audit record with signals, rule, approver, PayPal response.
+- PO-10 All money is integer minor units plus an ISO 4217 currency code (no floats anywhere in
+  the money path); auto-approve limits and daily caps are per seller and per currency (config;
+  defaults GBP 50 / USD 50 auto-approve, GBP 500 / USD 500 daily cap); amounts in different
+  currencies are never compared or summed.
 
 ## EX — Explainer and drafts
 - EX-01 Every explanation names the rule id it used.

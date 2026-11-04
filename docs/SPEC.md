@@ -164,7 +164,7 @@ The engine names the most likely failure point from several signals, then a code
 
 **Money decision policy (code, not AI):**
 
-1. If the rule set says the seller is liable **and** the amount is under the seller's auto-approve limit (default £/$50) → auto-refund, notify both.
+1. If the rule set says the seller is liable **and** the amount is under the seller's auto-approve limit (per seller and per currency; defaults GBP 50 / USD 50) → auto-refund, notify both. A daily refund cap also applies per seller and per currency (defaults GBP 500 / USD 500). All money is integer minor units plus an ISO 4217 currency code, never floats.
 2. If the amount is over the limit → seller approves with one tap.
 3. If signals contradict, or the buyer has 3+ claims in 90 days → hold for human review, ask for more evidence; never deny automatically.
 4. If a PayPal dispute is already open → submit evidence through the Disputes API instead of refunding outside it.
@@ -187,6 +187,7 @@ PayPal and Shippo events land in the API's inbox first, the worker runs each ste
 - **Inbox:** every webhook is stored first, keyed by event id, then processed once; duplicates and retries are harmless.
 - **Outbox + idempotency:** every PayPal write is a stored job with a `PayPal-Request-Id`; retries never double-refund.
 - **Explicit state machine:** `CREATED → PAID → PACKED → SHIPPED → IN_TRANSIT → DELIVERED / PICKED_UP → CONFIRMED`, with `EXCEPTION` and `CASE_OPEN → RESOLVED` branches; illegal transitions raise errors.
+- **Case state machine (separate from the order):** `OPEN → GATHERING_EVIDENCE → DECIDED → one of AUTO_REFUND | AWAITING_SELLER | HOLD_FOR_REVIEW | DISPUTE_EVIDENCE → SETTLED or CLOSED`. `HOLD_FOR_REVIEW` is a case state, not an order state. Illegal case transitions raise errors; a case can never be `SETTLED` without a recorded decision and its approval path.
 - **Append-only events:** decisions can be replayed with the rule version they used. Each money decision also gets an Ed25519-signed receipt chained by hash to the previous one; a public \`GET /cases/{id}/verify\` re-checks the chain, and a tamper demo shows the check failing.
 - **Clear modules:** `checkout`, `shipping`, `cases`, `policy`, `ai`, `paypal_client`, `mcp` — split into services later only if load demands it.
 
@@ -194,14 +195,14 @@ PayPal and Shippo events land in the API's inbox first, the worker runs each ste
 
 | Table | Key fields | Purpose |
 | --- | --- | --- |
-| `sellers` | id, region, auto\_approve\_limit, policy\_text | Seller settings and policy |
-| `orders` | id, seller\_id, paypal\_order\_id, capture\_id, amount, currency, buyer\_country, state | One row per order |
+| `sellers` | id, region, auto\_approve\_limits (per currency, minor units), daily\_refund\_caps (per currency, minor units), policy\_text | Seller settings and policy |
+| `orders` | id, seller\_id, paypal\_order\_id, capture\_id, amount\_minor, currency, buyer\_country, state | One row per order |
 | `shipments` | order\_id, carrier, tracking\_number, method (home/locker/signature), label\_weight | Delivery details |
 | `tracking_events` | shipment\_id, status, occurred\_at, raw | Carrier history |
 | `evidence` | order\_id, kind (packing\_photo, signature, locker\_code, buyer\_photo), uri, ai\_result | Proof items |
-| `cases` | order\_id, reported\_by, reason, state | Problems reported |
+| `cases` | order\_id, reported\_by, reason, state (case state machine) | Problems reported |
 | `decisions` | case\_id, failure\_point, confidence, rule\_id, rule\_version, explanation | Engine output |
-| `money_actions` | case\_id, kind (refund/partial/evidence), amount, request\_id, paypal\_status | Every PayPal write |
+| `money_actions` | case\_id, kind (refund/partial/evidence), amount\_minor, currency, request\_id, paypal\_status | Every PayPal write |
 | `webhook_inbox` | event\_id (unique), source, payload, processed\_at | Inbox pattern |
 | `jobs` | kind, payload, run\_at, attempts, status | Worker queue |
 | `audit_log` | actor, action, before, after, at | Append-only trail |
