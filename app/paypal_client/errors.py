@@ -12,11 +12,20 @@ class PayPalAuthError(PayPalError):
 class PayPalClientError(PayPalError):
     """4xx: not retried (PP-07)."""
 
-    def __init__(self, status: int, name: str = "", body: dict[str, object] | None = None):
-        super().__init__(f"PayPal {status} {name}")
+    def __init__(
+        self,
+        status: int,
+        name: str = "",
+        body: dict[str, object] | None = None,
+        *,
+        debug_id: str = "",
+    ):
+        suffix = f" (debug_id {debug_id})" if debug_id else ""
+        super().__init__(f"PayPal {status} {name}".rstrip() + suffix)
         self.status = status
         self.name = name
         self.body = body or {}
+        self.debug_id = debug_id
 
 
 class PayPalServerError(PayPalError):

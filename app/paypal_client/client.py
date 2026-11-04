@@ -150,9 +150,20 @@ class PayPalClient:
             return
         body = _json_or_empty(response)
         name = str(body.get("name", "")) if isinstance(body, dict) else ""
+        debug_id = str(body.get("debug_id", "")) if isinstance(body, dict) else ""
+        log.warning(
+            "paypal error %s %s debug_id=%s",
+            status,
+            name,
+            debug_id or "-",
+            extra={"status": status, "paypal_error": name, "debug_id": debug_id or None},
+        )
+        suffix = f" (debug_id {debug_id})" if debug_id else ""
         if status >= 500:
-            raise PayPalServerError(status, f"PayPal {status} {name}".strip())
-        raise PayPalClientError(status, name, body if isinstance(body, dict) else {"body": body})
+            raise PayPalServerError(status, f"PayPal {status} {name}".strip() + suffix)
+        raise PayPalClientError(
+            status, name, body if isinstance(body, dict) else {"body": body}, debug_id=debug_id
+        )
 
     def request(
         self,
