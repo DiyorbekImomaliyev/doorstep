@@ -507,3 +507,26 @@ We have no real outcomes yet. Render's free tier makes a large build costly: the
 - No postcode or address features.
 **Trade-off.** Accuracy is only proven on the synthetic world: PR-AUC 0.155 against a 0.156
 ceiling. Real effect sizes need real seller outcomes. The model card states this.
+
+## ADR-033 — Policy reader: BM25 over sentence passages, cited answers, rule-file fallback
+
+**Context.** SPEC section 10 plans a pgvector RAG over seller policies and rule texts (RG-01..03).
+A seller's corpus is a few sentences of written policy plus the `policy_text` of the rule set
+that applies. Embeddings would add a model call per passage, a pgvector-only code path that
+SQLite tests can't cover, and nondeterminism. None of that buys recall on a corpus this small.
+**Decision.**
+- Passages: sentences with stable ids (`seller:1`, `us_seller_policy_v1:2`).
+- Retrieval: BM25 (`RAG_TOP_K` and `RAG_MIN_SCORE` in tuning/engine_config.py).
+- Answer: one structured `PolicyAnswer` through app/ai/llm.py at temperature 0. It must cite at
+  least one retrieved id. A citation outside the retrieved set counts as invalid output and gets
+  one retry.
+- Fallbacks:
+  - no model, or invalid twice: the passages are quoted verbatim with their ids;
+  - no relevant passage: the rule file itself is quoted, with id, version, source and outcome
+    (RG-02).
+- Use in the app: the seller's case drawer shows "What your policy says" on demand. It is never
+  read by a decision.
+**Trade-off.** Lexical retrieval misses paraphrases with no shared words, e.g. "parcel never
+came" vs "does not reach you". The rule-file fallback keeps that case safe. pgvector embeddings
+are the upgrade once policies grow past a page. RG-03 (Ragas faithfulness on 30 questions) needs
+a run on the eval model key and stays xfail until then.

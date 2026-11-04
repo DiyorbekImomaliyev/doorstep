@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AgentRun, type OrderRow, type PackingResult } from "../api";
+import { api, type AgentRun, type OrderRow, type PackingResult, type PolicyAnswer } from "../api";
 import { ErrorBox, Loading, Meter, Pill, Timeline, useAsync } from "../components/ui";
 import { FAILURE_POINT, METHOD, ROUTE, money, riskTone, stateTone } from "../format";
 
@@ -110,6 +110,7 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
           </section>
         )}
 
+        <PolicyPanel token={token} caseId={c.case_id} />
         <AgentPanel token={token} caseId={c.case_id} onDone={reload} />
 
         <section className="col">
@@ -309,6 +310,35 @@ const AGENT_OUTCOME: Record<string, { tone: "good" | "warn" | "info" | "neutral"
 };
 
 /** AT-01..05: the agent reads the PayPal side (Agent Toolkit, read-only) and asks the policy. */
+function PolicyPanel({ token, caseId }: { token: string; caseId: string }) {
+  const [ans, setAns] = useState<PolicyAnswer | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function go() {
+    setBusy(true); setErr(null);
+    try { setAns(await api.policyAnswer(token, caseId)); }
+    catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
+  }
+  return (
+    <section className="card col" aria-label="What your policy says">
+      <h3>What your policy says</h3>
+      {!ans && <button className="btn" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Reading…" : "Read the policy for this case"}</button>}
+      {err && <ErrorBox message={err} />}
+      {ans && (
+        <>
+          {ans.mode !== "quoted passages" && <p style={{ margin: 0 }}>{ans.answer}</p>}
+          {ans.citations.length > 0 && (
+            <ul className="col" style={{ gap: 4, margin: 0, paddingLeft: 18 }}>
+              {ans.citations.map((c) => <li key={c.id} className="faint">“{c.text}” <span className="muted">({c.source})</span></li>)}
+            </ul>
+          )}
+          <span className="faint">{ans.mode === "rule file" ? "No matching passage in your policy, so the rule file is quoted." : ans.mode === "model" ? "Answer drawn only from the passages shown." : "Passages quoted as written."} {ans.disclaimer}</span>
+        </>
+      )}
+    </section>
+  );
+}
+
 function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; onDone: () => void }) {
   const [run, setRun] = useState<AgentRun | null>(null);
   const [busy, setBusy] = useState(false);

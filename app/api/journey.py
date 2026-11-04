@@ -23,6 +23,7 @@ from app.agent.runner import AgentRun, DoorstepAgent, simulated_tools
 from app.ai.explainer import Explainer
 from app.ai.llm import Image
 from app.ai.packing import PackingChecker
+from app.ai.policy_reader import PolicyReader, ReaderAnswer
 from app.api.agent import MCP_MOUNT, MCP_PATH
 from app.api.deps import SIMULATED_COMPONENTS, AppDeps, Services
 from app.api.views import (
@@ -124,6 +125,19 @@ class ShipIn(BaseModel):
 
 _PHOTO_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
+
+class PolicyQuestionIn(BaseModel):
+    question: str | None = Field(default=None, max_length=500)
+
+
+_REASON_QUESTION = {
+    ClaimReason.NOT_RECEIVED.value: "What happens if a parcel did not arrive or was not received?",
+    ClaimReason.DAMAGED.value: "What happens if the item arrived damaged?",
+    ClaimReason.WRONG_ITEM.value: "What happens if the wrong item was delivered?",
+    ClaimReason.EMPTY_BOX.value: "What happens if the parcel arrived empty?",
+    ClaimReason.MISSING_ITEM.value: "What happens if an item is missing from the parcel?",
+}
 
 
 class PackingIn(BaseModel):
@@ -435,6 +449,24 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         run = agent.run(s, case, clock=deps.clock)
         s.commit()
         return run
+
+    @router.post("/api/seller/{token}/policy/cases/{case_id}", response_model=ReaderAnswer)
+    def policy_answer(
+        token: str, case_id: str, s: Db, body: PolicyQuestionIn | None = None
+    ) -> ReaderAnswer:
+        """RG-01/02: what the seller's policy and the applying rule say about this case, with
+        cited passages (the rule file is quoted when no passage is relevant)."""
+        seller = _seller(s, token)
+        case = _seller_case(s, seller, case_id)
+        order = s.get(Order, case.order_id)
+        assert order is not None
+        question = (body.question if body and body.question else None) or _REASON_QUESTION.get(
+            case.reason, "What does the delivery policy say?"
+        )
+        reader = PolicyReader(services.agent_llm)
+        return reader.answer(
+            question, seller_policy=seller.policy_text, rule=rulebook.select(order.buyer_country)
+        )
 
     @router.post("/api/seller/{token}/orders/{order_id}/ship", response_model=OrderRow)
     def ship(token: str, order_id: str, body: ShipIn, s: Db) -> OrderRow:

@@ -19,18 +19,8 @@ def test_PK_05_mismatch_recall_on_the_labelled_photo_set():
 
 
 @pytest.mark.xfail(
-    strict=True, reason="RAG policy reader not built (SPEC 10; template quotes rules)"
+    strict=True, reason=NEEDS_HUMAN + "a Ragas run (30 questions) on the eval model key"
 )
-def test_RG_01_answers_cite_the_retrieved_passages():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason="RAG policy reader not built")
-def test_RG_02_no_passage_quotes_the_rule_file():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason="RAG policy reader and Ragas set not built")
 def test_RG_03_ragas_faithfulness():
     _unbuilt()
 

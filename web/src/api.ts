@@ -177,6 +177,13 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return (await res.json()) as T;
 }
 
+export type PolicyAnswer = {
+  answer: string;
+  citations: { id: string; source: string; text: string }[];
+  mode: "model" | "quoted passages" | "rule file";
+  disclaimer: string;
+};
+
 export const api = {
   health: () => call<Health>("GET", "/healthz"),
   seed: (scratch: boolean) => call<SeedOut>("POST", `/demo/seed?scratch=${scratch ? 1 : 0}`),
@@ -201,6 +208,8 @@ export const api = {
   choose: (t: string, option: string) => call<BuyerView>("POST", `/api/buyer/${t}/choice`, { option }),
   fixAddress: (t: string, address: Address) =>
     call<{ valid: boolean; issues: { code: string; message: string }[] }>("POST", `/api/buyer/${t}/address`, address),
+  policyAnswer: (t: string, caseId: string, question?: string) =>
+    call<PolicyAnswer>("POST", `/api/seller/${t}/policy/cases/${encodeURIComponent(caseId)}`, question ? { question } : undefined),
   agentLink: (t: string) =>
     call<{ order_token: string; mcp_url: string; tool: string; expires_in_days: number }>(
       "POST", `/api/buyer/${t}/agent-link`,

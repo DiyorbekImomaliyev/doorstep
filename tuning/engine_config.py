@@ -102,6 +102,13 @@ RISK_MODEL_SEED: int = 20261107
 # At or above this probability the safer locker option is recommended over home delivery.
 LOCKER_RISK_THRESHOLD: float = 0.05
 
+# ---------------------------------------------------------------- policy reader (RG-01/02)
+
+# BM25 retrieval over the seller's policy and the rule set's policy text.
+RAG_TOP_K: int = 3
+# Below this BM25 score a passage is not relevant; with none relevant the rule file is quoted.
+RAG_MIN_SCORE: float = 0.5
+
 # ---------------------------------------------------------------- packing check (PK-02)
 
 # A model answer below this confidence is "check", never "match" or "mismatch".
