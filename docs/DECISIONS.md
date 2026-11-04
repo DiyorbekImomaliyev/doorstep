@@ -136,3 +136,30 @@ Short ADRs: context, decision, trade-off. Newest at the bottom.
     claims counted per PayPal payer id per seller (PO-04).
 - **Trade-off:** About 20 more criteria to test on day 1, in exchange for fewer surprises in the
   sandbox and no ambiguous money behaviour.
+
+## ADR-012 — `approvals` and `disputes` tables
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Context:** SM-06 requires an approval record before a case can settle; PO-05 needs to know
+  whether a PayPal dispute is open. Neither fit an existing SPEC §8 table.
+- **Decision:** Add `approvals` (case, decision, approver kind/id, rule id) and `disputes`
+  (order, PayPal dispute id, status) to the data model. `money_actions` gains `order_id`,
+  `decision_id`, `status` and `external` (refunds made outside Doorstep), with a unique
+  constraint on (decision_id, kind): one refund per decision, so concurrent approvals cannot
+  double-refund (PO-07) while re-review can still issue a second partial refund.
+- **Trade-off:** Two more tables to migrate and keep in the audit trail.
+
+## ADR-013 — Refund execution, test doubles and the test database
+
+- **Date:** 2026-11-04 · **Status:** accepted (human-approved)
+- **Decision:**
+  - Refund and dispute writes live in `app.paypal_client.writes.money`, importable only by
+    `app/policy`. The worker runs refund jobs by calling app/policy (`RefundJobHandler`),
+    never the money-writes module (PO-01 contracts).
+  - PayPal is faked with a local HTTP server (pytest-httpserver), so tests are independent of
+    whether the Orders/Payments calls use the official Server SDK or REST. In phase D the real
+    sandbox responses are recorded under `recordings/` and a contract test checks the fake's
+    responses have the same shape.
+  - Postgres-only tests run against `<DATABASE_URL db>_test` (or `TEST_DATABASE_URL`) and refuse
+    any database whose name does not end in `_test`, because they drop all tables.
+- **Trade-off:** Fakes can drift from PayPal until the phase-D contract test exists.

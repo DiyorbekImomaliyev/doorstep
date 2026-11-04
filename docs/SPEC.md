@@ -241,7 +241,9 @@ PayPal and Shippo events land in the API's inbox first, the worker runs each ste
 | `evidence` | order\_id, kind (packing\_photo, signature, locker\_code, buyer\_photo), uri, ai\_result | Proof items |
 | `cases` | order\_id, reported\_by, reason, state (case state machine) | Problems reported |
 | `decisions` | case\_id, failure\_point, confidence, rule\_id, rule\_version, explanation | Engine output |
-| `money_actions` | case\_id, kind (refund/partial/evidence), amount\_minor, currency, request\_id, paypal\_status | Every PayPal write |
+| `approvals` | case\_id, decision\_id, approver\_kind (system/seller/reviewer), approver\_id, rule\_id, at | Who approved each decision (SM-06) |
+| `money_actions` | order\_id, case\_id, decision\_id, kind (refund/partial/evidence), amount\_minor, currency, request\_id, status, external, paypal\_status; unique (decision\_id, kind) | Every PayPal money write, plus refunds made outside Doorstep |
+| `disputes` | order\_id, paypal\_dispute\_id (unique), status (open/resolved), opened\_at | Open PayPal disputes (PO-05) |
 | `webhook_inbox` | event\_id (unique), source, payload, processed\_at | Inbox pattern |
 | `jobs` | kind, payload, run\_at, attempts, status | Worker queue |
 | `audit_log` | actor, action, before, after, at | Append-only trail |

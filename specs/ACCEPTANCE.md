@@ -144,7 +144,7 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   signal lowers confidence and is never treated as a match.
 - FE-08 Contradicting signals or low confidence → HOLD_FOR_REVIEW.
 - FE-09 Eval: failure-point accuracy ≥ 0.85 (config) on the 60-case set; hold-out reported
-  separately. Runs on `EVAL_LLM_PROVIDER`; `scripts/trace.py` counts tests under `evals/`.
+  separately. `scripts/trace.py` counts tests under `evals/`.
 - FE-10 The engine is deterministic code using weights from `tuning/engine_config.py`; it never
   calls a model.
 - FE-11 Outcomes that would put the blame on the buyer (bad address after a buyer override,
@@ -153,7 +153,9 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 
 ## PO — Policy service (money)
 - PO-01 `app/paypal_client` is split into `reads` and `writes`; only `app/policy` and
-  `app/worker` may import `writes` (enforced by an import-linter contract test).
+  `app/worker` may import `writes`, and only `app/policy` may import `writes.money` (refunds,
+  disputes). The worker runs refund jobs by calling app/policy (`RefundJobHandler`), never the
+  money-writes module (enforced by import-linter contract tests).
 - PO-02 Seller liable, amount at or under the auto-approve limit, and within the daily cap →
   refund job created (case → AUTO_REFUND).
 - PO-03 Over the limit → AWAITING_SELLER; the seller's tap approves. A seller decline → CLOSED

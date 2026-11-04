@@ -118,7 +118,8 @@ docs/DECISIONS.md.
 ```
 Deploy to Render and run scripts/day1_loop.py against the real PayPal sandbox and Shippo
 test mode. Record any difference from the spec in docs/DECISIONS.md, record the real
-responses as test fixtures, and propose the smallest fix.
+responses as fixtures in recordings/, add a contract test proving the fake server's responses
+in tests match the recorded shapes, and propose the smallest fix.
 ```
 
 **E. Limitations review**

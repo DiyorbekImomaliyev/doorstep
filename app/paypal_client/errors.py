@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+
+class PayPalError(Exception):
+    pass
+
+
+class PayPalAuthError(PayPalError):
+    """Second 401 in a row (PP-01). The sandbox token or credentials are bad."""
+
+
+class PayPalClientError(PayPalError):
+    """4xx: not retried (PP-07)."""
+
+    def __init__(self, status: int, name: str = "", body: dict[str, object] | None = None):
+        super().__init__(f"PayPal {status} {name}")
+        self.status = status
+        self.name = name
+        self.body = body or {}
+
+
+class PayPalServerError(PayPalError):
+    """5xx or timeout: retried by the job runner with the same PayPal-Request-Id (PP-07)."""
+
+    def __init__(self, status: int | None, message: str = ""):
+        super().__init__(message or f"PayPal {status}")
+        self.status = status
+
+
+class PayPalTimeout(PayPalServerError):
+    def __init__(self, message: str = "timeout"):
+        super().__init__(None, message)
