@@ -65,3 +65,7 @@ def handle_shippo_track_updated(session: Session, row: WebhookInbox) -> None:
     session.add(event)
     outcome = apply_carrier_event(session, order, status, actor="shippo")
     event.applied = outcome == CarrierEventOutcome.APPLIED
+    if status == CarrierStatus.FAILURE:  # TR-03: the buyer picks rebook or locker
+        from app.shipping.service import offer_failed_attempt_choice
+
+        offer_failed_attempt_choice(shipment)

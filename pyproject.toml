@@ -12,6 +12,7 @@ dependencies = [
   "psycopg[binary]>=3.2",
   "uvicorn>=0.30",
   "paypal",
+  "cryptography>=50.0.2",
 ]
 
 [dependency-groups]

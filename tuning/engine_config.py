@@ -75,3 +75,15 @@ FALLBACK_BY_CLAIM: dict[str, str] = {
     "empty_box": "CARRIER_LOST",
     "missing_item": "CARRIER_LOST",
 }
+
+# ---- Delivery risk (rule of thumb until the trained risk model, SPEC section 10 fallback) ----
+# p_failure = RISK_BASE + RISK_PER_MAJOR_UNIT * order value (major units, capped)
+#             + RISK_HISTORY_WEIGHT * the seller's own smoothed case rate.
+RISK_BASE: float = 0.015
+RISK_PER_MAJOR_UNIT: float = 0.0006
+RISK_VALUE_CAP_MAJOR: float = 500.0
+RISK_HISTORY_WEIGHT: float = 0.5
+RISK_HISTORY_PRIOR_CASES: float = 1.0  # Laplace-style prior: 1 case in 50 orders
+RISK_HISTORY_PRIOR_ORDERS: float = 50.0
+# At or above this probability the safer locker option is recommended over home delivery.
+LOCKER_RISK_THRESHOLD: float = 0.05

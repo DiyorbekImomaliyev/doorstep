@@ -19,6 +19,7 @@ def _now() -> datetime:
 class Seller(Base):
     __tablename__ = "sellers"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    scratch_tag: Mapped[str | None] = mapped_column(String(36), index=True)  # PR-06 judge data
     name: Mapped[str] = mapped_column(String(200), default="")
     region: Mapped[str] = mapped_column(String(2))
     # Per-currency overrides in minor units, e.g. {"GBP": 2000}.
@@ -42,6 +43,14 @@ class Order(Base):
     payer_id: Mapped[str | None] = mapped_column(String(64))
     shipping_address: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     address_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    # valid | invalid | overridden | unknown (app.cases.engine.AddressCheck), set at checkout
+    address_check: Mapped[str] = mapped_column(String(16), default="unknown")
+    address_issues: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    shipping_method: Mapped[str | None] = mapped_column(String(16))
+    recommended_method: Mapped[str | None] = mapped_column(String(16))
+    risk_score: Mapped[float | None] = mapped_column()
+    item_description: Mapped[str] = mapped_column(String(200), default="")
+    scratch_tag: Mapped[str | None] = mapped_column(String(36), index=True)  # PR-06 judge data
     state: Mapped[str] = mapped_column(String(32), default=OrderState.CREATED.value)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
 
@@ -55,6 +64,11 @@ class Shipment(Base):
     method: Mapped[str] = mapped_column(String(16))
     label_weight_g: Mapped[int | None] = mapped_column(Integer)
     delivery_address: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # TR-03: the choice offered to the buyer after a failed attempt (simulated rebook / locker).
+    choice_offered: Mapped[list[str]] = mapped_column(JSON, default=list)
+    choice_made: Mapped[str | None] = mapped_column(String(16))
+    stale_flagged_at: Mapped[datetime | None] = mapped_column(UTCDateTime())  # TR-04
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
 
 
 class TrackingEvent(Base):

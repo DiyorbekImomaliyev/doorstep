@@ -51,4 +51,5 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
 def import_all_models() -> None:
     """Import every model module so Base.metadata is complete."""
     import app.orders.models
+    import app.proof.models
     import app.worker.models  # noqa: F401
