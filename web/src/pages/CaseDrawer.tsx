@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type OrderRow } from "../api";
+import { api, type OrderRow, type PackingResult } from "../api";
 import { ErrorBox, Loading, Meter, Pill, Timeline, useAsync } from "../components/ui";
 import { FAILURE_POINT, METHOD, ROUTE, money, stateTone } from "../format";
 
@@ -167,9 +167,13 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
             {row.evidence.missing.length > 0 && <span className="faint">Missing: {row.evidence.missing.join(", ")}</span>}
           </div>
         </section>
-        {row.state === "PAID" && (
+        {(row.state === "PAID" || row.state === "PACKED") && <PackingCheck token={token} row={row} onChanged={onChanged} />}
+        {(row.state === "PAID" || row.state === "PACKED") && (
           <section className="card col">
             <h3>Ship this order</h3>
+            {row.state === "PAID" && !row.packing_cleared && (
+              <p className="faint">Tip: check the packing photo first. It is the proof of what you sent.</p>
+            )}
             <label className="field">Tracking number (Shippo test)
               <select value={tracking} onChange={(e) => setTracking(e.target.value)}>
                 {TEST_TRACKING.map((t) => <option key={t}>{t}</option>)}
@@ -185,5 +189,96 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
         </section>
       </div>
     </>
+  );
+}
+
+const VERDICT: Record<PackingResult["verdict"], { tone: "good" | "warn"; title: string }> = {
+  match: { tone: "good", title: "Matches the order" },
+  mismatch: { tone: "warn", title: "Check before shipping" },
+  check: { tone: "warn", title: "Please check it yourself" },
+};
+
+const SENDABLE = ["image/jpeg", "image/png", "image/webp"];
+
+function fileToB64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(new Error("Could not read the photo."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** A phone photo shrunk to at most 1600 px on its long side, as JPEG (fast upload, fewer
+ * tokens). If the browser cannot decode it, the original is sent when its type is supported. */
+async function preparePhoto(file: File): Promise<{ b64: string; type: string }> {
+  try {
+    return { b64: await photoToJpegB64(file), type: "image/jpeg" };
+  } catch {
+    if (SENDABLE.includes(file.type)) return { b64: await fileToB64(file), type: file.type };
+    throw new Error("This photo format isn't supported. Please use JPEG or PNG.");
+  }
+}
+
+async function photoToJpegB64(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+}
+
+function PackingCheck({ token, row, onChanged }: { token: string; row: OrderRow; onChanged: (m: string) => void }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [result, setResult] = useState<PackingResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const flagged = result ? result.verdict !== "match" : row.packing_verdict !== null && row.packing_verdict !== "match";
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    setErr(null); setResult(null); setBusy(true);
+    setPreview(URL.createObjectURL(file));
+    try {
+      const photo = await preparePhoto(file);
+      const r = await api.packingCheck(token, row.order_id, photo.b64, photo.type);
+      setResult(r);
+      onChanged(r.verdict === "match" ? "Packing photo matches. Ready to ship." : "Packing photo needs a look before shipping.");
+    } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
+  }
+  async function clear() {
+    setBusy(true); setErr(null);
+    try { await api.packingClear(token, row.order_id); onChanged("Marked as checked. Ready to ship."); }
+    catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
+  }
+
+  const shown = result ?? (row.packing_verdict ? { verdict: row.packing_verdict, message: row.packing_message ?? "", reasons: [] as string[] } : null);
+  return (
+    <section className="card col" aria-label="Packing check">
+      <div className="spread">
+        <h3>Packing check</h3>
+        <span className="faint">Ordered: {row.item}</span>
+      </div>
+      <p className="muted" style={{ margin: 0 }}>Take one photo of the item before you seal the box. We compare it with the order.</p>
+      <label className="btn" style={{ alignSelf: "flex-start" }}>
+        {busy ? "Checking…" : preview ? "Retake photo" : "Take or choose a photo"}
+        <input type="file" accept="image/*" capture="environment" hidden disabled={busy}
+          onChange={(e) => onFile(e.target.files?.[0])} data-testid="packing-photo" />
+      </label>
+      {preview && <img src={preview} alt="Packing photo" style={{ maxWidth: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 10, background: "var(--surface-2)" }} />}
+      {shown && (
+        <div className={`notice ${VERDICT[shown.verdict].tone}`} role="status">
+          <div className="col" style={{ gap: 4 }}>
+            <strong>{VERDICT[shown.verdict].title}</strong>
+            <span>{shown.message}</span>
+            {shown.reasons.length > 0 && <ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{shown.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}
+          </div>
+        </div>
+      )}
+      {err && <ErrorBox message={err} />}
+      {flagged && <button className="btn" disabled={busy} onClick={clear}>I checked it, it's right</button>}
+    </section>
   );
 }

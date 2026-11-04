@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.explainer import Explainer
+from app.ai.packing import PackingChecker
 from app.api.deps import AppDeps, Services, ServiceUnavailable
 from app.clock import Clock, SystemClock
 from app.config import Settings
@@ -192,6 +193,7 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
         approved=approved,
         address_validator=validator,
         explainer=Explainer(llm),
+        packing=PackingChecker(llm),
         environment=environment,
         app_base_url=_app_base_url(),
     )

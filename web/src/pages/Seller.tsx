@@ -74,7 +74,12 @@ export default function Seller({ token }: { token: string }) {
       cellRenderer: (p: ICellRendererParams<OrderRow>) => {
         const r = p.data!;
         const key = r.case_state && ROUTE[r.case_state] ? r.case_state : r.route;
-        if (!key || !ROUTE[key]) return r.state === "PAID" ? <Pill tone="warn">Ship it</Pill> : <span className="faint">—</span>;
+        if (!key || !ROUTE[key]) {
+          if (r.state === "PAID") return r.packing_verdict && r.packing_verdict !== "match"
+            ? <Pill tone="warn">Check packing</Pill> : <Pill tone="warn">Pack it</Pill>;
+          if (r.state === "PACKED") return <Pill tone="warn">Ship it</Pill>;
+          return <span className="faint">—</span>;
+        }
         return (
           <div className="cell-two">
             <span><Pill tone={ROUTE[key].tone}>{ROUTE[key].label}</Pill></span>
@@ -160,7 +165,7 @@ export default function Seller({ token }: { token: string }) {
       {open && (
         <CaseDrawer
           token={token}
-          row={open}
+          row={rows?.find((r) => r.order_id === open.order_id) ?? open}
           onClose={() => setOpen(null)}
           onChanged={(msg) => { setToast(msg); reload(); }}
         />

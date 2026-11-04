@@ -8,6 +8,8 @@ BC-04). `GET /cases/{id}/verify` is public by design: receipts hold ids and amou
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
@@ -18,6 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.explainer import Explainer
+from app.ai.llm import Image
+from app.ai.packing import PackingChecker
 from app.api.deps import SIMULATED_COMPONENTS, AppDeps, Services
 from app.api.views import (
     BuyerView,
@@ -43,6 +47,7 @@ from app.policy.rules import RuleBook
 from app.policy.service import PolicyError
 from app.proof.receipts import VerifyReport, verify_chain
 from app.security.links import InvalidLink
+from app.shipping.packing import PackingError, PackingService
 from app.shipping.service import ShippingError, ShippingService
 
 log = logging.getLogger("doorstep.api")
@@ -111,6 +116,25 @@ class ShipIn(BaseModel):
     carrier: str = Field(default="shippo", max_length=64)
     tracking_number: str = Field(min_length=1, max_length=128)
     label_weight_g: int | None = Field(default=None, gt=0, le=100_000)
+
+
+_PHOTO_TYPES = ("image/jpeg", "image/png", "image/webp")
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
+
+class PackingIn(BaseModel):
+    """One packing photo, base64 encoded (a phone camera JPEG is well under the cap)."""
+
+    image_b64: str = Field(min_length=8, max_length=MAX_PHOTO_BYTES * 4 // 3 + 8)
+    media_type: str = Field(default="image/jpeg", max_length=32)
+
+
+class PackingOut(BaseModel):
+    verdict: str
+    attribute: str | None
+    message: str
+    reasons: list[str]
+    order: OrderRow
 
 
 class ActionOut(BaseModel):
@@ -383,6 +407,48 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
                 label_weight_g=body.label_weight_g,
             )
         except ShippingError as exc:
+            raise HTTPException(409, str(exc)) from None
+        s.commit()
+        return order_row(s, order)
+
+    def _packing(s: Session) -> PackingService:
+        return PackingService(s, deps.clock, services.packing or PackingChecker(None))
+
+    @router.post("/api/seller/{token}/orders/{order_id}/packing-check", response_model=PackingOut)
+    def packing_check(token: str, order_id: str, body: PackingIn, s: Db) -> PackingOut:
+        """PK-01..04: compare one packing photo with the order line before shipping."""
+        order = _seller_order(s, _seller(s, token), order_id)
+        if body.media_type not in _PHOTO_TYPES:
+            raise HTTPException(415, "send a JPEG, PNG or WebP photo")
+        try:
+            data = base64.b64decode(body.image_b64, validate=True)
+        except binascii.Error:
+            raise HTTPException(422, "image_b64 is not valid base64") from None
+        if not data or len(data) > MAX_PHOTO_BYTES:
+            raise HTTPException(413, "the photo must be under 5 MB")
+        try:
+            verdict = _packing(s).check(
+                order, Image(media_type=body.media_type, data=data), actor="seller"
+            )
+        except PackingError as exc:
+            raise HTTPException(409, str(exc)) from None
+        s.commit()
+        return PackingOut(
+            verdict=verdict.verdict.value,
+            attribute=verdict.attribute,
+            message=verdict.message,
+            reasons=verdict.result.reasons if verdict.result else [],
+            order=order_row(s, order),
+        )
+
+    @router.post("/api/seller/{token}/orders/{order_id}/packing-clear", response_model=OrderRow)
+    def packing_clear(token: str, order_id: str, s: Db) -> OrderRow:
+        """The seller looked and confirms the item is right; recorded for the engine."""
+        seller = _seller(s, token)
+        order = _seller_order(s, seller, order_id)
+        try:
+            _packing(s).clear(order, actor=f"seller:{seller.id}")
+        except PackingError as exc:
             raise HTTPException(409, str(exc)) from None
         s.commit()
         return order_row(s, order)

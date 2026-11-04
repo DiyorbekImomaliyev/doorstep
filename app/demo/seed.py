@@ -39,6 +39,7 @@ _NS = uuid.UUID("7c1d6a52-4c1e-4a59-9a43-6a3d0f1d2c11")
 
 _O = OrderState
 _PATHS: dict[OrderState, list[OrderState]] = {
+    _O.PAID: [_O.PAID],
     _O.IN_TRANSIT: [_O.PAID, _O.SHIPPED, _O.IN_TRANSIT],
     _O.EXCEPTION: [_O.PAID, _O.SHIPPED, _O.IN_TRANSIT, _O.EXCEPTION],
     _O.DELIVERED: [_O.PAID, _O.SHIPPED, _O.IN_TRANSIT, _O.DELIVERED],
@@ -77,6 +78,20 @@ class _Spec:
 _PACKED = (EvidenceKind.PACKING_PHOTO, {"verdict": "match", "expected_weight_g": 900})
 
 SCENARIO: tuple[_Spec, ...] = (
+    # Paid, not yet packed: the packing-photo check scene (PK) starts here.
+    _Spec(
+        "to-pack",
+        "Leah Okafor",
+        "Black jacket, size L",
+        6000,
+        "GBP",
+        "GB",
+        "locker",
+        _O.PAID,
+        "M1 1AE",
+        "Manchester",
+        2,
+    ),
     _Spec(
         "sam-jacket",
         "Sam Carter",
@@ -317,6 +332,10 @@ def _build(
         )
         session.add(order)
         session.flush()
+        if spec.state == _O.PAID:  # not shipped yet: no shipment, no carrier events
+            transition_order(session, order, _O.PAID, actor="demo-seed", reason="seeded PAID")
+            _backdate_last_transition(session, oid, created + timedelta(minutes=5))
+            continue
         shipment = Shipment(
             order_id=oid,
             carrier="shippo",

@@ -433,3 +433,18 @@ development-only; `make demo` prints the filmed links privately.
 **Trade-off.** Render workers have no free plan (starter instances cost money); the embedded
 option avoids that at the cost of sharing one process. Postgres tables are created at startup
 (ADR-024), not migrated.
+
+## ADR-029 — Packing check: the model describes, code decides, never auto-pass
+
+**Context.** PK-01..04 and SPEC section 10: one photo against the order line before shipping;
+vision can misread, and a false "match" would hide a wrong item.
+**Decision.** `app/ai/packing.py` asks the configured provider (via `app/ai/llm.py`) for a
+`PackingCheckResult` at temperature 0, with photo text treated as data. Code turns it into a
+verdict: confident + matches → match; confident + not matching + a named attribute → mismatch;
+everything else (low confidence, no attribute, invalid output twice, provider down, no model) →
+"check". The threshold and the prompt live in `tuning/engine_config.py`. `PackingService`
+stores only the photo's SHA-256 with the verdict; a match moves PAID → PACKED, and a flagged
+check needs the seller's "I checked it" (recorded as `cleared`, read by the engine). Photos are
+shrunk to 1600 px JPEG in the browser; the API caps uploads at 5 MB.
+**Trade-off.** No photo bytes are kept, so a later dispute cannot show the packing photo itself;
+storing it needs object storage and a 90-day deletion job (SPEC section 13), left for later.

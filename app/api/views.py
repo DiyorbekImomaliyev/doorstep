@@ -59,7 +59,12 @@ BUYER_STATUS = {
     "CASE_OPEN": "We're sorting it out",
     "RESOLVED": "Resolved",
 }
-SELLER_STATUS = {**BUYER_STATUS, "PAID": "Paid, ready to ship", "CASE_OPEN": "Case open"}
+SELLER_STATUS = {
+    **BUYER_STATUS,
+    "PAID": "Paid, ready to pack",
+    "PACKED": "Packed, ready to ship",
+    "CASE_OPEN": "Case open",
+}
 
 
 def postcode_district(postcode: str) -> str:
@@ -347,6 +352,10 @@ class OrderRow(BaseModel):
     needs_action: bool
     last_update: datetime
     simulated: bool
+    # Latest packing photo check (PK): match | mismatch | check, or None before any photo.
+    packing_verdict: str | None = None
+    packing_message: str | None = None
+    packing_cleared: bool = False
 
 
 def order_row(s: Session, order: Order) -> OrderRow:
@@ -357,6 +366,12 @@ def order_row(s: Session, order: Order) -> OrderRow:
         .where(MoneyAction.order_id == order.id)
         .order_by(MoneyAction.created_at.desc())
     ).first()
+    packing = s.scalars(
+        select(Evidence)
+        .where(Evidence.order_id == order.id, Evidence.kind == EvidenceKind.PACKING_PHOTO)
+        .order_by(Evidence.created_at.desc())
+    ).first()
+    packing_result = packing.ai_result if packing is not None else {}
     open_case = case is not None and case.state in _OPEN_CASE
     stake = order.amount_minor if open_case or order.state in _IN_FLIGHT else 0
     last = s.scalar(
@@ -392,9 +407,12 @@ def order_row(s: Session, order: Order) -> OrderRow:
             case
             and case.state in (CaseState.AWAITING_SELLER.value, CaseState.HOLD_FOR_REVIEW.value)
         )
-        or order.state == OrderState.PAID.value,
+        or order.state in (OrderState.PAID.value, OrderState.PACKED.value),
         last_update=last or order.created_at,
         simulated=is_simulated(order.capture_id),
+        packing_verdict=packing_result.get("verdict"),
+        packing_message=packing_result.get("message"),
+        packing_cleared=bool(packing_result.get("cleared", False)),
     )
 
 

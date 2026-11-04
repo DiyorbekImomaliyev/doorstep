@@ -65,6 +65,17 @@ export type OrderRow = {
   needs_action: boolean;
   last_update: string;
   simulated: boolean;
+  packing_verdict: "match" | "mismatch" | "check" | null;
+  packing_message: string | null;
+  packing_cleared: boolean;
+};
+
+export type PackingResult = {
+  verdict: "match" | "mismatch" | "check";
+  attribute: string | null;
+  message: string;
+  reasons: string[];
+  order: OrderRow;
 };
 
 export type DecisionView = {
@@ -194,6 +205,12 @@ export const api = {
     call<OrderRow>("POST", `/api/seller/${t}/orders/${orderId}/ship`, {
       carrier: "shippo", tracking_number: trackingNumber, label_weight_g: weight,
     }),
+  packingCheck: (t: string, orderId: string, imageB64: string, mediaType: string) =>
+    call<PackingResult>("POST", `/api/seller/${t}/orders/${orderId}/packing-check`, {
+      image_b64: imageB64, media_type: mediaType,
+    }),
+  packingClear: (t: string, orderId: string) =>
+    call<OrderRow>("POST", `/api/seller/${t}/orders/${orderId}/packing-clear`),
   buyerLink: (t: string, orderId: string) =>
     call<{ buyer_token: string; buyer_url: string }>("GET", `/api/seller/${t}/orders/${orderId}/buyer-link`),
 };
