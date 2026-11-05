@@ -171,6 +171,34 @@ Tracked against the day's definition of done (SPEC section 16).
   - `make fuzz` 35 operations clean;
   - Playwright 8 passed on Postgres (4 workers).
 
+### Done (Nov 5, after the critique; local commits, not pushed)
+- UI redesign (`31bb5f1`): one design system (maroon on warm neutrals, serif headings, Lucide
+  icons, no dot pills); a landing page with an animated isometric "how it works" scene and a
+  system diagram; Console-style Control Room with a sidebar; quieter case, buyer, seal, shop and
+  verify pages. Every locked selector kept.
+- SL-07 (`b863033`, ADR-042): a seal scan from the seller's own browser is recorded but never
+  counts. Signed HttpOnly cookie set by the Control Room and the seal card; the seal page and the
+  seller timeline say why a scan did or did not count.
+- PP-11 (`c960ba6`, ADR-043): PayPal's own Seller Protection verdict on each capture is read
+  from the capture and the webhook, kept in the audit trail and shown to the seller. It is not
+  evidence, so signals and the pre-refund fingerprint never change because of it. Not yet seen
+  on a live sandbox capture (no real capture in the local data); the field comes from the SDK
+  model.
+- EX-05 (`8d29d41`, ADR-044): every runtime model call is bounded at 20 s with no hidden SDK
+  retries. A buyer's tap waits on at most two bounded calls, then the template (was about 3 min
+  in the worst case).
+- FE-09 (`d86714b`): the 60-case eval set and a 20-case hold-out, labels from SPEC section 7
+  written before the engine ran. 96.7% (58/60), hold-out 95% (19/20); all misses are low
+  confidence, so they go to a person (`evals/report.md`).
+- Docs (`38cea40`): README and SUBMISSION rewritten around the liability router, every number
+  re-measured, unbuilt tools removed from the claims, a proposed business model added. The
+  unsourced "31%" in the video script is replaced by the sourced 43%.
+- Secret scan of all 66 commits (pattern-based; gitleaks is not installed locally, CI runs it):
+  no real keys. The only key-shaped values are the made-up fixtures in `test_se_secrets.py`.
+  `.env` was never committed.
+- Checks: `make lint` clean; `make test` 1108 passed, 19 strict xfail; trace 157/157; policy +
+  state branch coverage 100%; `make fuzz` clean; Playwright 8/8 locally.
+
 ### In progress
 - Release (Nov 5): pushed and deployed `1c6b1e9` to https://doorstep-ojmg.onrender.com.
   - `make smoke` OK against the PayPal sandbox: real capture, tracking, refund
@@ -203,9 +231,7 @@ Tracked against the day's definition of done (SPEC section 16).
 - [ ] Repo, Render blueprint and CI skeleton live
 
 ### Notes
-- Not built yet (later phases): FE-09 dataset (`evals/datasets/failure_cases.jsonl`,
-  thresholds.yaml); worker handlers for PayPal capture/refund/dispute webhook events (events are
-  stored in the inbox, then ignored).
+- FE-09 dataset and PayPal webhook handlers are built (see Nov 5 entries).
 - PayPal sandbox MCP fails on every tool with `PAYPAL_API_SETUP_ERROR: Unsupported cache mode:
   default`. This is a server-side bug at PayPal; the token is valid via REST. Report it upstream.
 - `PAYPAL_WEBHOOK_ID` is not set yet; webhook verification can't be tested live until it is.
