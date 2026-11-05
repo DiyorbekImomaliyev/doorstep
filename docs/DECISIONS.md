@@ -750,3 +750,16 @@ proof of delivery. No schema change (ADR-024: no migrations).
 **Trade-off.** Seeded demo orders have no real capture, so they show no verdict; only orders paid
 through the sandbox checkout do. The verdict is not a decision input, so a `NOT_ELIGIBLE` payment
 is decided exactly like any other.
+
+## ADR-044 — Runtime model calls are bounded at 20 seconds, no hidden SDK retries (EX-05)
+
+**Context.** The explainer runs inline on the buyer's "Not here" request (locked tests expect the
+buyer message in the response). With a 60-second client timeout, one hidden Anthropic SDK retry and
+a 60-second Gemini fallback, a slow or out-of-budget provider could hold the buyer's tap for about
+three minutes, and judges may test the live app.
+**Decision.** `LLM_TIMEOUT_S` (default 20) bounds every runtime call on both providers, and the
+Anthropic client makes no retries of its own (`max_retries=0`): the adapter's single fallback is
+the only retry. A timeout raises `ProviderDown`, so the order is primary → fallback → template.
+**Trade-off.** A transient 529 on Anthropic now goes straight to Gemini instead of retrying, and a
+very long claim pack could hit the bound and use its template. Moving the explainer to a worker job
+would remove the wait entirely but changes the locked report contract; not done in the hackathon.

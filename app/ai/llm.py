@@ -98,7 +98,11 @@ class AnthropicProvider:
         self._anthropic = anthropic
         self.model = model
         self.client = anthropic.Anthropic(
-            api_key=api_key, base_url=base_url, timeout=timeout_s, max_retries=1
+            # EX-05: no hidden SDK retries; the adapter's fallback is the retry.
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout_s,
+            max_retries=0,
         )
 
     def generate(
@@ -268,15 +272,32 @@ class LLMAdapter:
         return result
 
 
+DEFAULT_TIMEOUT_S = 20.0
+
+
+def timeout_from_env() -> float:
+    """EX-05: one bound for every runtime model call; a bad value falls back to the default."""
+    try:
+        value = float(os.environ.get("LLM_TIMEOUT_S", DEFAULT_TIMEOUT_S))
+    except ValueError:
+        return DEFAULT_TIMEOUT_S
+    return value if value > 0 else DEFAULT_TIMEOUT_S
+
+
 def _provider(name: str) -> Provider | None:
     name = name.strip().lower()
+    timeout_s = timeout_from_env()
     if name == "anthropic" and os.environ.get("ANTHROPIC_API_KEY"):
         return AnthropicProvider(
-            os.environ["ANTHROPIC_API_KEY"], os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+            os.environ["ANTHROPIC_API_KEY"],
+            os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
+            timeout_s=timeout_s,
         )
     if name == "gemini" and os.environ.get("GEMINI_API_KEY"):
         return GeminiProvider(
-            os.environ["GEMINI_API_KEY"], os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+            os.environ["GEMINI_API_KEY"],
+            os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
+            timeout_s=timeout_s,
         )
     return None
 

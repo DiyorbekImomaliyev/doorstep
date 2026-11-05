@@ -199,6 +199,10 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - EX-02 Eval: explanations never accuse the buyer (DeepEval G-Eval rubric).
 - EX-03 An explanation that contradicts the rule outcome is blocked; template text is used.
 - EX-04 A buyer message and, for carrier faults, a claim letter are drafted.
+- EX-05 Every runtime model call is bounded by `LLM_TIMEOUT_S` (config, default 20 seconds) and
+  the provider SDK makes no hidden retries. A timeout counts as the provider being down: the
+  adapter tries the fallback provider once, then the caller uses its template. A buyer's tap
+  never waits on more than two bounded calls.
 
 ## RG — Policy reader (RAG)
 - RG-01 Answers cite the retrieved passages.
