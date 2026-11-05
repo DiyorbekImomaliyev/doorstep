@@ -1,0 +1,2 @@
+# Eval targets (config). Read by evals/*; never by app code.
+fe_09_failure_point_accuracy: 0.85  # SPEC section 12, FE-09

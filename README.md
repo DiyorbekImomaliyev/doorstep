@@ -63,6 +63,7 @@ All numbers measured on the current commit.
 | Acceptance trace (`make trace`) | 157/157 acceptance IDs have a test |
 | Branch coverage | 100% on `app/policy` and `app/orders/state.py` |
 | Mutation testing (`make mutmut-gate`) | No surviving logic mutants in the money path (`docs/mutation-report.md`) |
+| Failure-point eval (`make evals`) | 96.7% on 60 labelled cases (30 UK, 30 US), 95% on a 20-case hold-out; every miss is low confidence and goes to a person (`evals/report.md`) |
 | API fuzzing (`make fuzz`) | Schemathesis: no 500s, responses match the schema |
 | Browser E2E (`make e2e`) | 8 Playwright journeys: report → approve → receipts verify; seal scan; scan audit and carrier recovery; dispute evidence; packing check; agent stops at the limit |
 | CI | `.github/workflows/ci.yml`: lint, types, import contracts, tests, fuzz, trace, gitleaks, web build |

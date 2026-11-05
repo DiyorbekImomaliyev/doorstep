@@ -51,7 +51,8 @@ walks away. PayPal already refunds buyers; the unsolved part is that the wrong p
 Spec first, with Claude Code: a written spec, then numbered acceptance criteria, then a test for
 every criterion, then code until the tests passed. 1,108 unit and property tests pass; all 157
 acceptance criteria have a test; branch coverage is 100% on the money policy and the order state
-machine; mutation testing leaves no surviving logic mutants in the money path; Schemathesis finds no
+machine; the failure-point engine scores 96.7% on 60 labelled cases and 95% on a hold-out, and
+every miss is low confidence, so it goes to a person; mutation testing leaves no surviving logic mutants in the money path; Schemathesis finds no
 500s; 8 Playwright journeys run in a real browser. Python and FastAPI on Render with Postgres;
 PayPal Orders v2 through the PayPal Server SDK; Shipment Tracking, Refunds, Disputes and Webhooks
 over REST; a bounded agent on PayPal's Agent Toolkit; Claude for vision and explanations with

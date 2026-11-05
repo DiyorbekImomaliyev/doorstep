@@ -1,0 +1,7 @@
+{
+  "accuracy": 0.9666666666666667,
+  "n": 60,
+  "target": 0.85,
+  "holdout_accuracy": 0.95,
+  "holdout_n": 20
+}
