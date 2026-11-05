@@ -685,3 +685,17 @@ but a person always decides what goes to PayPal about a buyer.
 - **Doorbell-camera frames as evidence:** next, not built.
 - **Vision damage check on the seal page photo:** planned last and cut first (the
   `DamageCheckResult` schema exists).
+
+## ADR-040 — Receipt chain appends wait for each other
+
+**Context.** The signed receipt chain is global: each receipt's `seq` is the previous one plus
+one, and `seq` is unique. Two transactions deciding cases at the same moment both read the same
+last receipt. The second one then failed on the unique key. The chain never forked, but the
+request returned 500. Playwright seeding four demo shops in parallel on Postgres hit this.
+**Decision.** `issue_receipt` first takes a transaction-scoped Postgres advisory lock
+(`pg_advisory_xact_lock`). A second writer waits until the first commits, then reads the new last
+receipt; READ COMMITTED gives each statement a fresh snapshot. SQLite serialises writers itself,
+so it skips the lock. The unique `seq` stays as the last guard.
+**Trade-off.** Chain appends are serialised across the whole app, and a long transaction (a demo
+seed) holds the lock until it commits. Appends are rare and quick, so that is acceptable; a chain
+per seller would remove the contention later.

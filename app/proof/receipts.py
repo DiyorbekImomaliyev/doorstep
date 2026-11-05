@@ -23,12 +23,22 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.proof.models import Receipt
 
 GENESIS = "0" * 64
+# One transaction-scoped Postgres advisory lock serialises appends to the single chain (ADR-040).
+CHAIN_LOCK_KEY = 7_316_201_105
+
+
+def _lock_chain(session: Session) -> None:
+    """Wait for any other transaction that is extending the chain. Without this, a concurrent
+    writer read the same last receipt and failed on the unique `seq` (the chain never forked,
+    but the request errored). SQLite already serialises writers, so it needs no lock."""
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": CHAIN_LOCK_KEY})
 
 
 class ReceiptSigner:
@@ -96,8 +106,9 @@ def issue_receipt(
     payload: dict[str, Any],
     at: datetime,
 ) -> Receipt:
-    """Append one receipt to the chain. Callers hold the DB transaction; `seq` is unique, so two
-    concurrent writers can never both extend the chain from the same receipt."""
+    """Append one receipt to the chain. Callers hold the DB transaction; appends wait for each
+    other (ADR-040), and `seq` is unique, so the chain can never fork."""
+    _lock_chain(session)
     last = session.scalars(select(Receipt).order_by(Receipt.seq.desc()).limit(1)).first()
     seq = 1 if last is None else last.seq + 1
     prev_hash = GENESIS if last is None else last.hash
