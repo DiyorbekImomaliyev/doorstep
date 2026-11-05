@@ -145,9 +145,15 @@ def _batch(inp: AuditInput, scan: CarrierScan) -> AuditCheck:
             f"{len(nearby) + 1} of this seller's parcels to {len(areas)} different areas were "
             f"marked delivered within {window_s} s of each other",
         )
+    if not nearby:
+        return result(
+            CheckResult.SUPPORTS,
+            f"no other parcel of this seller was marked delivered within {window_s} s",
+        )
+    others = "1 other parcel" if len(nearby) == 1 else f"{len(nearby)} other parcels"
     return result(
         CheckResult.SUPPORTS,
-        f"no batch scan: {len(nearby)} other parcel(s) of this seller within {window_s} s",
+        f"{others} of this seller marked delivered within {window_s} s, too few areas for a batch",
     )
 
 

@@ -97,7 +97,7 @@ export default function Seller({ token }: { token: string }) {
       ),
     },
     {
-      headerName: "Status", field: "status", width: 170,
+      headerName: "Status", field: "status", width: 190,
       cellRenderer: (p: ICellRendererParams<OrderRow>) => <Pill tone={stateTone(p.data!.state)}>{p.data!.status}</Pill>,
     },
     {

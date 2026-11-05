@@ -156,9 +156,15 @@ Tracked against the day's definition of done (SPEC section 16).
     dedupe key, window per claim type) or marked as equivalent mutants with a reason.
   - Receipt chain race (ADR-040): parallel demo seeds on Postgres failed on the unique `seq`.
     Appends now wait on a transaction-scoped advisory lock.
+  - UI review from screenshots:
+    - When possession was proven, the case text said both "the buyer is responsible" and
+      "recommended fix: refund $89.00". It now says the risk sits with the buyer, the rule sets
+      no fix, and the seller may still refund;
+    - the batch-scan finding reads as plain words ("no other parcel ... within 60 s");
+    - the Status column no longer cuts off "Marked as delivered".
 - Checks:
   - `make lint` clean (3 import contracts kept);
-  - `make test` 1070 passed, 19 strict xfail (partner tools);
+  - `make test` 1079 passed, 19 strict xfail (partner tools);
   - trace 154/154;
   - `app/policy` + `state.py` branch coverage 100%;
   - mutmut gate on `app/policy`: 1836 mutants, 0 logic survivors;

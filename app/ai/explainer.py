@@ -125,6 +125,10 @@ def _source_name(source: str) -> str:
 def _fix_text(ctx: ExplainContext) -> str:
     if ctx.reship:
         return "reship the order"
+    if ctx.liable_party == "buyer":  # the rule sets no fix; a goodwill refund stays the seller's
+        if ctx.refund is not None:
+            return f"none set by the rule; the seller may still refund {money_text(ctx.refund)}"
+        return "none set by the rule; the seller decides"
     if ctx.refund is not None:
         return f"refund {money_text(ctx.refund)}"
     return "decide the fix"
@@ -133,7 +137,10 @@ def _fix_text(ctx: ExplainContext) -> str:
 def template(ctx: ExplainContext, blocked_reason: str | None = None) -> Explanation:
     rule = f"{ctx.rule_id} ({ctx.rule_version})" if ctx.rule_id else "no matching rule set"
     basis = f", {_source_name(ctx.rule_source)}" if ctx.rule_source else ""
-    liable = f" The {ctx.liable_party} is responsible under this rule." if ctx.liable_party else ""
+    # Names where the risk sits, as the law does (CRA s.29); never blames the buyer (EX-02).
+    liable = (
+        f" Under this rule the risk sits with the {ctx.liable_party}." if ctx.liable_party else ""
+    )
     evidence = "; ".join(ctx.reasons[:2])
     summary = (
         f"Most likely {_FP_TEXT[ctx.failure_point]} ({ctx.confidence} confidence: "
