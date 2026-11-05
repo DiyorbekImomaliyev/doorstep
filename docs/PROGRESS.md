@@ -172,6 +172,19 @@ Tracked against the day's definition of done (SPEC section 16).
   - Playwright 8 passed on Postgres (4 workers).
 
 ### In progress
+- Release (Nov 5): pushed and deployed `1c6b1e9` to https://doorstep-ojmg.onrender.com.
+  - `make smoke` OK against the PayPal sandbox: real capture, tracking, refund
+    `9T338104T05821332`, receipt chain ok.
+  - Playwright 8/8 against the live app. Expect waits are now 20 s, because the live
+    report runs the explainer model inline (5 to 7 s).
+  - CI: the gitleaks job flagged two made-up test secrets. They are now ignored by exact
+    fingerprint (ADR-041); CI is green.
+  - `/paypal:doctor sandbox`: 0 critical, 0 warnings. The PayPal sandbox MCP server still fails
+    with "Unsupported cache mode", a plugin bug; the REST path is proven by the smoke test.
+- Open: live carrier claim packs stay as template text. The worker's model redraft
+  (`DRAFT_RECOVERY`) never produces a model pack, while the same facts with Claude locally verify
+  8 of 8 sentences. Most likely the worker service has no `ANTHROPIC_API_KEY`, so it uses
+  Gemini, which is returning 503/429 today. Check the doorstep-worker environment on Render.
 - Waiting on the human:
   - `tests-locked-core` is still at 48f38bd (local and origin), so `make locked` fails;
   - lock-tag move to the addendum commit.
