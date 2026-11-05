@@ -183,7 +183,7 @@ function Report({ busy, onCancel, onSend }: { busy: boolean; onCancel: () => voi
       <div className="row">
         <button className="btn ghost" onClick={onCancel} disabled={busy}>Cancel</button>
         <div className="grow" />
-        <button className="btn primary lg" disabled={busy} onClick={() => onSend(reason, note)}>Send report</button>
+        <button className="btn primary lg" disabled={busy} onClick={() => onSend(reason, note)}>{busy ? "Sending…" : "Send report"}</button>
       </div>
       <p className="faint">You'll get an answer here, usually within minutes. Nobody is accused automatically.</p>
     </section>
