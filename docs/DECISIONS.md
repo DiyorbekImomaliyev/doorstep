@@ -713,3 +713,23 @@ two files, still fails CI. New test secrets should use low-entropy words (for ex
 **Trade-off.** Each new false positive needs its own fingerprint line, which is more friction
 than a path allowlist. That friction is deliberate: an allowlisted path would also hide a real
 leak.
+
+## ADR-042 — A seal scan from the seller's own browser never counts
+
+**Context.** The critique (Nov 5) found that the seller can open the seal page for any shipped
+order from the Control Room. A seller scanning their own seal after the delivered scan would have
+produced a counted `buyer_seal_scan`, the strongest possession proof, against an honest buyer.
+
+**Decision.** Opening the Control Room (`/me`) or a seal card sets a signed, HttpOnly, SameSite=Lax
+cookie, scope `seller_browser`, holding the seller id (30 days). A seal scan that carries a valid
+cookie for the order's own seller is recorded with `counted: false` and reason `seller_browser`;
+the order transition names `seller_browser` as the actor. Nothing about the buyer's device is
+stored. A later scan from another device still counts.
+
+**Trade-off.** A determined seller can scan from a clean browser or a second phone. The cookie
+closes the easy path (the seller's everyday browser and phone) and the audit trail shows who
+scanned. Full protection needs a physical tamper-evident seal, which is out of scope. The order is
+still confirmed by such a scan, as today, because the locked SL-02 browser test opens the seal page
+in the seller's browser context; confirmation is not possession proof, so the liability decision is
+unaffected. Whether a seller-browser scan should confirm at all is an open question for the human.
+

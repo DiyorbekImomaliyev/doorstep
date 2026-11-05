@@ -8,6 +8,10 @@ on. There is no app, no login, no typing and no location.
 A scan counts as possession proof only if the carrier had already handled the parcel (a transit,
 delivered, failure or returned event at or before the scan). That stops a seller scanning the seal
 while packing. A scan that does not count is still recorded, with the reason.
+
+SL-07 (ADR-042): a scan from the seller's own browser never counts. Opening the Control Room or a
+seal card sets a signed, HttpOnly cookie scoped ``seller_browser``; a scan that carries a valid
+cookie for the order's own seller is recorded with reason ``seller_browser`` and not counted.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.cases.signals import EvidenceKind
 from app.orders.enums import OrderState
 from app.orders.models import Evidence, Order, Shipment, TrackingEvent
-from app.security.links import LinkSigner
+from app.security.links import InvalidLink, LinkSigner
 
 SEAL_SCOPE = "seal"
 SEAL_TTL_S = 180 * 24 * 3600  # long enough for slow post and late unboxing
@@ -30,6 +34,10 @@ HANDLED_STATUSES = frozenset({"TRANSIT", "DELIVERED", "FAILURE", "RETURNED"})
 _NOT_SHIPPED = frozenset({OrderState.CREATED, OrderState.PAID, OrderState.PACKED})
 AFTER_HANDOVER = "after_carrier_handover"
 BEFORE_HANDOVER = "before_carrier_handover"
+SELLER_BROWSER = "seller_browser"  # reason and audit actor for a scan from the seller's browser
+SELLER_BROWSER_SCOPE = "seller_browser"
+SELLER_COOKIE = "doorstep_seller"
+SELLER_COOKIE_TTL_S = 30 * 24 * 3600
 
 
 class SealError(Exception):
@@ -75,18 +83,39 @@ def counted_scan(session: Session, order_id: str) -> Evidence | None:
     return next((e for e in seal_scans(session, order_id) if e.ai_result.get("counted")), None)
 
 
-def record_scan(session: Session, order: Order, now: datetime) -> Evidence:
+def seller_browser_for(links: LinkSigner, cookie: str | None, seller_id: str) -> bool:
+    """SL-07: True only for a valid, unexpired cookie issued to this order's own seller."""
+    if not cookie:
+        return False
+    try:
+        return links.verify(cookie, scope=SELLER_BROWSER_SCOPE) == seller_id
+    except InvalidLink:
+        return False
+
+
+def _reason(counted: bool, seller_browser: bool) -> str:
+    if seller_browser:
+        return SELLER_BROWSER
+    return AFTER_HANDOVER if counted else BEFORE_HANDOVER
+
+
+def record_scan(
+    session: Session, order: Order, now: datetime, *, seller_browser: bool = False
+) -> Evidence:
     """Record a seal scan. Repeats are no-ops: at most one counted and one not-counted row."""
     if OrderState(order.state) in _NOT_SHIPPED:
         raise SealError(f"order {order.id} has not shipped yet")
-    counted = carrier_handled_by(session, order, now)
-    for existing in seal_scans(session, order.id):
-        if bool(existing.ai_result.get("counted")) == counted or existing.ai_result.get("counted"):
-            return existing
+    counted = carrier_handled_by(session, order, now) and not seller_browser
+    existing = seal_scans(session, order.id)
+    first_counted = next((e for e in existing if e.ai_result.get("counted")), None)
+    if first_counted is not None:
+        return first_counted  # once a scan counts, every repeat returns it
+    if not counted and existing:
+        return existing[0]  # at most one not-counted row
     evidence = Evidence(
         order_id=order.id,
         kind=EvidenceKind.SEAL_SCAN.value,
-        ai_result={"counted": counted, "reason": AFTER_HANDOVER if counted else BEFORE_HANDOVER},
+        ai_result={"counted": counted, "reason": _reason(counted, seller_browser)},
         created_at=now,
     )
     session.add(evidence)

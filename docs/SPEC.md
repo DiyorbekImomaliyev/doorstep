@@ -208,6 +208,8 @@ signed token scoped `seal` to one order.
   earlier scan (e.g. by the seller while packing) is recorded but not counted.
 - The rule files list `buyer_seal_scan` as possession proof. A counted scan followed by
   "Not here" routes to the seller (`AWAITING_SELLER`), never to an automatic denial (FE-11).
+- A scan from the seller's own browser (it holds the seller's signed session cookie) is recorded
+  but never counted (SL-07), so a seller cannot manufacture "the buyer has it".
 - Why not GPS trackers: a location at the address is not possession (porch theft happens at the
   address), and trackers cost money, need batteries in the post and raise privacy issues.
 

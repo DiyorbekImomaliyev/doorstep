@@ -38,6 +38,7 @@ export type SealView = {
   status: "not_shipped" | "ready" | "confirmed" | "case_open";
   scanned: boolean;
   counted: boolean;
+  seller_browser: boolean;
 };
 
 export type SealCard = { order_ref: string; url: string; svg: string };

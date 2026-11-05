@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -59,6 +59,10 @@ from app.policy.service import PolicyError
 from app.proof.receipts import VerifyReport, verify_chain
 from app.proof.seal import (
     SEAL_SCOPE,
+    SELLER_BROWSER,
+    SELLER_BROWSER_SCOPE,
+    SELLER_COOKIE,
+    SELLER_COOKIE_TTL_S,
     SealError,
     counted_scan,
     issue_seal,
@@ -66,6 +70,7 @@ from app.proof.seal import (
     seal_scans,
     seal_svg,
     seal_url,
+    seller_browser_for,
 )
 from app.security.links import InvalidLink
 from app.shipping.packing import PackingError, PackingService
@@ -149,6 +154,7 @@ class SealView(BaseModel):
     status: Literal["not_shipped", "ready", "confirmed", "case_open"]
     scanned: bool
     counted: bool
+    seller_browser: bool = False  # SL-07: this response answered a scan from the seller's browser
 
 
 class RecoveryMarkIn(BaseModel):
@@ -304,7 +310,24 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         rule = rulebook.select(order.buyer_country)
         return rule.buyer_rights if rule is not None else ""
 
-    def _seal_view(s: Session, order: Order) -> SealView:
+    def _mark_seller_browser(response: Response, seller: Seller) -> None:
+        """SL-07: a signed, HttpOnly cookie so this browser's seal scans never count."""
+        response.set_cookie(
+            SELLER_COOKIE,
+            services.links.issue(seller.id, scope=SELLER_BROWSER_SCOPE, ttl_s=SELLER_COOKIE_TTL_S),
+            max_age=SELLER_COOKIE_TTL_S,
+            path="/",
+            httponly=True,
+            samesite="lax",
+            secure=services.app_base_url.startswith("https://"),
+        )
+
+    def _from_seller_browser(request: Request, order: Order) -> bool:
+        return seller_browser_for(
+            services.links, request.cookies.get(SELLER_COOKIE), order.seller_id
+        )
+
+    def _seal_view(s: Session, order: Order, *, seller_browser: bool = False) -> SealView:
         seller = s.get(Seller, order.seller_id)
         state = OrderState(order.state)
         status: Literal["not_shipped", "ready", "confirmed", "case_open"]
@@ -323,6 +346,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             status=status,
             scanned=bool(seal_scans(s, order.id)),
             counted=counted_scan(s, order.id) is not None,
+            seller_browser=seller_browser,
         )
 
     def _buyer_url(token: str) -> str:
@@ -491,26 +515,34 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return _seal_view(s, _seal_order(s, token))
 
     @router.post("/api/seal/{token}/confirm", response_model=SealView)
-    def seal_confirm(token: str, s: Db) -> SealView:
-        """SL-03: "I have it". The scan is recorded even when the order can't be confirmed."""
+    def seal_confirm(token: str, request: Request, s: Db) -> SealView:
+        """SL-03: "I have it". The scan is recorded even when the order can't be confirmed.
+
+        SL-07: from the seller's own browser the scan is recorded but never counted, and the
+        audit trail names the seller's browser, not the buyer.
+        """
         order = _seal_order(s, token)
+        seller_browser = _from_seller_browser(request, order)
         try:
-            record_scan(s, order, deps.clock.now())
+            record_scan(s, order, deps.clock.now(), seller_browser=seller_browser)
         except SealError as exc:
             raise HTTPException(409, str(exc)) from None
         try:
-            _pipeline(s).confirm_received(order, actor="buyer_seal")
+            _pipeline(s).confirm_received(
+                order, actor=SELLER_BROWSER if seller_browser else "buyer_seal"
+            )
         except BuyerActionError:
             pass  # e.g. a case is already open: the scan still stands as evidence
         s.commit()
-        return _seal_view(s, order)
+        return _seal_view(s, order, seller_browser=seller_browser)
 
     @router.post("/api/seal/{token}/report", response_model=ReportOut)
-    def seal_report(token: str, body: SealReportIn, s: Db) -> ReportOut:
+    def seal_report(token: str, body: SealReportIn, request: Request, s: Db) -> ReportOut:
         """SL-06: "Something's wrong" from the same scan: the buyer holds the parcel."""
         order = _seal_order(s, token)
+        seller_browser = _from_seller_browser(request, order)
         try:
-            record_scan(s, order, deps.clock.now())
+            record_scan(s, order, deps.clock.now(), seller_browser=seller_browser)
             report = _pipeline(s).report(order, ClaimReason(body.reason), reported_by=BUYER)
         except (SealError, BuyerActionError) as exc:
             s.rollback()
@@ -568,8 +600,9 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return [order_row(s, o) for o in rows]
 
     @router.get("/api/seller/{token}/me")
-    def me(token: str, s: Db) -> dict[str, Any]:
+    def me(token: str, response: Response, s: Db) -> dict[str, Any]:
         seller = _seller(s, token)
+        _mark_seller_browser(response, seller)
         return {"seller_id": seller.id, "name": seller.name, "region": seller.region}
 
     @router.get("/api/seller/{token}/orders/{order_id}/buyer-link")
@@ -579,9 +612,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return {"buyer_token": buyer_token, "buyer_url": _buyer_url(buyer_token)}
 
     @router.get("/api/seller/{token}/orders/{order_id}/seal", response_model=SealCardOut)
-    def seal_card(token: str, order_id: str, s: Db) -> SealCardOut:
+    def seal_card(token: str, order_id: str, response: Response, s: Db) -> SealCardOut:
         """SL-01: the seal to print inside the parcel (same URL works on an NFC sticker)."""
-        order = _seller_order(s, _seller(s, token), order_id)
+        seller = _seller(s, token)
+        order = _seller_order(s, seller, order_id)
+        _mark_seller_browser(response, seller)
         url = seal_url(services.app_base_url, issue_seal(services.links, order.id))
         return SealCardOut(order_ref=order.id[:8].upper(), url=url, svg=seal_svg(url))
 

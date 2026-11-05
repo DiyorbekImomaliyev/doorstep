@@ -278,6 +278,12 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   scan, a later "Not here" routes to AWAITING_SELLER (FE-11), never an automatic denial.
 - SL-06 "Something's wrong" records the seal scan and opens a case with that reason through the
   normal pipeline.
+- SL-07 A seal scan from the seller's own browser never counts as possession proof. Opening the
+  Control Room or a seal card sets a signed, HttpOnly cookie scoped `seller_browser` to that
+  seller. A scan that carries a valid cookie for the order's own seller is recorded as not counted,
+  with reason `seller_browser`, and the audit trail names the seller's browser as the actor. A
+  forged, expired or other-seller cookie changes nothing. A later scan from another device still
+  counts.
 
 ## SA — Delivered-scan audit (SPEC section 7a.2)
 - SA-01 Every case gets a scan audit with verdict `contradicted`, `consistent`, `unverified` or

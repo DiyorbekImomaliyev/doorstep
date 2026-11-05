@@ -33,7 +33,7 @@ from app.orders.models import (
     TrackingEvent,
 )
 from app.proof.models import Receipt
-from app.proof.seal import counted_scan
+from app.proof.seal import AFTER_HANDOVER, BEFORE_HANDOVER, SELLER_BROWSER, counted_scan
 from app.worker.simulated import SIMULATED_STATUS, is_simulated
 
 _OPEN_CASE = [s.value for s in CaseState if s not in (CaseState.SETTLED, CaseState.CLOSED)]
@@ -166,6 +166,13 @@ def _state_title(entity: str, after: dict[str, Any], action: str) -> str:
     return action.replace(".", " ").replace("_", " ")
 
 
+_SEAL_DETAIL = {  # SL-04, SL-07: why a seal scan did or did not count
+    AFTER_HANDOVER: "counted as possession proof",
+    BEFORE_HANDOVER: "not counted: scanned before the carrier had the parcel",
+    SELLER_BROWSER: "not counted: scanned in your own browser",
+}
+
+
 def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]:
     items: list[TimelineItem] = []
     case_ids = list(s.scalars(select(Case.id).where(Case.order_id == order.id)))
@@ -232,7 +239,14 @@ def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]
     for e in s.scalars(select(Evidence).where(Evidence.order_id == order.id)):
         if for_buyer and e.kind == EvidenceKind.PACKING_PHOTO.value:
             continue
-        items.append(TimelineItem(at=e.created_at, kind="evidence", title=e.kind.replace("_", " ")))
+        detail = ""
+        if e.kind == EvidenceKind.SEAL_SCAN.value and not for_buyer:
+            detail = _SEAL_DETAIL.get(str(e.ai_result.get("reason", "")), "")
+        items.append(
+            TimelineItem(
+                at=e.created_at, kind="evidence", title=e.kind.replace("_", " "), detail=detail
+            )
+        )
     if not for_buyer:
         for ma in s.scalars(select(MoneyAction).where(MoneyAction.order_id == order.id)):
             items.append(

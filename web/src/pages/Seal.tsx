@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ArrowLeftRight, ChevronLeft, CircleCheck, LifeBuoy, PackageMinus, PackageX, ShieldCheck, Truck } from "lucide-react";
+import { ArrowLeftRight, ChevronLeft, CircleCheck, Info, LifeBuoy, PackageMinus, PackageX, ShieldCheck, Truck } from "lucide-react";
 import { api, type ReportOut } from "../api";
 import { Brand, ErrorBox, Loading, useAsync } from "../components/ui";
 import { RightsCard } from "./Buyer";
@@ -44,7 +44,12 @@ export default function Seal({ token }: { token: string }) {
             {report.rights && <RightsCard text={report.rights} />}
           </>
         ) : v.status === "confirmed" ? (
-          <Status icon={<CircleCheck />} tone="good" title="All set" text="Thanks! The seller knows you have it." />
+          <>
+            <Status icon={<CircleCheck />} tone="good" title="All set" text="Thanks! The seller knows you have it." />
+            {v.seller_browser && (
+              <div className="notice"><Info aria-hidden /><span>Opened in the shop's own browser, so this scan is recorded but doesn't count as proof. A scan from the buyer's phone still counts.</span></div>
+            )}
+          </>
         ) : v.status === "case_open" ? (
           <Status icon={<LifeBuoy />} tone="accent" title="All set" text={v.scanned ? "Your scan is recorded. Your report is with the seller." : "Your report is with the seller."} />
         ) : v.status === "not_shipped" ? (
