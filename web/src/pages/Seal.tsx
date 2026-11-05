@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ArrowLeftRight, ChevronLeft, CircleCheck, Info, LifeBuoy, PackageMinus, PackageX, ShieldCheck, Truck } from "lucide-react";
+import { ArrowLeftRight, ChevronLeft, CircleCheck, Eye, LifeBuoy, PackageMinus, PackageX, ShieldCheck, Truck } from "lucide-react";
 import { api, type ReportOut } from "../api";
 import { Brand, ErrorBox, Loading, useAsync } from "../components/ui";
 import { RightsCard } from "./Buyer";
@@ -17,6 +17,7 @@ export default function Seal({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(false);
   const [report, setReport] = useState<ReportOut | null>(null);
+  const [preview, setPreview] = useState<"confirm" | "report" | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -38,18 +39,28 @@ export default function Seal({ token }: { token: string }) {
           <h1>{v.item || "Your parcel"}</h1>
         </div>
 
-        {report ? (
+        {v.seller_browser && (
+          <div className="notice accent" aria-label="Seller preview">
+            <Eye aria-hidden />
+            <div className="col" style={{ gap: 2 }}>
+              <strong>Seller preview</strong>
+              <span className="muted">This is what your buyer sees. Taps from your own browser are recorded, never count as proof and don't change the order. Scan the code with the buyer's phone to try it for real.</span>
+            </div>
+          </div>
+        )}
+
+        {preview ? (
+          <Status icon={<Eye />} tone="accent" title="Preview only"
+            text={preview === "confirm"
+              ? "Nothing changed on the order. When the buyer taps this on their phone, it confirms they have the parcel."
+              : "Nothing changed. When the buyer reports a problem here, a case opens with you and they see their rights."} />
+        ) : report ? (
           <>
             <Status icon={<LifeBuoy />} tone="accent" title="Thanks, the seller has it" text={report.message || "We'll sort it out with the seller."} />
             {report.rights && <RightsCard text={report.rights} />}
           </>
         ) : v.status === "confirmed" ? (
-          <>
-            <Status icon={<CircleCheck />} tone="good" title="All set" text="Thanks! The seller knows you have it." />
-            {v.seller_browser && (
-              <div className="notice"><Info aria-hidden /><span>Opened in the shop's own browser, so this scan is recorded but doesn't count as proof. A scan from the buyer's phone still counts.</span></div>
-            )}
-          </>
+          <Status icon={<CircleCheck />} tone="good" title="All set" text="Thanks! The seller knows you have it." />
         ) : v.status === "case_open" ? (
           <Status icon={<LifeBuoy />} tone="accent" title="All set" text={v.scanned ? "Your scan is recorded. Your report is with the seller." : "Your report is with the seller."} />
         ) : v.status === "not_shipped" ? (
@@ -59,7 +70,10 @@ export default function Seal({ token }: { token: string }) {
             <h2>What's wrong?</h2>
             {PROBLEMS.map((p) => (
               <button key={p.value} className="choice" disabled={busy}
-                onClick={async () => { const r = await run(() => api.sealReport(token, p.value)); if (r) setReport(r); }}>
+                onClick={async () => {
+                  if (v.seller_browser) { setPreview("report"); return; }  // SL-07: no case from the seller's browser
+                  const r = await run(() => api.sealReport(token, p.value)); if (r) setReport(r);
+                }}>
                 <span className="choice-icon" aria-hidden>{p.icon}</span>
                 <span style={{ fontWeight: 550 }}>{p.label}</span>
               </button>
@@ -70,7 +84,11 @@ export default function Seal({ token }: { token: string }) {
           <section className="col" style={{ gap: 10 }}>
             <p className="muted">Opened your parcel? One tap tells the seller it arrived.</p>
             <button className="btn primary lg block seal-main" disabled={busy}
-              onClick={async () => { const r = await run(() => api.sealConfirm(token)); if (r) setData(r); }}>
+              onClick={async () => {
+                const r = await run(() => api.sealConfirm(token));
+                if (!r) return;
+                if (r.seller_browser) setPreview("confirm"); else setData(r);
+              }}>
               I have it
             </button>
             <button className="btn lg block" disabled={busy} onClick={() => setProblem(true)}>Something's wrong</button>

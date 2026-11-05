@@ -20,7 +20,7 @@ from app.cases.signals import EvidenceKind, assemble_signals
 from app.config import Settings
 from app.main import create_app
 from app.orders.enums import OrderState, ProofKind
-from app.orders.models import AuditLog, Evidence, Order, TrackingEvent
+from app.orders.models import AuditLog, Case, Evidence, Order, TrackingEvent
 from app.proof.receipts import ReceiptSigner
 from app.proof.seal import (
     SELLER_BROWSER,
@@ -200,27 +200,31 @@ def test_SL_07_a_cookie_that_is_not_this_sellers_changes_nothing(db, clock, link
     assert r.status_code == 200 and r.json()["counted"] is True
 
 
-def test_SL_07_something_wrong_from_the_seller_browser_is_not_counted(db, clock, links, app):
+def test_SL_07_something_wrong_from_the_seller_browser_opens_no_case(db, clock, links, app):
     seller, order = _delivered(db, clock)
     db.commit()
     client = TestClient(app)
     client.get(f"/api/seller/{links.issue(seller.id, scope='seller')}/me")
     r = client.post(f"/api/seal/{issue_seal(links, order.id)}/report", json={"reason": "damaged"})
-    assert r.status_code == 200, r.text
+    assert r.status_code == 403
     [scan] = _scans(db, order.id)
     assert scan.ai_result["counted"] is False and scan.ai_result["reason"] == SELLER_BROWSER
+    assert db.scalars(select(Case).where(Case.order_id == order.id)).all() == []
+    assert db.get(Order, order.id).state == OrderState.DELIVERED  # type: ignore[union-attr]
 
 
-def test_SL_07_the_seal_view_tells_the_seller_their_scan_did_not_count(db, clock, links, app):
+def test_SL_07_the_seller_browser_gets_a_preview_and_the_order_does_not_change(
+    db, clock, links, app
+):
     seller, order = _delivered(db, clock)
     db.commit()
     client = TestClient(app)
     client.get(f"/api/seller/{links.issue(seller.id, scope='seller')}/me")
-    body = client.post(f"/api/seal/{issue_seal(links, order.id)}/confirm").json()
+    token = issue_seal(links, order.id)
+    assert client.get(f"/api/seal/{token}").json()["seller_browser"] is True  # preview up front
+    body = client.post(f"/api/seal/{token}/confirm").json()
     assert body["seller_browser"] is True and body["counted"] is False
-    assert (
-        TestClient(app).get(f"/api/seal/{issue_seal(links, order.id)}").json()["seller_browser"]
-        is False
-    )
+    assert body["status"] == "ready"
+    assert TestClient(app).get(f"/api/seal/{token}").json()["seller_browser"] is False
     db.expire_all()
-    assert db.get(Order, order.id).state == OrderState.CONFIRMED  # type: ignore[union-attr]
+    assert db.get(Order, order.id).state == OrderState.DELIVERED  # type: ignore[union-attr]

@@ -51,7 +51,7 @@ from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
 from app.mcp.server import MCP_SCOPE
 from app.money import Currency, Money
 from app.orders.enums import OrderState, ShippingMethod
-from app.orders.models import Case, Order, Recovery, Seller
+from app.orders.models import AuditLog, Case, Order, Recovery, Seller
 from app.orders.schemas import Address
 from app.orders.state import IllegalTransition
 from app.policy.rules import RuleBook
@@ -512,38 +512,64 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     # ------------------------------------------------------------ possession seal (SL)
 
     @router.get("/api/seal/{token}", response_model=SealView)
-    def seal_page(token: str, s: Db) -> SealView:
-        return _seal_view(s, _seal_order(s, token))
+    def seal_page(token: str, request: Request, s: Db) -> SealView:
+        order = _seal_order(s, token)
+        return _seal_view(s, order, seller_browser=_from_seller_browser(request, order))
+
+    def _preview_scan(s: Session, order: Order, action: str) -> None:
+        """SL-07: the seller's own browser gets a preview. The scan is recorded, never counted,
+        and nothing else changes: no confirmation, no case."""
+        try:
+            record_scan(s, order, deps.clock.now(), seller_browser=True)
+        except SealError as exc:
+            raise HTTPException(409, str(exc)) from None
+        s.add(
+            AuditLog(
+                actor=SELLER_BROWSER,
+                action=action,
+                entity_type="order",
+                entity_id=order.id,
+                before={},
+                after={"counted": False, "reason": SELLER_BROWSER},
+                at=deps.clock.now(),
+            )
+        )
+        s.commit()
 
     @router.post("/api/seal/{token}/confirm", response_model=SealView)
     def seal_confirm(token: str, request: Request, s: Db) -> SealView:
         """SL-03: "I have it". The scan is recorded even when the order can't be confirmed.
 
-        SL-07: from the seller's own browser the scan is recorded but never counted, and the
-        audit trail names the seller's browser, not the buyer.
+        SL-07: from the seller's own browser it is a preview: recorded, never counted, and the
+        order is not confirmed.
         """
         order = _seal_order(s, token)
-        seller_browser = _from_seller_browser(request, order)
+        if _from_seller_browser(request, order):
+            _preview_scan(s, order, "seal.preview_confirm")
+            return _seal_view(s, order, seller_browser=True)
         try:
-            record_scan(s, order, deps.clock.now(), seller_browser=seller_browser)
+            record_scan(s, order, deps.clock.now())
         except SealError as exc:
             raise HTTPException(409, str(exc)) from None
         try:
-            _pipeline(s).confirm_received(
-                order, actor=SELLER_BROWSER if seller_browser else "buyer_seal"
-            )
+            _pipeline(s).confirm_received(order, actor="buyer_seal")
         except BuyerActionError:
             pass  # e.g. a case is already open: the scan still stands as evidence
         s.commit()
-        return _seal_view(s, order, seller_browser=seller_browser)
+        return _seal_view(s, order)
 
     @router.post("/api/seal/{token}/report", response_model=ReportOut)
     def seal_report(token: str, body: SealReportIn, request: Request, s: Db) -> ReportOut:
-        """SL-06: "Something's wrong" from the same scan: the buyer holds the parcel."""
+        """SL-06: "Something's wrong" from the same scan: the buyer holds the parcel.
+
+        SL-07: the seller's own browser can't open a case as the buyer (403, scan recorded).
+        """
         order = _seal_order(s, token)
-        seller_browser = _from_seller_browser(request, order)
+        if _from_seller_browser(request, order):
+            _preview_scan(s, order, "seal.preview_report")
+            raise HTTPException(403, "seller preview: only the buyer's phone can report")
         try:
-            record_scan(s, order, deps.clock.now(), seller_browser=seller_browser)
+            record_scan(s, order, deps.clock.now())
             report = _pipeline(s).report(order, ClaimReason(body.reason), reported_by=BUYER)
         except (SealError, BuyerActionError) as exc:
             s.rollback()

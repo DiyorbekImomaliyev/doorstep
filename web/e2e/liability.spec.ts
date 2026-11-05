@@ -12,7 +12,7 @@ async function demoShop(page: Page): Promise<{ seller: string; sam: string }> {
   return { seller: seller!, sam: sam! };
 }
 
-test("SL-02 the seal in the box: one tap proves the buyer has it", async ({ page, context }) => {
+test("SL-02 the seal in the box: one tap proves the buyer has it", async ({ page, browser }, testInfo) => {
   const { seller } = await demoShop(page);
   await page.goto(seller);
   await page.getByRole("button", { name: /^All/ }).click();  // delivered, nothing needs Maria
@@ -24,7 +24,8 @@ test("SL-02 the seal in the box: one tap proves the buyer has it", async ({ page
   if (shots) await page.screenshot({ path: `${shots}/20-seal-card.png` });
   const href = await seal.getByRole("link", { name: /Open seal page/ }).getAttribute("href");
 
-  const phone = await context.newPage();
+  // The buyer's phone is another device: it never shares the seller's browser (SL-07).
+  const phone = await (await browser.newContext({ baseURL: testInfo.project.use.baseURL })).newPage();
   await phone.setViewportSize({ width: 390, height: 844 });
   await phone.goto(new URL(href!).pathname);
   await expect(phone.getByRole("heading", { name: "Brass desk lamp" })).toBeVisible();

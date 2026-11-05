@@ -290,10 +290,11 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   normal pipeline.
 - SL-07 A seal scan from the seller's own browser never counts as possession proof. Opening the
   Control Room or a seal card sets a signed, HttpOnly cookie scoped `seller_browser` to that
-  seller. A scan that carries a valid cookie for the order's own seller is recorded as not counted,
-  with reason `seller_browser`, and the audit trail names the seller's browser as the actor. A
-  forged, expired or other-seller cookie changes nothing. A later scan from another device still
-  counts.
+  seller. A scan that carries a valid cookie for the order's own seller is a seller preview: it is
+  recorded as not counted, with reason `seller_browser`, the audit trail names the seller's browser,
+  and nothing else changes (the order is not confirmed; "Something's wrong" answers 403 and opens no
+  case). The seal page tells the seller it is a preview. A forged, expired or other-seller cookie
+  changes nothing. A later scan from another device still counts.
 - SL-08 A "Got it" from the seller's own browser (the same SL-07 cookie, on the buyer's tracking
   link) is recorded with the seller's browser as the actor, and no confirmation from the seller's
   browser fills the "possession proof" part of the evidence meter.

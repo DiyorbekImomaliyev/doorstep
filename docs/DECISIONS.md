@@ -769,3 +769,11 @@ would remove the wait entirely but changes the locked report contract; not done 
 now ignores confirmations whose source is the seller's browser, and "Got it" on the buyer's
 tracking link (which the seller can open from the Control Room) uses the same cookie check, so the
 audit trail names the seller's browser. The order still moves to "Received" (ADR-042 trade-off).
+
+**Addendum (strict, Nov 5, approved by the human).** The seller's own browser now gets a seller
+preview on the seal page: the scan is recorded and never counted, the order is not confirmed, and
+"Something's wrong" answers 403 and opens no case. "Received" is a statement about the buyer, so
+only the buyer's device can make it. The locked SL-02 browser test changed in one place only: the
+buyer's phone opens in its own browser context (a separate device) instead of sharing the
+seller's cookies; its assertions are unchanged. `web/e2e/seal-preview.spec.ts` covers the preview.
+The lock tag must move to include this change.
