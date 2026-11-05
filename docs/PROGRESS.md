@@ -184,9 +184,15 @@ Tracked against the day's definition of done (SPEC section 16).
 - Fixed (Nov 5, Render env): live claim packs stayed as template text. The worker had its own
   `LLM_PROVIDER=gemini` row, which overrode the shared group's `anthropic`, and Gemini was
   returning 503/429. With `anthropic` set on the worker, the pack is redrafted by the model in
-  about 10 s (8 of 8 sentences verified). Still open: the worker's own PayPal client id and
-  secret belong to a different app from `doorstep-shared`; remove the worker's duplicate rows
-  and keep only `DATABASE_URL`.
+  about 10 s (8 of 8 sentences verified). The worker's own PayPal client id and secret were
+  from a different app than `doorstep-shared`. The human removed the worker's duplicate rows and
+  redeployed. After that, on the live app:
+  - the claim pack is model text about 5 s after the report;
+  - the refund job runs in about 5 s and dispute evidence in about 10 s (it took 45 s while
+    slow Gemini failures held up the queue);
+  - Playwright 8/8.
+  - Not yet tested live: a real sandbox refund through the worker. That needs a PayPal popup
+    checkout; do it while filming.
 - Waiting on the human:
   - `tests-locked-core` is still at 48f38bd (local and origin), so `make locked` fails;
   - lock-tag move to the addendum commit.
