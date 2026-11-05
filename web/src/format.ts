@@ -31,20 +31,20 @@ export const FAILURE_POINT: Record<string, string> = {
 };
 
 export const ROUTE: Record<string, { label: string; tone: Tone }> = {
-  AUTO_REFUND: { label: "Refunding automatically", tone: "info" },
-  AWAITING_SELLER: { label: "Your approval", tone: "warn" },
-  HOLD_FOR_REVIEW: { label: "Needs a review", tone: "warn" },
+  AUTO_REFUND: { label: "Refunding automatically", tone: "neutral" },
+  AWAITING_SELLER: { label: "Your approval", tone: "accent" },
+  HOLD_FOR_REVIEW: { label: "Needs a review", tone: "accent" },
   DISPUTE_EVIDENCE: { label: "PayPal dispute", tone: "bad" },
   SETTLED: { label: "Settled", tone: "good" },
   CLOSED: { label: "Closed", tone: "neutral" },
 };
 
-export type Tone = "good" | "warn" | "bad" | "info" | "neutral";
+export type Tone = "neutral" | "accent" | "good" | "warn" | "bad";
 
+/** Order state, calm: only problems get a colour. */
 export function stateTone(state: string): Tone {
-  if (["CONFIRMED", "RESOLVED", "PICKED_UP"].includes(state)) return "good";
   if (["EXCEPTION", "CASE_OPEN"].includes(state)) return "warn";
-  if (["DELIVERED", "IN_TRANSIT", "SHIPPED"].includes(state)) return "info";
+  if (["CONFIRMED", "RESOLVED"].includes(state)) return "good";
   return "neutral";
 }
 
@@ -58,7 +58,11 @@ export const REASONS: { value: string; label: string }[] = [
   { value: "empty_box", label: "The box was empty" },
 ];
 
-/** Delivery-risk pill tone: the locker threshold is 5%; above 15% is high. */
+/** Delivery risk: the locker threshold is 5%; above 15% is high. Only high risk is coloured. */
 export function riskTone(p: number): Tone {
-  return p >= 0.15 ? "bad" : p >= 0.05 ? "warn" : "good";
+  return p >= 0.15 ? "bad" : p >= 0.05 ? "warn" : "neutral";
+}
+
+export function pct(p: number): string {
+  return `${(p * 100).toFixed(1)}%`;
 }

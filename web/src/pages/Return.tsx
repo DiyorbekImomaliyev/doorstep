@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { Info } from "lucide-react";
 import { Brand, ErrorBox, Loading } from "../components/ui";
 
 export default function Return() {
@@ -20,7 +21,7 @@ export default function Return() {
       <Brand />
       <main className="narrow stack-lg">
         {cancelled ? (
-          <div className="notice info">You cancelled in PayPal. Nothing was charged.</div>
+          <div className="notice"><Info aria-hidden /><span>You cancelled in PayPal. Nothing was charged.</span></div>
         ) : err ? (
           <ErrorBox message={err} />
         ) : (

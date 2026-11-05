@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Bot, Check, CircleCheck, House, LifeBuoy, Lock, MapPin, Receipt, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
 import { api, type BuyerView } from "../api";
 import { Brand, ErrorBox, Loading, Timeline, Toast, useAsync } from "../components/ui";
 import { METHOD, REASONS, money } from "../format";
@@ -15,14 +16,16 @@ function stepIndex(state: string): number {
   return STEPS.findIndex((s) => s.states.includes(state));
 }
 
-function heroFor(v: BuyerView): { icon: string; tone: string; title: string; text: string } {
-  if (v.case_open) return { icon: "🛟", tone: "var(--warn-soft)", title: "We're sorting it out", text: v.case_message ?? "Your report is with the seller." };
-  if (v.state === "RESOLVED") return { icon: "✅", tone: "var(--good-soft)", title: "Resolved", text: v.case_message ?? "This order is settled." };
-  if (v.state === "EXCEPTION") return { icon: "⚠️", tone: "var(--warn-soft)", title: "The courier couldn't deliver", text: "Choose what happens next below." };
-  if (v.state === "CONFIRMED") return { icon: "📦", tone: "var(--good-soft)", title: "Received", text: "Thanks for confirming. Enjoy your order." };
-  if (v.state === "DELIVERED" || v.state === "PICKED_UP") return { icon: "🚪", tone: "var(--info-soft)", title: v.status, text: "Do you have it? One tap tells the seller." };
-  if (v.state === "CREATED") return { icon: "🧾", tone: "var(--surface-2)", title: "Checking your address", text: "We check the address before you're charged." };
-  return { icon: "🚚", tone: "var(--info-soft)", title: v.status, text: v.tracking_number ? `Tracking ${v.tracking_number}` : "We'll update this page as it moves." };
+type Hero = { icon: ReactNode; tone: "" | "accent" | "good" | "warn"; title: string; text: string };
+
+function heroFor(v: BuyerView): Hero {
+  if (v.case_open) return { icon: <LifeBuoy />, tone: "accent", title: "We're sorting it out", text: v.case_message ?? "Your report is with the seller." };
+  if (v.state === "RESOLVED") return { icon: <CircleCheck />, tone: "good", title: "Resolved", text: v.case_message ?? "This order is settled." };
+  if (v.state === "EXCEPTION") return { icon: <TriangleAlert />, tone: "warn", title: "The courier couldn't deliver", text: "Choose what happens next." };
+  if (v.state === "CONFIRMED") return { icon: <CircleCheck />, tone: "good", title: "Received", text: "Thanks for confirming." };
+  if (v.state === "DELIVERED" || v.state === "PICKED_UP") return { icon: <House />, tone: "accent", title: v.status, text: "Do you have it? One tap tells the seller." };
+  if (v.state === "CREATED") return { icon: <MapPin />, tone: "", title: "Checking your address", text: "We check the address before you're charged." };
+  return { icon: <Truck />, tone: "", title: v.status, text: v.tracking_number ? `Tracking ${v.tracking_number}` : "This page updates as it moves." };
 }
 
 export default function Buyer({ token }: { token: string }) {
@@ -54,27 +57,27 @@ export default function Buyer({ token }: { token: string }) {
 
   return (
     <>
-      <Brand right={<span className="faint">Order {v.order_ref}</span>} />
+      <Brand right={<span className="faint num">Order {v.order_ref}</span>} />
       <main className="narrow stack-lg">
-        <div className="col" style={{ gap: 4 }}>
+        <div className="order-head">
           <span className="faint">Your order from {v.seller_name || "the shop"}</span>
-          <h1 style={{ fontSize: 22 }}>{v.item || "Your order"}</h1>
-          <span className="muted">{money(v.amount_minor, v.currency)}{v.method ? ` · ${METHOD[v.method] ?? v.method} delivery` : ""}</span>
+          <h1>{v.item || "Your order"}</h1>
+          <span className="muted num">{money(v.amount_minor, v.currency)}{v.method ? ` · ${METHOD[v.method] ?? v.method} delivery` : ""}</span>
         </div>
 
-        <section className="card col" aria-live="polite">
-          <div className="hero-status">
-            <div className="hero-icon" style={{ background: hero.tone }} aria-hidden>{hero.icon}</div>
+        <section className="card status-card" aria-live="polite">
+          <div className="status-top">
+            <div className={`status-icon ${hero.tone}`} aria-hidden>{hero.icon}</div>
             <div className="col" style={{ gap: 2 }}>
               <h2>{hero.title}</h2>
               <p className="muted">{hero.text}</p>
             </div>
           </div>
           {idx >= 0 && (
-            <div className="steps" aria-label="Delivery progress">
+            <div className="progress" aria-label="Delivery progress">
               {STEPS.map((s, i) => (
-                <div key={s.label} className={`step ${i < idx ? "done" : ""} ${i === idx ? "now" : ""}`}>
-                  <div className="bar" />
+                <div key={s.label} className={`seg ${i < idx ? "done" : ""} ${i === idx ? "now" : ""}`}>
+                  <i />
                   <span>{s.label}</span>
                 </div>
               ))}
@@ -93,23 +96,23 @@ export default function Buyer({ token }: { token: string }) {
         {v.choice_offered.length > 0 && (
           <section className="card col">
             <h3>What should happen next?</h3>
-            <div className="row wrap">
-              {v.choice_offered.includes("rebook") && (
-                <button className="btn lg grow" disabled={busy} onClick={() => run(() => api.choose(token, "rebook"), "Redelivery requested")}>Try again tomorrow</button>
-              )}
+            <div className="col" style={{ gap: 8 }}>
               {v.choice_offered.includes("locker") && (
-                <button className="btn lg grow primary" disabled={busy} onClick={() => run(() => api.choose(token, "locker"), "Sending it to a locker")}>Send to a locker</button>
+                <button className="btn lg block primary" disabled={busy} onClick={() => run(() => api.choose(token, "locker"), "Sending it to a locker")}><Lock size={17} />Send to a locker</button>
+              )}
+              {v.choice_offered.includes("rebook") && (
+                <button className="btn lg block" disabled={busy} onClick={() => run(() => api.choose(token, "rebook"), "Redelivery requested")}><Truck size={17} />Try again tomorrow</button>
               )}
             </div>
             <p className="faint">Locker and redelivery bookings are simulated in this demo.</p>
           </section>
         )}
         {v.choice_made && (
-          <div className="notice info">You chose: {v.choice_made === "locker" ? "send to a locker" : "try again"}.</div>
+          <div className="notice"><Check aria-hidden /><span>You chose: {v.choice_made === "locker" ? "send to a locker" : "try again"}.</span></div>
         )}
 
         {(v.can_confirm || v.can_report) && !v.case_open && !reporting && (
-          <section className="col">
+          <section className="col" style={{ gap: 10 }}>
             {v.can_confirm && (
               <button className="btn primary lg block" disabled={busy} onClick={() => run(() => api.gotIt(token), "Thanks! Marked as received")}>
                 Got it
@@ -138,13 +141,11 @@ export default function Buyer({ token }: { token: string }) {
         )}
 
         <section className="card col">
-          <h3>History</h3>
+          <h3 className="row" style={{ gap: 8 }}><Receipt size={16} color="var(--text-3)" />History</h3>
           <Timeline items={v.timeline} />
         </section>
         {v.can_report && <AgentLink token={token} />}
-        <p className="faint" style={{ textAlign: "center" }}>
-          Doorstep never asks for card details. Money is handled by PayPal.
-        </p>
+        <p className="footnote"><ShieldCheck aria-hidden />Doorstep never asks for card details. Money is handled by PayPal.</p>
       </main>
       <Toast message={toast} onDone={() => setToast(null)} />
     </>
@@ -155,8 +156,8 @@ export default function Buyer({ token }: { token: string }) {
 export function RightsCard({ text }: { text: string }) {
   return (
     <section className="card col rights" aria-label="Your rights">
-      <h3>Your rights</h3>
-      <p style={{ margin: 0 }}>{text}</p>
+      <h3 className="rights-head"><Scale size={16} aria-hidden />Your rights</h3>
+      <p>{text}</p>
       <span className="faint">Information, not legal advice.</span>
     </section>
   );
@@ -171,8 +172,8 @@ function Report({ busy, onCancel, onSend }: { busy: boolean; onCancel: () => voi
       <div className="choices" role="radiogroup">
         {REASONS.map((r) => (
           <button key={r.value} type="button" role="radio" aria-checked={reason === r.value} className="choice" onClick={() => setReason(r.value)}>
-            <span className="dot" aria-hidden />
             <span>{r.label}</span>
+            <Check className="tick" size={17} aria-hidden />
           </button>
         ))}
       </div>
@@ -185,7 +186,7 @@ function Report({ busy, onCancel, onSend }: { busy: boolean; onCancel: () => voi
         <div className="grow" />
         <button className="btn primary lg" disabled={busy} onClick={() => onSend(reason, note)}>{busy ? "Sending…" : "Send report"}</button>
       </div>
-      <p className="faint">You'll get an answer here, usually within minutes. Nobody is accused automatically.</p>
+      <p className="faint">You'll get an answer here, usually within minutes.</p>
     </section>
   );
 }
@@ -208,7 +209,7 @@ function AddressFix({ token, view, busy, onDone, onKeep }: { token: string; view
   }
   return (
     <section className="card col">
-      <div className="notice warn">{view.address_issues[0]?.message}</div>
+      <div className="notice warn"><TriangleAlert aria-hidden /><span>{view.address_issues[0]?.message}</span></div>
       <div className="col" style={{ gap: 2 }}>
         <span className="faint">Delivering to</span>
         <span>{a.line1}, {a.city} {a.postal_code}</span>
@@ -232,14 +233,14 @@ function AgentLink({ token }: { token: string }) {
     try { setLink(await api.agentLink(token)); } catch (e) { setErr(String((e as Error).message)); }
   }
   return (
-    <details className="card">
-      <summary>Using an AI assistant?</summary>
-      <div className="col" style={{ marginTop: 10 }}>
-        <p className="muted" style={{ margin: 0 }}>
-          Your assistant can check this order and report a problem for you through Doorstep's MCP tool.
+    <details className="fold">
+      <summary><Bot aria-hidden />Using an AI assistant?</summary>
+      <div className="col">
+        <p className="muted" style={{ fontSize: 13 }}>
+          Your assistant can check this order and report a problem through Doorstep's MCP tool.
           The link works for this order only and cannot move money.
         </p>
-        {!link && <button className="btn" onClick={get}>Create an assistant link</button>}
+        {!link && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={get}>Create an assistant link</button>}
         {err && <ErrorBox message={err} />}
         {link && (
           <div className="col" style={{ gap: 6 }}>

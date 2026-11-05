@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Bot, Camera, CircleCheck, CircleHelp, CircleX, Copy, ExternalLink, FileText, Info, Landmark, Link2,
+  ListChecks, MessageSquare, QrCode, Scale, ScanLine, Send, Truck, Wallet, X,
+} from "lucide-react";
 import { api, type AgentRun, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
-import { ErrorBox, Loading, Meter, Pill, Timeline, useAsync } from "../components/ui";
-import { FAILURE_POINT, METHOD, ROUTE, money, riskTone, stateTone, when } from "../format";
+import { Badge, Bar, ErrorBox, Loading, SectionHead, Timeline, useAsync } from "../components/ui";
+import { FAILURE_POINT, METHOD, ROUTE, money, pct, riskTone, stateTone, when, type Tone } from "../format";
 
 const TEST_TRACKING = ["SHIPPO_DELIVERED", "SHIPPO_TRANSIT", "SHIPPO_FAILURE", "SHIPPO_PRE_TRANSIT", "SHIPPO_RETURNED"];
 
@@ -22,17 +26,21 @@ export default function CaseDrawer({ token, row, onClose, onChanged }: { token: 
   );
 }
 
-function Header({ title, sub, onClose, right }: { title: string; sub: string; onClose: () => void; right?: React.ReactNode }) {
+function Header({ title, over, onClose, right }: { title: string; over: string; onClose: () => void; right?: ReactNode }) {
   return (
-    <header className="spread">
-      <div className="col" style={{ gap: 2 }}>
+    <header>
+      <div className="col" style={{ gap: 4, minWidth: 0 }}>
+        <span className="faint">{over}</span>
         <h2>{title}</h2>
-        <span className="faint">{sub}</span>
       </div>
-      <div className="row">{right}<button className="btn ghost" onClick={onClose} aria-label="Close">✕</button></div>
+      <div className="row" style={{ gap: 8 }}>{right}<button className="btn ghost icon-only" onClick={onClose} aria-label="Close"><X size={18} /></button></div>
     </header>
   );
 }
+
+const REASON_TEXT: Record<string, string> = {
+  not_received: "not received", damaged: "damaged", wrong_item: "wrong item", missing_item: "something missing", empty_box: "empty box",
+};
 
 function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId: string; onClose: () => void; onChanged: (m: string) => void }) {
   const { data: c, error, reload } = useAsync(() => api.casePage(token, caseId), [caseId]);
@@ -51,99 +59,110 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
   }
 
   if (error) return <div className="body"><ErrorBox message={error} /></div>;
-  if (!c) return <div className="body col"><Loading /><Loading /></div>;
+  if (!c) return <div className="body col" style={{ paddingTop: 24 }}><Loading /><Loading /></div>;
   const d = c.decision;
   const route = ROUTE[c.state];
   const refund = d?.refund_amount_minor != null ? money(d.refund_amount_minor, d.currency) : null;
+  const reported = `${c.order.order_ref} · reported ${REASON_TEXT[c.reason] ?? c.reason.replaceAll("_", " ")} by the ${c.reported_by}`;
 
   return (
     <>
-      <Header title={c.order.item} sub={`${c.order.order_ref} · reported ${c.reason.replace("_", " ")} by ${c.reported_by}`} onClose={onClose}
-        right={route && <Pill tone={route.tone}>{route.label}</Pill>} />
-      <div className="body stack-lg">
+      <Header title={c.order.item} over={reported} onClose={onClose} right={route && <Badge tone={route.tone}>{route.label}</Badge>} />
+      <div className="body">
         {d && (
-          <section className="col">
-            <div className="spread">
-              <h3>Most likely: {FAILURE_POINT[d.failure_point ?? ""] ?? d.failure_point}</h3>
-              <Pill tone={d.confidence === "high" ? "good" : d.confidence === "medium" ? "warn" : "neutral"} plain>{d.confidence} confidence</Pill>
+          <section className="sec">
+            <div className="facts">
+              <div><span className="k">Likely cause</span><span className="v">{FAILURE_POINT[d.failure_point ?? ""] ?? d.failure_point ?? "—"}</span></div>
+              <div><span className="k">Confidence</span><span className="v" style={{ textTransform: "capitalize" }}>{d.confidence ?? "—"}</span></div>
+              <div><span className="k">Refund</span><span className="v num">{refund ?? "—"}</span></div>
             </div>
-            <div className="card tight col" style={{ gap: 6, background: "var(--surface-2)", boxShadow: "none" }}>
-              <span className="faint">Rule applied</span>
-              <span className="mono">{d.rule_id ?? "no matching rule set"}{d.rule_version ? ` · ${d.rule_version}` : ""}</span>
-            </div>
-            <p className="prose" style={{ color: "var(--text)" }}>{d.explanation}</p>
+            <span className="rule-line" title="The rule file and version this decision used">
+              <Scale aria-hidden /><span className="mono">{d.rule_id ?? "no matching rule set"}{d.rule_version ? ` · ${d.rule_version}` : ""}</span>
+            </span>
+            <p className="prose">{d.explanation}</p>
             {c.counterfactual && (
-              <div className="notice info" aria-label="What would have changed this">
+              <div className="notice accent" aria-label="What would have changed this">
+                <Info aria-hidden />
                 <div className="col" style={{ gap: 2 }}>
                   <strong>{c.counterfactual.possession_proven ? "Possession proof" : "What would have changed this"}</strong>
-                  <span>{c.counterfactual.text}</span>
+                  <span className="muted">{c.counterfactual.text}</span>
                 </div>
               </div>
-            )}
-            {d.reasons.length > 0 && (
-              <details>
-                <summary>Evidence used ({d.reasons.length})</summary>
-                <ul style={{ margin: 0, paddingLeft: 18 }} className="muted">
-                  {d.reasons.map((r, i) => <li key={i}>{r}</li>)}
-                </ul>
-                {d.missing_signals.length > 0 && <p className="faint" style={{ marginTop: 8 }}>Missing: {d.missing_signals.join(", ").replaceAll("_", " ")}</p>}
-              </details>
-            )}
-            {d.claim_letter && (
-              <details>
-                <summary>Carrier claim letter (draft)</summary>
-                <p className="prose">{d.claim_letter}</p>
-                <button className="btn" style={{ marginTop: 8 }} onClick={() => navigator.clipboard?.writeText(d.claim_letter ?? "")}>Copy letter</button>
-              </details>
-            )}
-            {d.buyer_message && (
-              <details>
-                <summary>Message to the buyer</summary>
-                <p className="prose">{d.buyer_message}</p>
-              </details>
             )}
           </section>
         )}
 
+        {c.state === "DISPUTE_EVIDENCE" && <section className="sec"><DisputeNote c={c} /></section>}
         {c.scan_audit && <ScanAuditPanel audit={c.scan_audit} />}
         {c.recovery && <RecoveryPanel token={token} recovery={c.recovery} onChanged={(m) => { onChanged(m); reload(); }} />}
-        {c.state === "DISPUTE_EVIDENCE" && <DisputeNote c={c} />}
 
         {c.money.length > 0 && (
-          <section className="col">
-            <h3>Money</h3>
+          <section className="sec">
+            <SectionHead icon={<Wallet aria-hidden />} title="Money" />
             {c.money.map((m, i) => (
-              <div key={i} className="spread card tight">
+              <div key={i} className="money-row">
                 <span>{m.kind === "evidence" ? "Evidence to the PayPal dispute" : `${m.kind.replace("_", " ")} ${money(m.amount_minor, m.currency)}`}</span>
-                <span className="row">
+                <span className="row" style={{ gap: 8 }}>
                   {m.refund_id && <span className="mono faint">{m.refund_id}</span>}
-                  <Pill tone={m.status === "completed" ? "good" : m.status === "simulated" ? "neutral" : m.status === "queued" ? "info" : "warn"}>{m.status}</Pill>
+                  <Badge tone={m.status === "completed" ? "good" : m.status === "failed" || m.status === "blocked" ? "warn" : "neutral"}>{m.status}</Badge>
                 </span>
               </div>
             ))}
           </section>
         )}
 
+        {d && (d.reasons.length > 0 || d.claim_letter || d.buyer_message) && (
+          <section className="sec">
+            {d.reasons.length > 0 && (
+              <details className="fold">
+                <summary><ListChecks aria-hidden />Evidence used ({d.reasons.length})</summary>
+                <div>
+                  <ul style={{ margin: 0, paddingLeft: 18 }} className="muted">
+                    {d.reasons.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                  {d.missing_signals.length > 0 && <p className="faint" style={{ marginTop: 8 }}>Missing: {d.missing_signals.join(", ").replaceAll("_", " ")}</p>}
+                </div>
+              </details>
+            )}
+            {d.claim_letter && (
+              <details className="fold">
+                <summary><FileText aria-hidden />Carrier claim letter (draft)</summary>
+                <div className="col" style={{ gap: 10 }}>
+                  <p className="prose small">{d.claim_letter}</p>
+                  <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => navigator.clipboard?.writeText(d.claim_letter ?? "")}><Copy size={14} />Copy letter</button>
+                </div>
+              </details>
+            )}
+            {d.buyer_message && (
+              <details className="fold">
+                <summary><MessageSquare aria-hidden />Message to the buyer</summary>
+                <div><p className="prose small">{d.buyer_message}</p></div>
+              </details>
+            )}
+          </section>
+        )}
+
         <PolicyPanel token={token} caseId={c.case_id} />
         <AgentPanel token={token} caseId={c.case_id} onDone={reload} />
 
-        <section className="col">
-          <div className="spread">
-            <h3>Timeline</h3>
-            <a href={`/verify/${c.case_id}`} target="_blank" rel="noreferrer">{c.receipts} signed receipt{c.receipts === 1 ? "" : "s"} · verify ↗</a>
-          </div>
+        <section className="sec">
+          <SectionHead title="Timeline" right={
+            <a href={`/verify/${c.case_id}`} target="_blank" rel="noreferrer" className="row" style={{ gap: 5, fontSize: 13 }}>
+              {c.receipts} signed receipt{c.receipts === 1 ? "" : "s"} · verify <ExternalLink size={13} aria-hidden />
+            </a>
+          } />
           <Timeline items={c.timeline} />
         </section>
-        <p className="faint">{c.disclaimer}</p>
+        <p className="faint" style={{ paddingTop: 4 }}>{c.disclaimer}</p>
       </div>
       {c.actions.length > 0 && (
-        <footer className="col">
+        <footer className="col" style={{ gap: 10 }}>
           {err && <ErrorBox message={err} />}
           <div className="row">
-            {c.actions.includes("decline") && <button className="btn danger" disabled={busy} onClick={() => act("decline")}>Decline</button>}
+            {c.actions.includes("decline") && <button className="btn ghost danger" disabled={busy} onClick={() => act("decline")}>Decline</button>}
             <div className="grow" />
             {c.actions.includes("send-evidence") && (
-              <button className="btn primary lg" disabled={busy} onClick={() => act("send-evidence")}>Send evidence to PayPal</button>
+              <button className="btn primary lg" disabled={busy} onClick={() => act("send-evidence")}><Send size={16} />Send evidence to PayPal</button>
             )}
             {c.actions.includes("approve") && (
               <button className="btn primary lg" disabled={busy} onClick={() => act("approve")}>
@@ -151,6 +170,9 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
               </button>
             )}
           </div>
+          {c.actions.includes("approve") && (
+            <span className="faint" style={{ textAlign: "right" }}>Refunds go through PayPal. PayPal keeps its original fee on a refund.</span>
+          )}
         </footer>
       )}
     </>
@@ -172,33 +194,45 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
     const r = await api.buyerLink(token, row.order_id);
     setLink(r.buyer_url);
   }
+  const addressTone: Tone = row.address_check === "overridden" ? "warn" : "neutral";
 
   return (
     <>
-      <Header title={row.item} sub={`${row.order_ref} · ${row.buyer_area || row.buyer_country}`} onClose={onClose} right={<Pill tone={stateTone(row.state)}>{row.status}</Pill>} />
-      <div className="body stack-lg">
-        <section className="col">
-          <div className="spread"><span className="muted">Amount</span><span>{money(row.amount_minor, row.currency)}</span></div>
-          <div className="spread"><span className="muted">Delivery</span><span>{row.method ? METHOD[row.method] : "—"}{row.recommended_method && row.recommended_method !== row.method ? <span className="faint"> (suggested: {METHOD[row.recommended_method]})</span> : null}</span></div>
-          <div className="spread"><span className="muted">Address check</span><Pill tone={row.address_check === "valid" ? "good" : row.address_check === "overridden" ? "warn" : "neutral"} plain>{row.address_check}</Pill></div>
-          {row.delivery_risk != null && (
-            <div className="col" style={{ gap: 4 }}>
-              <div className="spread"><span className="muted">Delivery risk</span><Pill tone={riskTone(row.delivery_risk)} plain>{`${(row.delivery_risk * 100).toFixed(1)}%`}</Pill></div>
-              {row.risk_reasons.map((r) => <span key={r} className="faint">{r}</span>)}
-            </div>
-          )}
-          <div className="col" style={{ gap: 6 }}>
-            <span className="muted">Evidence</span>
-            <Meter value={row.evidence.score} />
-            {row.evidence.missing.length > 0 && <span className="faint">Missing: {row.evidence.missing.join(", ")}</span>}
+      <Header title={row.item} over={`${row.order_ref} · ${row.buyer_area || row.buyer_country}`} onClose={onClose} right={<Badge tone={stateTone(row.state)}>{row.status}</Badge>} />
+      <div className="body">
+        <section className="sec">
+          <div className="facts">
+            <div><span className="k">Amount</span><span className="v num">{money(row.amount_minor, row.currency)}</span></div>
+            <div><span className="k">Delivery</span><span className="v">{row.method ? METHOD[row.method] : "—"}</span></div>
+            <div><span className="k">Address check</span><span className="v" style={{ textTransform: "capitalize" }}>{row.address_check}</span></div>
+          </div>
+          <div className="kv">
+            {row.recommended_method && row.recommended_method !== row.method && (
+              <><span className="k">Suggested delivery</span><span>{METHOD[row.recommended_method]}</span></>
+            )}
+            {row.delivery_risk != null && (
+              <>
+                <span className="k">Delivery risk</span>
+                <span className="col" style={{ gap: 2 }}>
+                  <span className="num" style={{ fontWeight: 600, color: riskTone(row.delivery_risk) === "bad" ? "var(--bad)" : undefined }}>{pct(row.delivery_risk)}</span>
+                  {row.risk_reasons.map((r) => <span key={r} className="faint">{r}</span>)}
+                </span>
+              </>
+            )}
+            <span className="k">Evidence</span>
+            <span className="col" style={{ gap: 4 }}>
+              <Bar value={row.evidence.score} />
+              {row.evidence.missing.length > 0 && <span className="faint">Missing: {row.evidence.missing.join(", ")}</span>}
+            </span>
+            {addressTone === "warn" && <><span className="k" /><span className="faint">The buyer kept an address that failed the check.</span></>}
           </div>
         </section>
         {(row.state === "PAID" || row.state === "PACKED") && <PackingCheck token={token} row={row} onChanged={onChanged} />}
         {(row.state === "PAID" || row.state === "PACKED") && (
-          <section className="card col">
-            <h3>Ship this order</h3>
+          <section className="sec">
+            <SectionHead icon={<Truck aria-hidden />} title="Ship this order" />
             {row.state === "PAID" && !row.packing_cleared && (
-              <p className="faint">Tip: check the packing photo first. It is the proof of what you sent.</p>
+              <p className="faint">Check the packing photo first: it is the proof of what you sent.</p>
             )}
             <label className="field">Tracking number (Shippo test)
               <select value={tracking} onChange={(e) => setTracking(e.target.value)}>
@@ -206,12 +240,13 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
               </select>
             </label>
             {err && <ErrorBox message={err} />}
-            <button className="btn primary" disabled={busy} onClick={ship}>Mark shipped</button>
+            <button className="btn primary" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={ship}>Mark shipped</button>
           </section>
         )}
         {row.state !== "CREATED" && <SealPrint token={token} orderId={row.order_id} />}
-        <section className="col">
-          <button className="btn" onClick={buyerLink}>Get the buyer's tracking link</button>
+        <section className="sec">
+          <SectionHead icon={<Link2 aria-hidden />} title="Buyer's tracking page" />
+          {!link && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={buyerLink}>Get the buyer's tracking link</button>}
           {link && <a href={link} target="_blank" rel="noreferrer" className="mono" style={{ wordBreak: "break-all" }}>{link}</a>}
         </section>
       </div>
@@ -283,20 +318,18 @@ function PackingCheck({ token, row, onChanged }: { token: string; row: OrderRow;
 
   const shown = result ?? (row.packing_verdict ? { verdict: row.packing_verdict, message: row.packing_message ?? "", reasons: [] as string[] } : null);
   return (
-    <section className="card col" aria-label="Packing check">
-      <div className="spread">
-        <h3>Packing check</h3>
-        <span className="faint">Ordered: {row.item}</span>
-      </div>
-      <p className="muted" style={{ margin: 0 }}>Take one photo of the item before you seal the box. We compare it with the order.</p>
+    <section className="sec" aria-label="Packing check">
+      <SectionHead icon={<Camera aria-hidden />} title="Packing check" right={<span className="faint">Ordered: {row.item}</span>} />
+      <p className="muted">Take one photo of the item before you seal the box. Doorstep compares it with the order.</p>
       <label className="btn" style={{ alignSelf: "flex-start" }}>
-        {busy ? "Checking…" : preview ? "Retake photo" : "Take or choose a photo"}
+        <Camera size={15} aria-hidden />{busy ? "Checking…" : preview ? "Retake photo" : "Take or choose a photo"}
         <input type="file" accept="image/*" capture="environment" hidden disabled={busy}
           onChange={(e) => onFile(e.target.files?.[0])} data-testid="packing-photo" />
       </label>
       {preview && <img src={preview} alt="Packing photo" style={{ maxWidth: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 10, background: "var(--surface-2)" }} />}
       {shown && (
         <div className={`notice ${VERDICT[shown.verdict].tone}`} role="status">
+          {VERDICT[shown.verdict].tone === "good" ? <CircleCheck aria-hidden /> : <CircleHelp aria-hidden />}
           <div className="col" style={{ gap: 4 }}>
             <strong>{VERDICT[shown.verdict].title}</strong>
             <span>{shown.message}</span>
@@ -305,7 +338,7 @@ function PackingCheck({ token, row, onChanged }: { token: string; row: OrderRow;
         </div>
       )}
       {err && <ErrorBox message={err} />}
-      {flagged && <button className="btn" disabled={busy} onClick={clear}>I checked it, it's right</button>}
+      {flagged && <button className="btn" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={clear}>I checked it, it's right</button>}
     </section>
   );
 }
@@ -319,15 +352,15 @@ const AGENT_STEP: Record<string, string> = {
   finish: "Finished",
 };
 
-const AGENT_OUTCOME: Record<string, { tone: "good" | "warn" | "info" | "neutral"; label: string }> = {
+const AGENT_OUTCOME: Record<string, { tone: Tone; label: string }> = {
   refund_queued: { tone: "good", label: "Refund queued by policy" },
-  escalated_to_seller: { tone: "warn", label: "Escalated to you" },
-  held_for_review: { tone: "warn", label: "Held for review" },
-  dispute_path: { tone: "info", label: "Dispute path" },
+  escalated_to_seller: { tone: "accent", label: "Escalated to you" },
+  held_for_review: { tone: "accent", label: "Held for review" },
+  dispute_path: { tone: "neutral", label: "Dispute path" },
   not_refundable: { tone: "neutral", label: "Not refundable" },
 };
 
-/** AT-01..05: the agent reads the PayPal side (Agent Toolkit, read-only) and asks the policy. */
+/** RG-01: what the seller's own policy says about this case, with the passages it came from. */
 function PolicyPanel({ token, caseId }: { token: string; caseId: string }) {
   const [ans, setAns] = useState<PolicyAnswer | null>(null);
   const [busy, setBusy] = useState(false);
@@ -338,16 +371,16 @@ function PolicyPanel({ token, caseId }: { token: string; caseId: string }) {
     catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
   return (
-    <section className="card col" aria-label="What your policy says">
-      <h3>What your policy says</h3>
+    <section className="sec" aria-label="What your policy says">
+      <SectionHead icon={<FileText aria-hidden />} title="What your policy says" />
       {!ans && <button className="btn" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Reading…" : "Read the policy for this case"}</button>}
       {err && <ErrorBox message={err} />}
       {ans && (
         <>
-          {ans.mode !== "quoted passages" && <p style={{ margin: 0 }}>{ans.answer}</p>}
+          {ans.mode !== "quoted passages" && <p>{ans.answer}</p>}
           {ans.citations.length > 0 && (
-            <ul className="col" style={{ gap: 4, margin: 0, paddingLeft: 18 }}>
-              {ans.citations.map((c) => <li key={c.id} className="faint">“{c.text}” <span className="muted">({c.source})</span></li>)}
+            <ul className="col" style={{ gap: 6, margin: 0, paddingLeft: 18, fontSize: 13 }}>
+              {ans.citations.map((c) => <li key={c.id} className="muted">“{c.text}” <span className="faint">({c.source})</span></li>)}
             </ul>
           )}
           <span className="faint">{ans.mode === "rule file" ? "No matching passage in your policy, so the rule file is quoted." : ans.mode === "model" ? "Answer drawn only from the passages shown." : "Passages quoted as written."} {ans.disclaimer}</span>
@@ -357,6 +390,7 @@ function PolicyPanel({ token, caseId }: { token: string; caseId: string }) {
   );
 }
 
+/** AT-01..05: the agent reads the PayPal side (Agent Toolkit, read-only) and asks the policy. */
 function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; onDone: () => void }) {
   const [run, setRun] = useState<AgentRun | null>(null);
   const [busy, setBusy] = useState(false);
@@ -368,57 +402,60 @@ function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; 
   }
   const outcome = run?.outcome ? AGENT_OUTCOME[run.outcome] : null;
   return (
-    <section className="card col" aria-label="Doorstep agent">
-      <div className="spread">
-        <h3>Doorstep agent</h3>
-        {outcome && <Pill tone={outcome.tone}>{outcome.label}</Pill>}
-      </div>
-      <p className="muted" style={{ margin: 0 }}>
-        Checks the PayPal order, tracking and disputes with PayPal's Agent Toolkit (read-only), then asks
-        Doorstep's policy. It can't refund above your limit or approve anything for you.
+    <section className="sec" aria-label="Doorstep agent">
+      <SectionHead icon={<Bot aria-hidden />} title="Doorstep agent" right={outcome && <Badge tone={outcome.tone}>{outcome.label}</Badge>} />
+      <p className="muted" style={{ fontSize: 13 }}>
+        Reads the PayPal order, tracking and disputes with PayPal's Agent Toolkit (read-only), then checks with the
+        policy service. It can't approve anything for you or refund above your limit.
       </p>
       {!run && <button className="btn" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Working…" : "Run the agent"}</button>}
       {err && <ErrorBox message={err} />}
       {run && (
-        <ol className="agent-steps">
+        <ol className="steps-list">
           {run.steps.map((s, i) => (
             <li key={i}>
-              <strong>{AGENT_STEP[s.tool] ?? s.tool}</strong>
-              <span className="muted">{s.summary}</span>
+              <span className="col" style={{ gap: 1 }}>
+                <strong style={{ fontWeight: 600 }}>{AGENT_STEP[s.tool] ?? s.tool}</strong>
+                <span className="muted">{s.summary}</span>
+              </span>
             </li>
           ))}
         </ol>
       )}
-      {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline below.</span>}
+      {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline.</span>}
     </section>
   );
 }
 
-const AUDIT_VERDICT: Record<ScanAudit["verdict"], { tone: "good" | "warn" | "bad" | "neutral"; label: string; text: string }> = {
-  contradicted: { tone: "bad", label: "Contradicted", text: "The carrier's own data contradicts its \"Delivered\" scan." },
+const AUDIT_VERDICT: Record<ScanAudit["verdict"], { tone: Tone; label: string; text: string }> = {
+  contradicted: { tone: "bad", label: "Contradicted", text: "The courier's own data disagrees with its “Delivered” scan." },
   consistent: { tone: "good", label: "Consistent", text: "Possession is proven, and the scan agrees." },
-  unverified: { tone: "warn", label: "Unverified", text: "A \"Delivered\" scan, but nothing proves the buyer has the parcel." },
-  no_scan: { tone: "neutral", label: "No delivered scan", text: "The carrier never marked it delivered." },
+  unverified: { tone: "neutral", label: "Unverified", text: "A “Delivered” scan, but nothing shows the buyer has the parcel." },
+  no_scan: { tone: "neutral", label: "No delivered scan", text: "The courier never marked it delivered." },
 };
 
 const CHECK_NAME: Record<string, string> = { location: "Location", sequence: "Sequence", batch: "Batch scan", reported_soon: "Reported" };
-const CHECK_TONE: Record<string, "good" | "warn" | "bad" | "neutral" | "info"> = { contradicts: "bad", supports: "good", unknown: "neutral", context: "info" };
+
+function CheckIcon({ result }: { result: string }) {
+  if (result === "contradicts") return <CircleX className="r-contradicts" aria-hidden />;
+  if (result === "supports") return <CircleCheck className="r-supports" aria-hidden />;
+  if (result === "context") return <Info className="r-context" aria-hidden />;
+  return <CircleHelp className="r-unknown" aria-hidden />;
+}
 
 /** SA-01..05: the carrier's "Delivered" scan, checked against the carrier's own data. */
 function ScanAuditPanel({ audit }: { audit: ScanAudit }) {
   const v = AUDIT_VERDICT[audit.verdict];
   return (
-    <section className="card col" aria-label="Delivered-scan audit">
-      <div className="spread">
-        <h3>Delivered-scan audit</h3>
-        <Pill tone={v.tone}>{v.label}</Pill>
-      </div>
-      <p className="muted" style={{ margin: 0 }}>{v.text}</p>
+    <section className="sec" aria-label="Delivered-scan audit">
+      <SectionHead icon={<ScanLine aria-hidden />} title="The courier's “Delivered” scan" right={<Badge tone={v.tone}>{v.label}</Badge>} />
+      <p className="muted" style={{ fontSize: 13 }}>{v.text}</p>
       <ul className="checks">
         {audit.checks.map((ch) => (
           <li key={ch.id}>
-            <Pill tone={CHECK_TONE[ch.result] ?? "neutral"} plain>{CHECK_NAME[ch.id] ?? ch.id}</Pill>
-            <span className="faint">{ch.finding}</span>
+            <span title={ch.result}><CheckIcon result={ch.result} /></span>
+            <span className="name">{CHECK_NAME[ch.id] ?? ch.id}</span>
+            <span className="finding">{ch.finding}</span>
           </li>
         ))}
       </ul>
@@ -426,11 +463,11 @@ function ScanAuditPanel({ audit }: { audit: ScanAudit }) {
   );
 }
 
-const RECOVERY_STATUS: Record<RecoveryView["status"], { tone: "good" | "warn" | "bad" | "info" | "neutral"; label: string }> = {
-  PREPARED: { tone: "info", label: "Ready to submit" },
-  SUBMITTED: { tone: "warn", label: "Submitted" },
+const RECOVERY_STATUS: Record<RecoveryView["status"], { tone: Tone; label: string }> = {
+  PREPARED: { tone: "accent", label: "Ready to submit" },
+  SUBMITTED: { tone: "neutral", label: "Submitted" },
   PAID: { tone: "good", label: "Carrier paid" },
-  DENIED: { tone: "bad", label: "Carrier refused" },
+  DENIED: { tone: "warn", label: "Carrier refused" },
   WITHDRAWN: { tone: "neutral", label: "Withdrawn" },
   EXPIRED: { tone: "neutral", label: "Deadline passed" },
 };
@@ -460,39 +497,40 @@ function RecoveryPanel({ token, recovery: r, onChanged }: { token: string; recov
   }
 
   return (
-    <section className="card col" aria-label="Recover from the carrier">
-      <div className="spread">
-        <h3>Recover from {r.carrier_name}</h3>
-        <Pill tone={status.tone}>{status.label}</Pill>
+    <section className="sec" aria-label="Recover from the carrier">
+      <SectionHead icon={<Landmark aria-hidden />} title={`Recover from ${r.carrier_name}`} right={<Badge tone={status.tone}>{status.label}</Badge>} />
+      <div className="kv">
+        <span className="k">Claim</span><strong className="num">{money(r.claim_minor, r.currency)}</strong>
+        {(r.status === "PREPARED" || r.status === "SUBMITTED") && (
+          <><span className="k">Deadline</span><span>{when(r.deadline_at)} · <strong>{left > 0 ? `${left} day${left === 1 ? "" : "s"} left` : "today"}</strong></span></>
+        )}
+        {r.recovered_minor != null && <><span className="k">Recovered</span><strong className="num">{money(r.recovered_minor, r.currency)}</strong></>}
       </div>
-      <div className="spread"><span className="muted">Claim</span><strong>{money(r.claim_minor, r.currency)}</strong></div>
       {r.cover_minor != null && <span className="faint">Capped at the carrier's standard cover of {money(r.cover_minor, r.currency)}.</span>}
-      {(r.status === "PREPARED" || r.status === "SUBMITTED") && (
-        <div className="spread"><span className="muted">Deadline</span><span>{when(r.deadline_at)} · <strong>{left > 0 ? `${left} day${left === 1 ? "" : "s"} left` : "today"}</strong></span></div>
-      )}
-      {r.recovered_minor != null && <div className="spread"><span className="muted">Recovered</span><strong>{money(r.recovered_minor, r.currency)}</strong></div>}
-      {!r.carrier_known && <div className="notice warn">{r.terms_note || "Check your carrier's claim terms; Doorstep has no verified terms for this carrier."}</div>}
-      <details>
-        <summary>Claim pack ({r.sentences.length} checked sentence{r.sentences.length === 1 ? "" : "s"})</summary>
-        <ol className="claim-sentences">
-          {r.sentences.map((x, i) => (
-            <li key={i}>
-              {x.text}
-              {x.fact_ids.map((id) => <span key={id} className="fact-chip" title={facts.get(id)?.text ?? id}>{id}</span>)}
-            </li>
-          ))}
-        </ol>
-        <p className="faint" style={{ marginTop: 8 }}>
-          {r.pack_source === "model" ? "Drafted by AI; every sentence cites facts and was checked in code." : "Built from the facts only."} Terms: {r.terms_rule}.
-        </p>
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="btn" onClick={() => navigator.clipboard?.writeText(claimText)}>Copy claim</button>
-          {r.terms_url && <a className="btn ghost" href={r.terms_url} target="_blank" rel="noreferrer">Carrier's terms ↗</a>}
+      {!r.carrier_known && <div className="notice warn"><Info aria-hidden /><span>{r.terms_note || "Check your carrier's claim terms; Doorstep has no verified terms for this carrier."}</span></div>}
+      <details className="fold">
+        <summary><FileText aria-hidden />Claim pack ({r.sentences.length} checked sentence{r.sentences.length === 1 ? "" : "s"})</summary>
+        <div className="col" style={{ gap: 10 }}>
+          <ol className="claim-sentences">
+            {r.sentences.map((x, i) => (
+              <li key={i}>
+                {x.text}
+                {x.fact_ids.map((id) => <span key={id} className="fact-chip" title={facts.get(id)?.text ?? id}>{id}</span>)}
+              </li>
+            ))}
+          </ol>
+          <p className="faint">
+            {r.pack_source === "model" ? "Drafted by AI; every sentence cites facts and was checked in code." : "Built from the facts only."} Terms: {r.terms_rule}.
+          </p>
+          <div className="row">
+            <button className="btn" onClick={() => navigator.clipboard?.writeText(claimText)}><Copy size={14} />Copy claim</button>
+            {r.terms_url && <a className="btn ghost" href={r.terms_url} target="_blank" rel="noreferrer">Carrier's terms <ExternalLink size={13} /></a>}
+          </div>
         </div>
       </details>
       {err && <ErrorBox message={err} />}
       {paying ? (
-        <div className="row">
+        <div className="row" style={{ alignItems: "flex-end" }}>
           <label className="field grow">Amount the carrier paid ({r.currency})
             <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
@@ -517,21 +555,22 @@ function DisputeNote({ c }: { c: CaseView }) {
   const sent = c.money.find((m) => m.kind === "evidence");
   const done = sent && (sent.status === "completed" || sent.status === "simulated");
   const stuck = sent && (sent.status === "failed" || sent.status === "blocked");
-  const tone = !sent ? "info" : done ? "good" : stuck ? "warn" : "info";
+  const tone = !sent ? "accent" : done ? "good" : stuck ? "warn" : "accent";
   const title = !sent ? "The buyer opened a PayPal dispute"
     : done ? "Evidence sent to PayPal"
     : stuck ? "Evidence was not sent"
     : "Evidence queued for PayPal";
   const text = !sent
-    ? "PayPal decides this one. Send the facts: tracking, the seal scan, the scan audit and the verify link. Nothing accuses the buyer."
+    ? "PayPal decides this one. Send the facts: tracking, the seal scan, the scan check and the verify link. Nothing accuses the buyer."
     : stuck
-      ? "PayPal refused it, or the dispute closed first. Nothing was sent twice; check the timeline."
-      : "PayPal now decides. The evidence holds facts only: tracking, the seal scan, the scan audit and the receipt link.";
+      ? "PayPal refused it, or the dispute closed first. Nothing was sent twice; see the timeline."
+      : "PayPal now decides. The evidence holds facts only: tracking, the seal scan, the scan check and the receipt link.";
   return (
     <div className={`notice ${tone}`} role="status">
+      {done ? <CircleCheck aria-hidden /> : <Scale aria-hidden />}
       <div className="col" style={{ gap: 2 }}>
         <strong>{title}</strong>
-        <span>{text}{sent?.status === "simulated" ? " (Seeded dispute: simulated.)" : ""}</span>
+        <span className="muted">{text}{sent?.status === "simulated" ? " (Demo dispute: simulated.)" : ""}</span>
       </div>
     </div>
   );
@@ -545,13 +584,14 @@ function SealPrint({ token, orderId }: { token: string; orderId: string }) {
     try { setCard(await api.sealCard(token, orderId)); } catch (e) { setErr(String((e as Error).message)); }
   }
   return (
-    <section className="card col" aria-label="Possession seal">
-      <h3>Possession seal</h3>
-      <p className="muted" style={{ margin: 0 }}>
-        Put this QR inside the parcel. When the buyer opens it and scans, that proves they hold it,
-        which is what the law turns on. No app needed.
+    <section className="sec" aria-label="Possession seal">
+      {/* Only the QR itself is an SVG in this section (SL-02 checks for one). */}
+      <SectionHead title="Possession seal" />
+      <p className="muted" style={{ fontSize: 13 }}>
+        Print this and put it inside the parcel. When the buyer opens the box and scans it, that proves they hold it.
+        No app needed. Scans from your own browser never count as proof.
       </p>
-      {!card && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={get}>Show seal</button>}
+      {!card && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={get}><QrCode size={15} />Show seal</button>}
       {err && <ErrorBox message={err} />}
       {card && (
         <>
@@ -562,7 +602,7 @@ function SealPrint({ token, orderId }: { token: string; orderId: string }) {
           </div>
           <div className="row">
             <button className="btn" onClick={() => window.print()}>Print</button>
-            <a className="btn ghost" href={card.url} target="_blank" rel="noreferrer">Open seal page ↗</a>
+            <a className="btn ghost" href={card.url} target="_blank" rel="noreferrer">Open seal page</a>
           </div>
         </>
       )}

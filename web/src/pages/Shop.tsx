@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Check, House, Lock, PenLine, ShieldCheck, Shirt } from "lucide-react";
 import { api, type Quote } from "../api";
 import { Brand, ErrorBox, Loading } from "../components/ui";
 import { METHOD, money } from "../format";
@@ -6,9 +7,10 @@ import { METHOD, money } from "../format";
 const PRODUCT = { name: "Black jacket, size M", amount: 6000, currency: "GBP" };
 const HINT: Record<string, string> = {
   home: "Left at your door or with a neighbour.",
-  locker: "Collect with a code. Strongest proof you got it.",
+  locker: "Collect with a code. The strongest proof you got it.",
   signature: "Someone signs for it at the door.",
 };
+const ICON: Record<string, ReactNode> = { home: <House size={17} />, locker: <Lock size={17} />, signature: <PenLine size={17} /> };
 
 export default function Shop({ sellerId }: { sellerId: string }) {
   const [country, setCountry] = useState("GB");
@@ -40,13 +42,15 @@ export default function Shop({ sellerId }: { sellerId: string }) {
 
   return (
     <>
-      <Brand right={<span className="faint">Maria's Vintage · checkout</span>} />
+      <Brand right={<span className="faint">Maria's Vintage · Checkout</span>} />
       <main className="narrow stack-lg">
-        <section className="card row" style={{ alignItems: "center" }}>
-          <div aria-hidden style={{ width: 72, height: 72, borderRadius: 12, background: "#1b1f24", display: "grid", placeItems: "center", fontSize: 34 }}>🧥</div>
+        <section className="card row" style={{ alignItems: "center", gap: 16 }}>
+          <div aria-hidden style={{ width: 64, height: 64, borderRadius: 12, background: "var(--surface-2)", display: "grid", placeItems: "center", color: "var(--text-2)" }}>
+            <Shirt size={28} strokeWidth={1.5} />
+          </div>
           <div className="col grow" style={{ gap: 2 }}>
             <h2>{PRODUCT.name}</h2>
-            <span className="muted">{money(PRODUCT.amount, currency)}</span>
+            <span className="muted num">{money(PRODUCT.amount, currency)}</span>
           </div>
           <select aria-label="Ship to" value={country} onChange={(e) => setCountry(e.target.value)}>
             <option value="GB">Ship to UK</option>
@@ -55,23 +59,22 @@ export default function Shop({ sellerId }: { sellerId: string }) {
         </section>
 
         <section className="card col">
-          <h3>How should we deliver it?</h3>
+          <h3>Delivery</h3>
           {!quote && !err && <Loading height={150} />}
           {quote && (
             <div className="choices" role="radiogroup" aria-label="Delivery method">
               {quote.options.map((o) => (
                 <button key={o.method} type="button" role="radio" aria-checked={method === o.method} className="choice" onClick={() => setMethod(o.method)}>
-                  <span className="dot" aria-hidden />
-                  <span className="col grow" style={{ gap: 2 }}>
-                    <span className="spread">
+                  <span className="choice-icon" aria-hidden>{ICON[o.method]}</span>
+                  <span className="col grow" style={{ gap: 1 }}>
+                    <span className="row" style={{ gap: 8 }}>
                       <strong style={{ fontWeight: 600 }}>{METHOD[o.method] ?? o.label}</strong>
-                      <span className="row" style={{ gap: 6 }}>
-                        {quote.recommended === o.method && <span className="pill tone-good plain">Recommended</span>}
-                        <span className="faint">Free</span>
-                      </span>
+                      {quote.recommended === o.method && <span className="badge accent">Recommended</span>}
                     </span>
                     <span className="faint">{HINT[o.method]}</span>
                   </span>
+                  <span className="faint">Free</span>
+                  <Check className="tick" size={17} aria-hidden style={{ marginLeft: 0 }} />
                 </button>
               ))}
             </div>
@@ -83,9 +86,7 @@ export default function Shop({ sellerId }: { sellerId: string }) {
         <button className="btn paypal lg block" disabled={!method || busy} onClick={pay}>
           {busy ? "Opening PayPal…" : "Pay with PayPal"}
         </button>
-        <p className="faint" style={{ textAlign: "center" }}>
-          Sandbox only. After you approve in PayPal we check your address before you're charged.
-        </p>
+        <p className="footnote"><ShieldCheck aria-hidden />Sandbox only. Your address is checked before you're charged.</p>
       </main>
     </>
   );

@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { ArrowLeftRight, ChevronLeft, CircleCheck, LifeBuoy, PackageMinus, PackageX, ShieldCheck, Truck } from "lucide-react";
 import { api, type ReportOut } from "../api";
 import { Brand, ErrorBox, Loading, useAsync } from "../components/ui";
 import { RightsCard } from "./Buyer";
 
 /** SL-02..06: the page the QR (or NFC sticker) inside the parcel opens. No app, no login, no
  * typing, no location. "I have it" proves possession; "Something's wrong" opens a case. */
-const PROBLEMS: { value: "damaged" | "wrong_item" | "missing_item"; label: string; icon: string }[] = [
-  { value: "damaged", label: "It's damaged", icon: "💥" },
-  { value: "wrong_item", label: "Wrong item", icon: "🔄" },
-  { value: "missing_item", label: "Something's missing", icon: "🧩" },
+const PROBLEMS: { value: "damaged" | "wrong_item" | "missing_item"; label: string; icon: ReactNode }[] = [
+  { value: "damaged", label: "It's damaged", icon: <PackageX size={18} /> },
+  { value: "wrong_item", label: "Wrong item", icon: <ArrowLeftRight size={18} /> },
+  { value: "missing_item", label: "Something's missing", icon: <PackageMinus size={18} /> },
 ];
 
 export default function Seal({ token }: { token: string }) {
@@ -30,49 +31,39 @@ export default function Seal({ token }: { token: string }) {
 
   return (
     <>
-      <Brand right={<span className="faint">Order {v.order_ref}</span>} />
+      <Brand right={<span className="faint num">Order {v.order_ref}</span>} />
       <main className="narrow stack-lg seal-page">
-        <div className="col" style={{ gap: 4 }}>
+        <div className="order-head">
           <span className="faint">From {v.seller_name || "the shop"}</span>
-          <h1 style={{ fontSize: 22 }}>{v.item || "Your parcel"}</h1>
+          <h1>{v.item || "Your parcel"}</h1>
         </div>
 
         {report ? (
           <>
-            <section className="card col" role="status">
-              <div className="hero-status">
-                <div className="hero-icon" style={{ background: "var(--warn-soft)" }} aria-hidden>🛟</div>
-                <div className="col" style={{ gap: 2 }}>
-                  <h2>Thanks, the seller has it</h2>
-                  <p className="muted">{report.message || "We'll sort it out with the seller."}</p>
-                </div>
-              </div>
-            </section>
+            <Status icon={<LifeBuoy />} tone="accent" title="Thanks, the seller has it" text={report.message || "We'll sort it out with the seller."} />
             {report.rights && <RightsCard text={report.rights} />}
           </>
         ) : v.status === "confirmed" ? (
-          <Done text="Thanks! The seller knows you have it." />
+          <Status icon={<CircleCheck />} tone="good" title="All set" text="Thanks! The seller knows you have it." />
         ) : v.status === "case_open" ? (
-          <Done text={v.scanned ? "Your scan is recorded. Your report is with the seller." : "Your report is with the seller."} tone="var(--warn-soft)" icon="🛟" />
+          <Status icon={<LifeBuoy />} tone="accent" title="All set" text={v.scanned ? "Your scan is recorded. Your report is with the seller." : "Your report is with the seller."} />
         ) : v.status === "not_shipped" ? (
-          <section className="card col">
-            <h2>Not shipped yet</h2>
-            <p className="muted" style={{ margin: 0 }}>This seal works once the parcel is on its way. Scan it again when it arrives.</p>
-          </section>
+          <Status icon={<Truck />} tone="" title="Not shipped yet" text="This seal works once the parcel is on its way. Scan it again when it arrives." live={false} />
         ) : problem ? (
-          <section className="col" aria-label="What's wrong?">
+          <section className="col" aria-label="What's wrong?" style={{ gap: 10 }}>
             <h2>What's wrong?</h2>
             {PROBLEMS.map((p) => (
-              <button key={p.value} className="btn lg block seal-choice" disabled={busy}
+              <button key={p.value} className="choice" disabled={busy}
                 onClick={async () => { const r = await run(() => api.sealReport(token, p.value)); if (r) setReport(r); }}>
-                <span aria-hidden>{p.icon}</span> {p.label}
+                <span className="choice-icon" aria-hidden>{p.icon}</span>
+                <span style={{ fontWeight: 550 }}>{p.label}</span>
               </button>
             ))}
-            <button className="btn ghost block" disabled={busy} onClick={() => setProblem(false)}>Back</button>
+            <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => setProblem(false)}><ChevronLeft size={16} />Back</button>
           </section>
         ) : (
-          <section className="col">
-            <p className="muted" style={{ margin: 0 }}>Opened your parcel? One tap tells the seller it arrived.</p>
+          <section className="col" style={{ gap: 10 }}>
+            <p className="muted">Opened your parcel? One tap tells the seller it arrived.</p>
             <button className="btn primary lg block seal-main" disabled={busy}
               onClick={async () => { const r = await run(() => api.sealConfirm(token)); if (r) setData(r); }}>
               I have it
@@ -82,21 +73,19 @@ export default function Seal({ token }: { token: string }) {
         )}
 
         {err && <ErrorBox message={err} />}
-        <p className="faint" style={{ textAlign: "center" }}>
-          No app, no login, no location. Not scanning is never held against you.
-        </p>
+        <p className="footnote"><ShieldCheck aria-hidden />No app, no login, no location. Not scanning is never held against you.</p>
       </main>
     </>
   );
 }
 
-function Done({ text, tone = "var(--good-soft)", icon = "📦" }: { text: string; tone?: string; icon?: string }) {
+function Status({ icon, tone, title, text, live = true }: { icon: ReactNode; tone: "" | "accent" | "good"; title: string; text: string; live?: boolean }) {
   return (
-    <section className="card col" role="status">
-      <div className="hero-status">
-        <div className="hero-icon" style={{ background: tone }} aria-hidden>{icon}</div>
+    <section className="card" role={live ? "status" : undefined}>
+      <div className="status-top">
+        <div className={`status-icon ${tone}`} aria-hidden>{icon}</div>
         <div className="col" style={{ gap: 2 }}>
-          <h2>All set</h2>
+          <h2>{title}</h2>
           <p className="muted">{text}</p>
         </div>
       </div>
