@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.explainer import ExplainContext, Explainer
+from app.cases.counterfactual import counterfactual
 from app.cases.engine import ClaimReason, Confidence, FailurePoint, assess
 from app.cases.recovery import prepare_recovery
 from app.cases.scan_audit import audit_order
@@ -153,7 +154,16 @@ class CasePipeline:
             .order_by(Decision.created_at.desc())
             .limit(1)
         ).one()
-        decision.signals = {**decision.signals, "scan_audit": scan_audit.model_dump(mode="json")}
+        what_if = counterfactual(  # CF-01: stored on the decision, replayable with its rule
+            self.rulebook.select(order.buyer_country),
+            proofs,
+            scan_contradicted=scan_audit.contradicted,
+        )
+        decision.signals = {
+            **decision.signals,
+            "scan_audit": scan_audit.model_dump(mode="json"),
+            "counterfactual": what_if.model_dump(mode="json"),
+        }
 
         shipment = s.scalars(select(Shipment).where(Shipment.order_id == order.id)).first()
         rule = self.rulebook.select(order.buyer_country)

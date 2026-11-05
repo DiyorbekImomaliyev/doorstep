@@ -27,10 +27,19 @@ from app.cases.signals import EvidenceKind
 from app.clock import Clock
 from app.config import Settings
 from app.orders.enums import OrderState
-from app.orders.models import AuditLog, Evidence, Order, Seller, Shipment, TrackingEvent
+from app.orders.models import (
+    AuditLog,
+    Dispute,
+    Evidence,
+    Order,
+    Seller,
+    Shipment,
+    TrackingEvent,
+)
 from app.orders.state import transition_order
 from app.policy.rules import RuleBook
 from app.proof.receipts import ReceiptSigner
+from app.proof.seal import record_scan
 from app.shipping.service import FAILED_ATTEMPT_CHOICES
 from app.worker.simulated import SIM_PREFIX
 
@@ -73,6 +82,12 @@ class _Spec:
     stale: bool = False
     failure_substatus: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
+    # v2 liability router (simulated carrier data, labelled in /healthz):
+    carrier: str = "shippo"
+    delivered_zip: str | None = None  # where the carrier says it delivered (SA-02)
+    delivered_offset_s: int = 0  # seconds after the computed delivered time (batch scans, SA-03)
+    seal_scan_after_h: int | None = None  # the buyer scanned the seal this long after delivery
+    dispute: bool = False  # the buyer opened a (simulated) PayPal dispute before reporting
 
 
 _PACKED = (EvidenceKind.PACKING_PHOTO, {"verdict": "match", "expected_weight_g": 900})
@@ -92,6 +107,8 @@ SCENARIO: tuple[_Spec, ...] = (
         "Manchester",
         2,
     ),
+    # Royal Mail says "Delivered", but its own scan came from E8, in the same minute as two of
+    # Maria's other parcels to other districts (simulated carrier data, SA-02/SA-03).
     _Spec(
         "sam-jacket",
         "Sam Carter",
@@ -105,6 +122,8 @@ SCENARIO: tuple[_Spec, ...] = (
         "London",
         30,
         (_PACKED,),
+        carrier="royal_mail",
+        delivered_zip="E8 3RL",
     ),
     _Spec(
         "failed-attempt",
@@ -224,6 +243,62 @@ SCENARIO: tuple[_Spec, ...] = (
         40,
         (_PACKED,),
     ),
+    # The two other parcels in Sam's batch scan: same van, same minute, other districts.
+    _Spec(
+        "batch-lamp",
+        "Nadia Rahman",
+        "Brass desk lamp",
+        3800,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "N16 7UX",
+        "London",
+        30,
+        (_PACKED,),
+        carrier="royal_mail",
+        delivered_zip="E8 3RL",
+        delivered_offset_s=14,
+    ),
+    _Spec(
+        "batch-tee",
+        "Ellis Grant",
+        "Linen shirt, white, size M",
+        3200,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "E8 1DY",
+        "London",
+        30,
+        (_PACKED,),
+        carrier="royal_mail",
+        delivered_zip="E8 3RL",
+        delivered_offset_s=37,
+    ),
+    # Possession proven: the buyer scanned the seal inside the parcel, then opened a PayPal
+    # dispute. PayPal decides; Maria sends the facts (DE-01..04).
+    _Spec(
+        "us-headphones",
+        "Jordan Miles",
+        "Wireless headphones",
+        8900,
+        "USD",
+        "US",
+        "home",
+        _O.DELIVERED,
+        "10001",
+        "New York",
+        80,
+        (_PACKED,),
+        report=ClaimReason.NOT_RECEIVED,
+        carrier="usps",
+        delivered_zip="10001",
+        seal_scan_after_h=2,
+        dispute=True,
+    ),
 )
 
 
@@ -338,7 +413,7 @@ def _build(
             continue
         shipment = Shipment(
             order_id=oid,
-            carrier="shippo",
+            carrier=spec.carrier,
             tracking_number=f"SIM-{oid[:8]}-{spec.key}".upper(),
             method=spec.method,
             label_weight_g=900,
@@ -353,20 +428,30 @@ def _build(
             )
         path = _PATHS[spec.state]
         step = timedelta(hours=max(1, spec.hours_ago // (len(path) + 1)))
+        delivered_at: datetime | None = None
         for i, to in enumerate(path):
+            at = created + step * (i + 1)
+            if to == _O.DELIVERED:
+                at += timedelta(seconds=spec.delivered_offset_s)
+                delivered_at = at
             transition_order(session, order, to, actor="demo-seed", reason=f"seeded {to.value}")
-            _backdate_last_transition(session, oid, created + step * (i + 1))
+            _backdate_last_transition(session, oid, at)
             status = _CARRIER_STATUS.get(to)
             if status is None or (spec.stale and to == _O.IN_TRANSIT):
                 continue
             raw: dict[str, Any] = {"tracking_status": {"status": status}}
             if to == _O.EXCEPTION and spec.failure_substatus:
                 raw["tracking_status"]["substatus"] = {"code": spec.failure_substatus}
+            if to == _O.DELIVERED and spec.delivered_zip:
+                raw["tracking_status"]["location"] = {
+                    "zip": spec.delivered_zip,
+                    "country": spec.country,
+                }
             session.add(
                 TrackingEvent(
                     shipment_id=shipment.id,
                     status=status,
-                    occurred_at=created + step * (i + 1),
+                    occurred_at=at,
                     applied=True,
                     raw=raw,
                 )
@@ -374,6 +459,18 @@ def _build(
         if spec.state == _O.EXCEPTION:
             shipment.choice_offered = list(FAILED_ATTEMPT_CHOICES)
         session.flush()
+        if spec.seal_scan_after_h is not None and delivered_at is not None:
+            record_scan(session, order, delivered_at + timedelta(hours=spec.seal_scan_after_h))
+        if spec.dispute:
+            session.add(
+                Dispute(
+                    order_id=oid,
+                    paypal_dispute_id=f"{SIM_PREFIX}DISPUTE-{oid[:13]}",
+                    status="open",
+                    opened_at=(delivered_at or created) + timedelta(hours=6),
+                )
+            )
+            session.flush()
         if spec.confirm:
             pipeline.confirm_received(order, actor="demo-seed")
         if spec.report is not None:

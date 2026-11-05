@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, type AgentRun, type OrderRow, type PackingResult, type PolicyAnswer } from "../api";
+import { api, type AgentRun, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
 import { ErrorBox, Loading, Meter, Pill, Timeline, useAsync } from "../components/ui";
-import { FAILURE_POINT, METHOD, ROUTE, money, riskTone, stateTone } from "../format";
+import { FAILURE_POINT, METHOD, ROUTE, money, riskTone, stateTone, when } from "../format";
 
 const TEST_TRACKING = ["SHIPPO_DELIVERED", "SHIPPO_TRANSIT", "SHIPPO_FAILURE", "SHIPPO_PRE_TRANSIT", "SHIPPO_RETURNED"];
 
@@ -39,11 +39,13 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function act(action: "approve" | "decline") {
+  async function act(action: "approve" | "decline" | "send-evidence") {
     setBusy(true); setErr(null);
     try {
       await api.act(token, caseId, action);
-      onChanged(action === "approve" ? "Approved. The refund is on its way through PayPal." : "Declined. The buyer will be told.");
+      onChanged(action === "approve" ? "Approved. The refund is on its way through PayPal."
+        : action === "send-evidence" ? "Evidence is on its way to the PayPal dispute."
+        : "Declined. The buyer will be told.");
       reload();
     } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
@@ -70,6 +72,14 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
               <span className="mono">{d.rule_id ?? "no matching rule set"}{d.rule_version ? ` · ${d.rule_version}` : ""}</span>
             </div>
             <p className="prose" style={{ color: "var(--text)" }}>{d.explanation}</p>
+            {c.counterfactual && (
+              <div className="notice info" aria-label="What would have changed this">
+                <div className="col" style={{ gap: 2 }}>
+                  <strong>{c.counterfactual.possession_proven ? "Possession proof" : "What would have changed this"}</strong>
+                  <span>{c.counterfactual.text}</span>
+                </div>
+              </div>
+            )}
             {d.reasons.length > 0 && (
               <details>
                 <summary>Evidence used ({d.reasons.length})</summary>
@@ -95,12 +105,16 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
           </section>
         )}
 
+        {c.scan_audit && <ScanAuditPanel audit={c.scan_audit} />}
+        {c.recovery && <RecoveryPanel token={token} recovery={c.recovery} onChanged={(m) => { onChanged(m); reload(); }} />}
+        {c.state === "DISPUTE_EVIDENCE" && <DisputeNote c={c} />}
+
         {c.money.length > 0 && (
           <section className="col">
             <h3>Money</h3>
             {c.money.map((m, i) => (
               <div key={i} className="spread card tight">
-                <span>{m.kind.replace("_", " ")} {money(m.amount_minor, m.currency)}</span>
+                <span>{m.kind === "evidence" ? "Evidence to the PayPal dispute" : `${m.kind.replace("_", " ")} ${money(m.amount_minor, m.currency)}`}</span>
                 <span className="row">
                   {m.refund_id && <span className="mono faint">{m.refund_id}</span>}
                   <Pill tone={m.status === "completed" ? "good" : m.status === "simulated" ? "neutral" : m.status === "queued" ? "info" : "warn"}>{m.status}</Pill>
@@ -128,6 +142,9 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
           <div className="row">
             {c.actions.includes("decline") && <button className="btn danger" disabled={busy} onClick={() => act("decline")}>Decline</button>}
             <div className="grow" />
+            {c.actions.includes("send-evidence") && (
+              <button className="btn primary lg" disabled={busy} onClick={() => act("send-evidence")}>Send evidence to PayPal</button>
+            )}
             {c.actions.includes("approve") && (
               <button className="btn primary lg" disabled={busy} onClick={() => act("approve")}>
                 Approve {refund ? `refund ${refund}` : ""}
@@ -192,6 +209,7 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
             <button className="btn primary" disabled={busy} onClick={ship}>Mark shipped</button>
           </section>
         )}
+        {row.state !== "CREATED" && <SealPrint token={token} orderId={row.order_id} />}
         <section className="col">
           <button className="btn" onClick={buyerLink}>Get the buyer's tracking link</button>
           {link && <a href={link} target="_blank" rel="noreferrer" className="mono" style={{ wordBreak: "break-all" }}>{link}</a>}
@@ -372,6 +390,182 @@ function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; 
         </ol>
       )}
       {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline below.</span>}
+    </section>
+  );
+}
+
+const AUDIT_VERDICT: Record<ScanAudit["verdict"], { tone: "good" | "warn" | "bad" | "neutral"; label: string; text: string }> = {
+  contradicted: { tone: "bad", label: "Contradicted", text: "The carrier's own data contradicts its \"Delivered\" scan." },
+  consistent: { tone: "good", label: "Consistent", text: "Possession is proven, and the scan agrees." },
+  unverified: { tone: "warn", label: "Unverified", text: "A \"Delivered\" scan, but nothing proves the buyer has the parcel." },
+  no_scan: { tone: "neutral", label: "No delivered scan", text: "The carrier never marked it delivered." },
+};
+
+const CHECK_NAME: Record<string, string> = { location: "Location", sequence: "Sequence", batch: "Batch scan", reported_soon: "Reported" };
+const CHECK_TONE: Record<string, "good" | "warn" | "bad" | "neutral" | "info"> = { contradicts: "bad", supports: "good", unknown: "neutral", context: "info" };
+
+/** SA-01..05: the carrier's "Delivered" scan, checked against the carrier's own data. */
+function ScanAuditPanel({ audit }: { audit: ScanAudit }) {
+  const v = AUDIT_VERDICT[audit.verdict];
+  return (
+    <section className="card col" aria-label="Delivered-scan audit">
+      <div className="spread">
+        <h3>Delivered-scan audit</h3>
+        <Pill tone={v.tone}>{v.label}</Pill>
+      </div>
+      <p className="muted" style={{ margin: 0 }}>{v.text}</p>
+      <ul className="checks">
+        {audit.checks.map((ch) => (
+          <li key={ch.id}>
+            <Pill tone={CHECK_TONE[ch.result] ?? "neutral"} plain>{CHECK_NAME[ch.id] ?? ch.id}</Pill>
+            <span className="faint">{ch.finding}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const RECOVERY_STATUS: Record<RecoveryView["status"], { tone: "good" | "warn" | "bad" | "info" | "neutral"; label: string }> = {
+  PREPARED: { tone: "info", label: "Ready to submit" },
+  SUBMITTED: { tone: "warn", label: "Submitted" },
+  PAID: { tone: "good", label: "Carrier paid" },
+  DENIED: { tone: "bad", label: "Carrier refused" },
+  WITHDRAWN: { tone: "neutral", label: "Withdrawn" },
+  EXPIRED: { tone: "neutral", label: "Deadline passed" },
+};
+
+function daysLeft(iso: string): number {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
+}
+
+/** RC-01..05: claim the loss back from the carrier. AI drafts the sentences, code checks every
+ * one against the facts; the seller submits on the carrier's own site. */
+function RecoveryPanel({ token, recovery: r, onChanged }: { token: string; recovery: RecoveryView; onChanged: (m: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [amount, setAmount] = useState(() => (r.claim_minor / 100).toFixed(2));
+  const status = RECOVERY_STATUS[r.status];
+  const facts = new Map(r.facts.map((f) => [f.id, f]));
+  const left = daysLeft(r.deadline_at);
+  const claimText = r.sentences.map((x) => x.text).join(" ");
+
+  async function mark(m: RecoveryView["actions"][number], minor?: number) {
+    setBusy(true); setErr(null);
+    try {
+      await api.recoveryMark(token, r.case_id, m, minor);
+      onChanged(m === "submitted" ? "Marked as submitted to the carrier." : m === "paid" ? "Recorded: the carrier paid." : m === "refused" ? "Recorded: the carrier refused." : "Claim withdrawn.");
+    } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
+  }
+
+  return (
+    <section className="card col" aria-label="Recover from the carrier">
+      <div className="spread">
+        <h3>Recover from {r.carrier_name}</h3>
+        <Pill tone={status.tone}>{status.label}</Pill>
+      </div>
+      <div className="spread"><span className="muted">Claim</span><strong>{money(r.claim_minor, r.currency)}</strong></div>
+      {r.cover_minor != null && <span className="faint">Capped at the carrier's standard cover of {money(r.cover_minor, r.currency)}.</span>}
+      {(r.status === "PREPARED" || r.status === "SUBMITTED") && (
+        <div className="spread"><span className="muted">Deadline</span><span>{when(r.deadline_at)} · <strong>{left > 0 ? `${left} day${left === 1 ? "" : "s"} left` : "today"}</strong></span></div>
+      )}
+      {r.recovered_minor != null && <div className="spread"><span className="muted">Recovered</span><strong>{money(r.recovered_minor, r.currency)}</strong></div>}
+      {!r.carrier_known && <div className="notice warn">{r.terms_note || "Check your carrier's claim terms; Doorstep has no verified terms for this carrier."}</div>}
+      <details>
+        <summary>Claim pack ({r.sentences.length} checked sentence{r.sentences.length === 1 ? "" : "s"})</summary>
+        <ol className="claim-sentences">
+          {r.sentences.map((x, i) => (
+            <li key={i}>
+              {x.text}
+              {x.fact_ids.map((id) => <span key={id} className="fact-chip" title={facts.get(id)?.text ?? id}>{id}</span>)}
+            </li>
+          ))}
+        </ol>
+        <p className="faint" style={{ marginTop: 8 }}>
+          {r.pack_source === "model" ? "Drafted by AI; every sentence cites facts and was checked in code." : "Built from the facts only."} Terms: {r.terms_rule}.
+        </p>
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="btn" onClick={() => navigator.clipboard?.writeText(claimText)}>Copy claim</button>
+          {r.terms_url && <a className="btn ghost" href={r.terms_url} target="_blank" rel="noreferrer">Carrier's terms ↗</a>}
+        </div>
+      </details>
+      {err && <ErrorBox message={err} />}
+      {paying ? (
+        <div className="row">
+          <label className="field grow">Amount the carrier paid ({r.currency})
+            <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </label>
+          <button className="btn primary" disabled={busy} onClick={() => mark("paid", Math.round(Number(amount) * 100))}>Save</button>
+          <button className="btn ghost" disabled={busy} onClick={() => setPaying(false)}>Cancel</button>
+        </div>
+      ) : r.actions.length > 0 && (
+        <div className="row wrap">
+          {r.actions.includes("withdraw") && <button className="btn ghost" disabled={busy} onClick={() => mark("withdraw")}>Withdraw</button>}
+          {r.actions.includes("refused") && <button className="btn" disabled={busy} onClick={() => mark("refused")}>Carrier refused</button>}
+          <div className="grow" />
+          {r.actions.includes("submitted") && <button className="btn primary" disabled={busy} onClick={() => mark("submitted")}>I submitted it</button>}
+          {r.actions.includes("paid") && <button className="btn primary" disabled={busy} onClick={() => setPaying(true)}>Carrier paid</button>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** DE-01: a PayPal dispute is open, so PayPal decides; Doorstep sends the evidence. */
+function DisputeNote({ c }: { c: CaseView }) {
+  const sent = c.money.find((m) => m.kind === "evidence");
+  const done = sent && (sent.status === "completed" || sent.status === "simulated");
+  const stuck = sent && (sent.status === "failed" || sent.status === "blocked");
+  const tone = !sent ? "info" : done ? "good" : stuck ? "warn" : "info";
+  const title = !sent ? "The buyer opened a PayPal dispute"
+    : done ? "Evidence sent to PayPal"
+    : stuck ? "Evidence was not sent"
+    : "Evidence queued for PayPal";
+  const text = !sent
+    ? "PayPal decides this one. Send the facts: tracking, the seal scan, the scan audit and the verify link. Nothing accuses the buyer."
+    : stuck
+      ? "PayPal refused it, or the dispute closed first. Nothing was sent twice; check the timeline."
+      : "PayPal now decides. The evidence holds facts only: tracking, the seal scan, the scan audit and the receipt link.";
+  return (
+    <div className={`notice ${tone}`} role="status">
+      <div className="col" style={{ gap: 2 }}>
+        <strong>{title}</strong>
+        <span>{text}{sent?.status === "simulated" ? " (Seeded dispute: simulated.)" : ""}</span>
+      </div>
+    </div>
+  );
+}
+
+/** SL-01: the seal to print on the packing slip (the same URL works on an NFC sticker). */
+function SealPrint({ token, orderId }: { token: string; orderId: string }) {
+  const [card, setCard] = useState<SealCard | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function get() {
+    try { setCard(await api.sealCard(token, orderId)); } catch (e) { setErr(String((e as Error).message)); }
+  }
+  return (
+    <section className="card col" aria-label="Possession seal">
+      <h3>Possession seal</h3>
+      <p className="muted" style={{ margin: 0 }}>
+        Put this QR inside the parcel. When the buyer opens it and scans, that proves they hold it,
+        which is what the law turns on. No app needed.
+      </p>
+      {!card && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={get}>Show seal</button>}
+      {err && <ErrorBox message={err} />}
+      {card && (
+        <>
+          <div className="seal-print">
+            <div dangerouslySetInnerHTML={{ __html: card.svg }} />
+            <strong>Opened it? Scan to confirm</strong>
+            <span className="faint">Order {card.order_ref}</span>
+          </div>
+          <div className="row">
+            <button className="btn" onClick={() => window.print()}>Print</button>
+            <a className="btn ghost" href={card.url} target="_blank" rel="noreferrer">Open seal page ↗</a>
+          </div>
+        </>
+      )}
     </section>
   );
 }

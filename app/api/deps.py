@@ -42,6 +42,8 @@ SIMULATED_COMPONENTS: dict[str, str] = {
     "locations in the seeded demo are simulated.",
     "scratch_refunds": "Refunds on seeded scratch orders (capture ids starting SIM-) are "
     "simulated; refunds on real sandbox checkouts go to PayPal.",
+    "scratch_disputes": "Seeded PayPal disputes (ids starting SIM-) are simulated, so evidence "
+    "for them goes to the simulated gateway; evidence for a real sandbox dispute goes to PayPal.",
     "risk_model": "Delivery risk comes from a model trained on synthetic data (model card).",
 }
 

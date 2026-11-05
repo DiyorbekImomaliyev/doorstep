@@ -82,6 +82,8 @@ export default function Buyer({ token }: { token: string }) {
           )}
         </section>
 
+        {v.case_open && v.rights && <RightsCard text={v.rights} />}
+
         {actionError && <ErrorBox message={actionError} />}
 
         {v.address && v.address_issues.length > 0 && (
@@ -146,6 +148,17 @@ export default function Buyer({ token }: { token: string }) {
       </main>
       <Toast message={toast} onDone={() => setToast(null)} />
     </>
+  );
+}
+
+/** RT-01: the matching rule file's buyer_rights text, word for word. */
+export function RightsCard({ text }: { text: string }) {
+  return (
+    <section className="card col rights" aria-label="Your rights">
+      <h3>Your rights</h3>
+      <p style={{ margin: 0 }}>{text}</p>
+      <span className="faint">Information, not legal advice.</span>
+    </section>
   );
 }
 

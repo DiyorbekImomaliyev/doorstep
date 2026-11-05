@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type ICellRendererParams } from "ag-grid-community";
-import { api, type OrderRow } from "../api";
+import { api, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { Brand, ErrorBox, Loading, Meter, Pill, Toast, useAsync } from "../components/ui";
 import { FAILURE_POINT, METHOD, ROUTE, ago, money, riskTone, stateTone } from "../format";
 import CaseDrawer from "./CaseDrawer";
@@ -36,16 +36,48 @@ function filterRows(rows: OrderRow[], f: Filter): OrderRow[] {
   return rows;
 }
 
-function sumStake(rows: OrderRow[]): string {
-  const by: Record<string, number> = {};
-  rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
+function sumBy(by: Record<string, number>): string {
   const parts = Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => money(v, c));
   return parts.length ? parts.join(" + ") : money(0, "GBP");
 }
 
+function sumStake(rows: OrderRow[]): string {
+  const by: Record<string, number> = {};
+  rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
+  return sumBy(by);
+}
+
+/** RC-05: what carriers paid back, and what is still claimable. */
+function RecoveredKpi({ s }: { s: RecoverySummary | null }) {
+  const open = s ? sumBy(s.open_claim_minor) : "";
+  return (
+    <div className="kpi">
+      <div className="label">Recovered from carriers</div>
+      <div className="value" style={{ fontSize: 22 }}>{s ? sumBy(s.recovered_minor) : "—"}</div>
+      <div className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "claims you filed and won"}</div>
+    </div>
+  );
+}
+
+/** CF-02: from your own seller-liable cases, computed in code. */
+function PreventionCard({ tips }: { tips: PreventionTip[] }) {
+  return (
+    <section className="card col" aria-label="Prevent the next one">
+      <h3>Prevent the next one</h3>
+      <ul style={{ margin: 0, paddingLeft: 18 }} className="col">
+        {tips.map((t) => <li key={`${t.method}-${t.currency}-${t.band}`}>{t.text}</li>)}
+      </ul>
+      <span className="faint">From your own cases where you paid. Suggestions only; you decide the delivery options.</span>
+    </section>
+  );
+}
+
 export default function Seller({ token }: { token: string }) {
   const me = useAsync(() => api.me(token), [token]);
-  const { data: rows, error, reload } = useAsync(() => api.orders(token), [token]);
+  const { data: rows, error, reload: reloadOrders } = useAsync(() => api.orders(token), [token]);
+  const recovered = useAsync(() => api.recoveries(token), [token]);
+  const tips = useAsync(() => api.prevention(token), [token]);
+  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); };
   const [filter, setFilter] = useState<Filter | null>(null);
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -140,8 +172,11 @@ export default function Seller({ token }: { token: string }) {
               <div className="kpi"><div className="label">In flight</div><div className="value">{counts.flight}</div><div className="sub">shipped, not yet received</div></div>
               <div className="kpi"><div className="label">Money at stake</div><div className="value" style={{ fontSize: 22 }}>{sumStake(rows)}</div><div className="sub">open cases + in flight</div></div>
               <div className="kpi"><div className="label">Evidence coverage</div><div className="value">{Math.round(evidenceAvg * 100)}%</div><div className="sub">proof per order, average</div></div>
+              <RecoveredKpi s={recovered.data ?? null} />
               <div className="kpi"><div className="label">Cases settled</div><div className="value">{settled}</div><div className="sub">with signed receipts</div></div>
             </section>
+
+            {tips.data && tips.data.length > 0 && <PreventionCard tips={tips.data} />}
 
             <div className="spread wrap">
               <div className="seg" role="group" aria-label="Filter orders">

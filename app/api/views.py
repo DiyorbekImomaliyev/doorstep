@@ -609,6 +609,7 @@ class CaseView(BaseModel):
     timeline: list[TimelineItem]
     disclaimer: str = "Information, not legal advice. The seller decides."
     scan_audit: dict[str, Any] | None = None  # SA-01: verdict and checks of the latest decision
+    counterfactual: dict[str, Any] | None = None  # CF-01: which proof would have changed it
     recovery: RecoveryView | None = None  # RC-01: the carrier claim, if any
 
 
@@ -675,5 +676,6 @@ def case_view(s: Session, case: Case) -> CaseView:
         receipts=receipts,
         timeline=timeline(s, order, for_buyer=False),
         scan_audit=(d.signals.get("scan_audit") if d is not None else None),
+        counterfactual=(d.signals.get("counterfactual") if d is not None else None),
         recovery=recovery_view(rec) if (rec := case_recovery(s, case.id)) else None,
     )

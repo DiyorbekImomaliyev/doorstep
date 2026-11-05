@@ -26,6 +26,81 @@ export type BuyerView = {
   progress_state: string;
   case_message: string | null;
   timeline: TimelineItem[];
+  rights: string;
+};
+
+export type ReportOut = { case_id: string; status: string; message: string; rights: string };
+
+export type SealView = {
+  order_ref: string;
+  item: string;
+  seller_name: string;
+  status: "not_shipped" | "ready" | "confirmed" | "case_open";
+  scanned: boolean;
+  counted: boolean;
+};
+
+export type SealCard = { order_ref: string; url: string; svg: string };
+
+export type AuditCheck = {
+  id: "location" | "sequence" | "batch" | "reported_soon";
+  result: "contradicts" | "supports" | "unknown" | "context";
+  finding: string;
+};
+
+export type ScanAudit = { verdict: "contradicted" | "consistent" | "unverified" | "no_scan"; checks: AuditCheck[] };
+
+export type RecoveryView = {
+  recovery_id: string;
+  case_id: string;
+  status: "PREPARED" | "SUBMITTED" | "PAID" | "DENIED" | "WITHDRAWN" | "EXPIRED";
+  carrier: string;
+  carrier_name: string;
+  carrier_known: boolean;
+  failure_point: string;
+  claim_minor: number;
+  currency: string;
+  cover_minor: number | null;
+  deadline_at: string;
+  window_days: number;
+  terms_source: string;
+  terms_url: string;
+  terms_note: string;
+  terms_rule: string;
+  sentences: { text: string; fact_ids: string[] }[];
+  facts: { id: string; kind: string; text: string }[];
+  pack_source: string;
+  recovered_minor: number | null;
+  submitted_at: string | null;
+  resolved_at: string | null;
+  actions: ("submitted" | "withdraw" | "paid" | "refused")[];
+};
+
+export type RecoverySummary = {
+  recovered_minor: Record<string, number>;
+  open_claims: number;
+  open_claim_minor: Record<string, number>;
+};
+
+export type Counterfactual = {
+  rule_id: string | null;
+  possession_proven: boolean;
+  present: string[];
+  would_change: string[];
+  would_change_together: string[];
+  scan_discounted: boolean;
+  text: string;
+};
+
+export type PreventionTip = {
+  method: string;
+  currency: string;
+  band: string;
+  cases: number;
+  orders: number;
+  money_minor: number;
+  suggested_method: string;
+  text: string;
 };
 
 export type Address = {
@@ -119,6 +194,9 @@ export type CaseView = {
   receipts: number;
   timeline: TimelineItem[];
   disclaimer: string;
+  scan_audit: ScanAudit | null;
+  recovery: RecoveryView | null;
+  counterfactual: Counterfactual | null;
 };
 
 export type VerifyReport = {
@@ -204,7 +282,12 @@ export const api = {
   buyer: (t: string) => call<BuyerView>("GET", `/api/buyer/${t}`),
   gotIt: (t: string) => call<BuyerView>("POST", `/api/buyer/${t}/got-it`),
   notHere: (t: string, reason: string, note: string) =>
-    call<{ case_id: string; status: string; message: string }>("POST", `/api/buyer/${t}/not-here`, { reason, note }),
+    call<ReportOut>("POST", `/api/buyer/${t}/not-here`, { reason, note }),
+
+  seal: (t: string) => call<SealView>("GET", `/api/seal/${t}`),
+  sealConfirm: (t: string) => call<SealView>("POST", `/api/seal/${t}/confirm`),
+  sealReport: (t: string, reason: "damaged" | "wrong_item" | "missing_item") =>
+    call<ReportOut>("POST", `/api/seal/${t}/report`, { reason }),
   choose: (t: string, option: string) => call<BuyerView>("POST", `/api/buyer/${t}/choice`, { option }),
   fixAddress: (t: string, address: Address) =>
     call<{ valid: boolean; issues: { code: string; message: string }[] }>("POST", `/api/buyer/${t}/address`, address),
@@ -219,7 +302,7 @@ export const api = {
   me: (t: string) => call<{ seller_id: string; name: string; region: string }>("GET", `/api/seller/${t}/me`),
   orders: (t: string) => call<OrderRow[]>("GET", `/api/seller/${t}/orders`),
   casePage: (t: string, caseId: string) => call<CaseView>("GET", `/api/seller/${t}/cases/${caseId}`),
-  act: (t: string, caseId: string, action: "approve" | "decline") =>
+  act: (t: string, caseId: string, action: "approve" | "decline" | "send-evidence") =>
     call<{ case_id: string; state: string; money_action_id: string | null }>(
       "POST", `/api/seller/${t}/cases/${caseId}/${action}`,
     ),
@@ -237,4 +320,12 @@ export const api = {
     call<OrderRow>("POST", `/api/seller/${t}/orders/${orderId}/packing-clear`),
   buyerLink: (t: string, orderId: string) =>
     call<{ buyer_token: string; buyer_url: string }>("GET", `/api/seller/${t}/orders/${orderId}/buyer-link`),
+  sealCard: (t: string, orderId: string) => call<SealCard>("GET", `/api/seller/${t}/orders/${orderId}/seal`),
+  recoveryMark: (t: string, caseId: string, mark: RecoveryView["actions"][number], amountMinor?: number) =>
+    call<RecoveryView>(
+      "POST", `/api/seller/${t}/cases/${caseId}/recovery/${mark}`,
+      amountMinor === undefined ? undefined : { amount_minor: amountMinor },
+    ),
+  recoveries: (t: string) => call<RecoverySummary>("GET", `/api/seller/${t}/recoveries`),
+  prevention: (t: string) => call<PreventionTip[]>("GET", `/api/seller/${t}/prevention`),
 };

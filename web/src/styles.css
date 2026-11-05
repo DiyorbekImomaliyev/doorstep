@@ -85,7 +85,7 @@ p { margin: 0; }
 .tone-neutral { color: var(--text-2); background: var(--surface-2); }
 
 /* KPI tiles */
-.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; }
 .kpi .label { color: var(--text-2); font-size: 12px; font-weight: 520; }
 .kpi .value { font-size: 26px; font-weight: 650; margin-top: 2px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -175,3 +175,21 @@ details[open] summary { margin-bottom: 8px; }
 .timeline .k-agent .tdot { background: var(--accent); }
 .agent-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
 .agent-steps li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+
+/* Possession seal (SL-02..06): big thumb targets on a phone */
+.seal-page .seal-main { min-height: 64px; font-size: 18px; }
+.seal-page .seal-choice { justify-content: flex-start; gap: 10px; min-height: 56px; }
+.rights { border-left: 4px solid var(--accent); }
+
+/* Case drawer panels (SA, RC, DE, CF) */
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.checks li { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: start; }
+.fact-chip { display: inline-block; font-size: 11px; padding: 1px 6px; margin-left: 4px; border-radius: 999px; background: var(--surface-2); color: var(--text-2, #555); cursor: help; vertical-align: 1px; }
+.claim-sentences { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.seal-print { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; border: 1.5px dashed var(--line); border-radius: var(--r); background: #fff; }
+.seal-print svg { width: 180px; height: 180px; }
+@media print {
+  body * { visibility: hidden; }
+  .seal-print, .seal-print * { visibility: visible; }
+  .seal-print { position: absolute; left: 0; top: 0; border: none; }
+}

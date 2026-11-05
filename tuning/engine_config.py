@@ -136,3 +136,12 @@ SCAN_AUDIT_REPORT_SOON_H: int = 24
 # A delivered scan dated more than this after the buyer's report is a scan from the future;
 # anything closer is clock skew between the carrier and Doorstep.
 SCAN_AUDIT_FUTURE_SKEW_S: int = 900
+
+# ---------------------------------------------------------------- prevention suggestions (CF-02)
+
+# Value bands (minor units, same edges for GBP and USD) used to group the seller's own
+# seller-liable cases: under 25, 25 to 75, 75 to 200, 200 and over.
+PREVENTION_VALUE_BANDS_MINOR: tuple[int, ...] = (2500, 7500, 20000)
+# A band needs at least this many seller-liable cases before Doorstep suggests a change.
+PREVENTION_MIN_CASES: int = 2
+PREVENTION_MAX_SUGGESTIONS: int = 3

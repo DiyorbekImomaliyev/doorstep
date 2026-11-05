@@ -39,6 +39,7 @@ from app.api.views import (
     recovery_view,
 )
 from app.cases.actions import CaseActions, seller_approver
+from app.cases.counterfactual import PreventionSuggestion, prevention
 from app.cases.dispute_evidence import UnsafeEvidence
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import BuyerActionError, CasePipeline
@@ -638,6 +639,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return RecoverySummary(
             recovered_minor=recovered, open_claims=open_claims, open_claim_minor=open_minor
         )
+
+    @router.get("/api/seller/{token}/prevention", response_model=list[PreventionSuggestion])
+    def prevention_tips(token: str, s: Db) -> list[PreventionSuggestion]:
+        """CF-02: suggestions from the seller's own seller-liable cases, computed in code."""
+        return prevention(s, _seller(s, token).id)
 
     @router.post("/api/seller/{token}/cases/{case_id}/{action}", response_model=ActionOut)
     def act(

@@ -127,6 +127,44 @@ Tracked against the day's definition of done (SPEC section 16).
   - PayPal sent PAYMENT.CAPTURE.COMPLETED to the live webhook; a forged event is rejected (400).
     A wrong Shippo token is rejected (404).
 
+## Nov 5, 2026 — v2 liability router (SPEC section 7a)
+
+### Done
+- d685a53 spec v2 (ADR-035..039). f37e719 SL possession seal, RT rights card, SA-04.
+  de37d81 SA delivered-scan audit. dff214b RC carrier recovery.
+- DE dispute evidence (ADR-038): the seller's tap creates one `evidence` money action and an outbox
+  job with a `PayPal-Request-Id`. The job calls provide-evidence with facts only (tracking, a
+  counted seal scan, the audit verdict, the verify link). Retries reuse the id. Two receipts
+  record the tap and the exact notes (SHA-256).
+- CF counterfactual and prevention:
+  - Each decision stores which proof from its rule file would have changed the liable party. A
+    property test checks that adding a named proof really proves possession.
+  - Prevention suggestions group the seller's own seller-liable cases by method and value band.
+- Web:
+  - seal page (`/s/:token`) and printable seal card;
+  - rights card on the buyer page;
+  - case drawer panels: scan audit, carrier recovery, send evidence, counterfactual;
+  - Control Room: "Recovered from carriers" KPI and prevention tips.
+- Demo seed, additive:
+  - Sam's Royal Mail "Delivered" scan comes from E8 in the same minute as two of Maria's other
+    parcels (simulated, labelled), so after "Not here" the audit is contradicted and a £60 claim
+    is prepared;
+  - a US order whose seal was scanned has an open simulated PayPal dispute.
+- Found and fixed:
+  - Mutation gate gaps: RC was committed before the gate ran on the new `carriers.py`. Its 5
+    survivors and evidence.py's 75 are now pinned by tests (exact audit rows, request id and
+    dedupe key, window per claim type) or marked as equivalent mutants with a reason.
+  - Receipt chain race (ADR-040): parallel demo seeds on Postgres failed on the unique `seq`.
+    Appends now wait on a transaction-scoped advisory lock.
+- Checks:
+  - `make lint` clean (3 import contracts kept);
+  - `make test` 1070 passed, 19 strict xfail (partner tools);
+  - trace 154/154;
+  - `app/policy` + `state.py` branch coverage 100%;
+  - mutmut gate on `app/policy`: 1836 mutants, 0 logic survivors;
+  - `make fuzz` 35 operations clean;
+  - Playwright 8 passed on Postgres (4 workers).
+
 ### In progress
 - Waiting on the human:
   - `tests-locked-core` is still at 48f38bd (local and origin), so `make locked` fails;
