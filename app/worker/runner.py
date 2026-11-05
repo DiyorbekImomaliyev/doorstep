@@ -34,7 +34,7 @@ class RetryableError(Exception):
 
 
 class PermanentError(Exception):
-    """Handler gives up at once. PayPalClientError is also permanent."""
+    """Handler gives up at once. PayPalClientError is also permanent, except a 429."""
 
 
 class JobHandler(Protocol):
@@ -45,8 +45,16 @@ class JobHandler(Protocol):
         ...
 
 
+RATE_LIMITED = 429
+
+
 def is_permanent(error: Exception) -> bool:
-    """4xx and explicit PermanentError never succeed on retry; everything else may."""
+    """4xx and explicit PermanentError never succeed on retry; everything else may.
+
+    The one 4xx exception is 429 RATE_LIMIT_REACHED: it is retried with the job's backoff and
+    the same PayPal-Request-Id, so a retried refund can never be paid twice."""
+    if isinstance(error, PayPalClientError) and error.status == RATE_LIMITED:
+        return False
     return isinstance(error, PermanentError | PayPalClientError)
 
 

@@ -530,3 +530,18 @@ SQLite tests can't cover, and nondeterminism. None of that buys recall on a corp
 came" vs "does not reach you". The rule-file fallback keeps that case safe. pgvector embeddings
 are the upgrade once policies grow past a page. RG-03 (Ragas faithfulness on 30 questions) needs
 a run on the eval model key and stays xfail until then.
+
+## ADR-034 — A PayPal 429 is retried, not treated as a permanent 4xx
+
+**Context.** `/paypal:doctor` (Nov 5) flagged that the outbox marked every `PayPalClientError`
+permanent. That included 429 RATE_LIMIT_REACHED. Under a burst, an auto-refund under the limit
+would fail at once and go to `HOLD_FOR_REVIEW`. That is safe, but it means needless manual work.
+**Decision.**
+- `app/worker/runner.is_permanent` treats 429 as retryable. The job's existing backoff and
+  `max_attempts` apply, and the retry uses the same `PayPal-Request-Id`.
+- Every other 4xx still fails at once.
+- Tests: `tests/unit/test_pp_rate_limit.py`. It checks the classification table, and that a
+  refund rate-limited twice settles with one request id and one refunded amount. It also checks
+  that a tracking job survives a 429.
+**Trade-off.** Retries can arrive sooner than PayPal's `Retry-After` header asks, because the
+job backoff ignores that header. With at most `max_attempts` tries this is harmless here.
