@@ -176,7 +176,7 @@ Tracked against the day's definition of done (SPEC section 16).
   icons, no dot pills); a landing page with an animated isometric "how it works" scene and a
   system diagram; Console-style Control Room with a sidebar; quieter case, buyer, seal, shop and
   verify pages. Every locked selector kept.
-- SL-07 (`b863033`, ADR-042): a seal scan from the seller's own browser is recorded but never
+- SL-07 and SL-08 (`b863033`, ADR-042): a seal scan from the seller's own browser is recorded but never
   counts. Signed HttpOnly cookie set by the Control Room and the seal card; the seal page and the
   seller timeline say why a scan did or did not count.
 - PP-11 (`c960ba6`, ADR-043): PayPal's own Seller Protection verdict on each capture is read
@@ -196,7 +196,7 @@ Tracked against the day's definition of done (SPEC section 16).
 - Secret scan of all 66 commits (pattern-based; gitleaks is not installed locally, CI runs it):
   no real keys. The only key-shaped values are the made-up fixtures in `test_se_secrets.py`.
   `.env` was never committed.
-- Checks: `make lint` clean; `make test` 1108 passed, 19 strict xfail; trace 157/157; policy +
+- Checks: `make lint` clean; `make test` 1112 passed, 19 strict xfail; trace 158/158; policy +
   state branch coverage 100%; `make fuzz` clean; Playwright 8/8 locally.
 
 ### In progress

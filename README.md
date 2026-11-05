@@ -59,8 +59,8 @@ All numbers measured on the current commit.
 
 | Check | Result |
 | --- | --- |
-| Unit + property tests (`make test`) | 1,108 passed; 19 strict `xfail` for criteria not built, each naming why |
-| Acceptance trace (`make trace`) | 157/157 acceptance IDs have a test |
+| Unit + property tests (`make test`) | 1,112 passed; 19 strict `xfail` for criteria not built, each naming why |
+| Acceptance trace (`make trace`) | 158/158 acceptance IDs have a test |
 | Branch coverage | 100% on `app/policy` and `app/orders/state.py` |
 | Mutation testing (`make mutmut-gate`) | No surviving logic mutants in the money path (`docs/mutation-report.md`) |
 | Failure-point eval (`make evals`) | 96.7% on 60 labelled cases (30 UK, 30 US), 95% on a 20-case hold-out; every miss is low confidence and goes to a person (`evals/report.md`) |

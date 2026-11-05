@@ -49,7 +49,7 @@ walks away. PayPal already refunds buyers; the unsolved part is that the wrong p
 
 ### How we built it
 Spec first, with Claude Code: a written spec, then numbered acceptance criteria, then a test for
-every criterion, then code until the tests passed. 1,108 unit and property tests pass; all 157
+every criterion, then code until the tests passed. 1,112 unit and property tests pass; all 158
 acceptance criteria have a test; branch coverage is 100% on the money policy and the order state
 machine; the failure-point engine scores 96.7% on 60 labelled cases and 95% on a hold-out, and
 every miss is low confidence, so it goes to a person; mutation testing leaves no surviving logic mutants in the money path; Schemathesis finds no
