@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from paypal.core import UnsetType
 from paypal.models import Address as SdkAddress
 from paypal.models import (
     AmountWithBreakdown,
@@ -35,7 +36,14 @@ from app.orders.enums import ShippingMethod
 from app.orders.schemas import Address
 from app.paypal_client.client import PayPalClient
 from app.paypal_client.errors import PayPalClientError, PayPalServerError
-from app.paypal_client.sdk_models import approve_link, captures, decode_order, money_from_sdk, text
+from app.paypal_client.sdk_models import (
+    approve_link,
+    captures,
+    decode_order,
+    money_from_sdk,
+    text,
+    texts,
+)
 from app.paypal_client.types import CaptureResult, CreatedOrder, ShippingOption
 
 PREFER_FULL = {"Prefer": "return=representation"}
@@ -153,10 +161,14 @@ def capture_order(client: PayPalClient, paypal_order_id: str, *, request_id: str
     capture = next(iter(captures(decode_order(response))), None)
     if capture is None:
         return CaptureResult(status=text(decode_order(response).status) or "UNKNOWN")
+    protection = capture.seller_protection
+    protected = not isinstance(protection, UnsetType)
     return CaptureResult(
         status=text(capture.status) or "UNKNOWN",
         capture_id=text(capture.id),
         amount=money_from_sdk(capture.amount),
+        seller_protection=text(protection.status) if protected else None,
+        protected_categories=texts(protection.dispute_categories) if protected else [],
     )
 
 

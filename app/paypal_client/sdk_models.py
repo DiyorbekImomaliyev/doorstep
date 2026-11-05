@@ -40,6 +40,11 @@ def _items(value: Any) -> list[Any]:
     return [] if value is None or isinstance(value, UnsetType) else list(value)
 
 
+def texts(value: Any) -> list[str]:
+    """An SDK list of strings or open enums (or UNSET) -> plain wire strings."""
+    return [s for s in (text(v) for v in _items(value)) if s]
+
+
 def captures(order: SdkOrder) -> Iterable[OrdersCapture]:
     for unit in _items(order.purchase_units):
         payments = unit.payments

@@ -20,7 +20,7 @@ export default function CaseDrawer({ token, row, onClose, onChanged }: { token: 
     <>
       <div className="scrim" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-modal="true" aria-label={`Order ${row.order_ref}`}>
-        {row.case_id ? <CaseBody token={token} caseId={row.case_id} onClose={onClose} onChanged={onChanged} /> : <OrderBody token={token} row={row} onClose={onClose} onChanged={onChanged} />}
+        {row.case_id ? <CaseBody token={token} caseId={row.case_id} protection={row.seller_protection} onClose={onClose} onChanged={onChanged} /> : <OrderBody token={token} row={row} onClose={onClose} onChanged={onChanged} />}
       </aside>
     </>
   );
@@ -42,7 +42,7 @@ const REASON_TEXT: Record<string, string> = {
   not_received: "not received", damaged: "damaged", wrong_item: "wrong item", missing_item: "something missing", empty_box: "empty box",
 };
 
-function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId: string; onClose: () => void; onChanged: (m: string) => void }) {
+function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: string; caseId: string; protection: string | null; onClose: () => void; onChanged: (m: string) => void }) {
   const { data: c, error, reload } = useAsync(() => api.casePage(token, caseId), [caseId]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -79,6 +79,11 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
             <span className="rule-line" title="The rule file and version this decision used">
               <Scale aria-hidden /><span className="mono">{d.rule_id ?? "no matching rule set"}{d.rule_version ? ` · ${d.rule_version}` : ""}</span>
             </span>
+            {protection && (
+              <span className="faint" title="PayPal's own verdict on this payment. Information only; it does not change Doorstep's decision.">
+                PayPal Seller Protection: {PROTECTION[protection] ?? protection}
+              </span>
+            )}
             <p className="prose">{d.explanation}</p>
             {c.counterfactual && (
               <div className="notice accent" aria-label="What would have changed this">
@@ -179,6 +184,12 @@ function CaseBody({ token, caseId, onClose, onChanged }: { token: string; caseId
   );
 }
 
+const PROTECTION: Record<string, string> = {
+  ELIGIBLE: "Eligible",
+  PARTIALLY_ELIGIBLE: "Partly eligible",
+  NOT_ELIGIBLE: "Not eligible",
+};
+
 function OrderBody({ token, row, onClose, onChanged }: { token: string; row: OrderRow; onClose: () => void; onChanged: (m: string) => void }) {
   const [tracking, setTracking] = useState(TEST_TRACKING[0]);
   const [busy, setBusy] = useState(false);
@@ -216,6 +227,15 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
                 <span className="col" style={{ gap: 2 }}>
                   <span className="num" style={{ fontWeight: 600, color: riskTone(row.delivery_risk) === "bad" ? "var(--bad)" : undefined }}>{pct(row.delivery_risk)}</span>
                   {row.risk_reasons.map((r) => <span key={r} className="faint">{r}</span>)}
+                </span>
+              </>
+            )}
+            {row.seller_protection && (
+              <>
+                <span className="k">PayPal Seller Protection</span>
+                <span className="col" style={{ gap: 2 }}>
+                  <span style={{ fontWeight: 600 }}>{PROTECTION[row.seller_protection] ?? row.seller_protection}</span>
+                  <span className="faint">PayPal's own verdict on this payment. Information only.</span>
                 </span>
               </>
             )}

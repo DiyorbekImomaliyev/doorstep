@@ -363,6 +363,7 @@ PayPal is load-bearing in four places: the delivery choice at checkout, proof of
 | Checkout | Orders v2 with shipping options | `POST /v2/checkout/orders` with `purchase_units[].shipping.options` (Home / Locker / Signature) | Delivery choice is part of the payment, not an afterthought |
 | Checkout | Address fix | `PATCH /v2/checkout/orders/{id}` (shipping address), after approval and before capture | Delivery address matches the PayPal order, keeping Seller Protection |
 | Checkout | Capture | `POST /v2/checkout/orders/{id}/capture` | Creates the capture id used for refunds |
+| Checkout | Seller Protection status | `seller_protection.status` on the capture (and the `PAYMENT.CAPTURE.COMPLETED` webhook) | Shows the seller PayPal's own verdict; information only, never a money input (PP-11) |
 | Ship | Shipment tracking | Add tracking to the order (Agent Toolkit `create_shipment_tracking`) | Proof of shipment for Seller Protection; buyer sees tracking in PayPal |
 | Resolve | Refunds | `POST /v2/payments/captures/{capture_id}/refund` (full or partial) | Settles the case after approval |
 | Resolve | Disputes | `GET /v1/customer/disputes/{id}`, `provide-evidence` (`make-offer` and `accept-claim` are not built in the hackathon) | Backup path when a dispute is already open |
@@ -519,7 +520,7 @@ The demo runs one seeded scenario (`make demo`) on the live Render deployment, u
 
 | Time | Scene | What viewers see | Proof shown on screen |
 | --- | --- | --- | --- |
-| 0:00–0:20 | The problem | "Delivered" is not delivered. 15 million UK parcel problems; 31% of shoppers told to contact the courier even though the seller is responsible; the honest seller pays and the carrier walks away | Source captions |
+| 0:00–0:20 | The problem | "Delivered" is not delivered. 15 million UK parcel problems (Citizens Advice); 43% then had a further problem trying to resolve it (section 2), even though the seller is responsible until the buyer holds the parcel; the honest seller pays and the carrier walks away | Source captions |
 | 0:20–0:45 | Prevent + prove | Sam's checkout fixes the flat number inside PayPal; Maria's packing photo catches the wrong colour; the seal goes in the box | PayPal sandbox order; vision result |
 | 0:45–1:15 | "Not here" | Sam taps "Not here"; his rights card says he doesn't need to chase the courier; Maria approves; the PayPal refund completes | Real sandbox refund id |
 | 1:15–1:45 | The scan audit | The carrier's "Delivered" scan came from another postcode district, in the same minute as two of Maria's other parcels (simulated data, labelled) | Audit checks on the case page |

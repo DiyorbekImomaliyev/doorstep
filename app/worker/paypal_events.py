@@ -24,6 +24,7 @@ from app.orders.models import Dispute, Order
 from app.orders.state import transition_order
 from app.policy.rules import RuleBook
 from app.policy.service import PolicyService
+from app.proof.seller_protection import record_seller_protection
 from app.worker.models import WebhookInbox
 
 log = logging.getLogger("doorstep.paypal_events")
@@ -45,18 +46,32 @@ def _order_by_capture(s: Session, capture_id: str) -> Order | None:
     return s.scalars(select(Order).where(Order.capture_id == capture_id)).first()
 
 
-def _capture_completed(s: Session, row: WebhookInbox) -> None:
-    res = _resource(row)
-    related = _dict(_dict(res.get("supplementary_data")).get("related_ids"))
-    ppo = str(related.get("order_id") or "")
-    order = s.scalars(select(Order).where(Order.paypal_order_id == ppo)).first() if ppo else None
-    if order is None:
-        log.info("capture event %s for unknown order; skipped", row.event_id)
-        return
-    order.capture_id = str(res.get("id") or order.capture_id or "")
-    order.capture_status = str(res.get("status") or order.capture_status or "")
-    if order.capture_status == "COMPLETED" and order.state == OrderState.CREATED.value:
-        transition_order(s, order, OrderState.PAID, actor="paypal", reason="capture completed")
+def _make_capture_completed(clock: Clock) -> Handler:
+    def handle(s: Session, row: WebhookInbox) -> None:
+        res = _resource(row)
+        related = _dict(_dict(res.get("supplementary_data")).get("related_ids"))
+        ppo = str(related.get("order_id") or "")
+        order = (
+            s.scalars(select(Order).where(Order.paypal_order_id == ppo)).first() if ppo else None
+        )
+        if order is None:
+            log.info("capture event %s for unknown order; skipped", row.event_id)
+            return
+        order.capture_id = str(res.get("id") or order.capture_id or "")
+        order.capture_status = str(res.get("status") or order.capture_status or "")
+        protection = _dict(res.get("seller_protection"))
+        categories = protection.get("dispute_categories")
+        record_seller_protection(  # PP-11: information only
+            s,
+            order.id,
+            str(protection.get("status") or ""),
+            [str(c) for c in categories] if isinstance(categories, list) else [],
+            clock.now(),
+        )
+        if order.capture_status == "COMPLETED" and order.state == OrderState.CREATED.value:
+            transition_order(s, order, OrderState.PAID, actor="paypal", reason="capture completed")
+
+    return handle
 
 
 def _capture_id_from_links(res: dict[str, Any]) -> str:
@@ -117,7 +132,7 @@ def _make_dispute(clock: Clock) -> Handler:
 def paypal_inbox_handlers(rulebook: RuleBook, clock: Clock) -> dict[tuple[str, str], Handler]:
     dispute = _make_dispute(clock)
     return {
-        ("paypal", "PAYMENT.CAPTURE.COMPLETED"): _capture_completed,
+        ("paypal", "PAYMENT.CAPTURE.COMPLETED"): _make_capture_completed(clock),
         ("paypal", "PAYMENT.CAPTURE.REFUNDED"): _make_refunded(rulebook, clock),
         ("paypal", "CUSTOMER.DISPUTE.CREATED"): dispute,
         ("paypal", "CUSTOMER.DISPUTE.UPDATED"): dispute,

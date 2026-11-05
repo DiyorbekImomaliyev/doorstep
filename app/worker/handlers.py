@@ -11,6 +11,7 @@ from app.orders.enums import OrderState
 from app.orders.models import Order, Shipment
 from app.orders.state import transition_order
 from app.paypal_client.idempotency import request_id_for
+from app.proof.seller_protection import record_seller_protection
 from app.worker.gateway import OrdersGateway
 from app.worker.models import Job
 from app.worker.runner import PermanentError
@@ -58,6 +59,13 @@ class CaptureOrderHandler:
         order.capture_status = result.status
         if result.capture_id:
             order.capture_id = result.capture_id
+        record_seller_protection(  # PP-11: PayPal's verdict, information only
+            session,
+            order.id,
+            result.seller_protection,
+            result.protected_categories,
+            self.clock.now(),
+        )
         if result.amount is not None and result.amount.amount_minor != order.amount_minor:
             log.warning(
                 "order %s captured %s, expected %s", order.id, result.amount, order.amount_minor

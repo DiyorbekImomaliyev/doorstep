@@ -21,6 +21,9 @@ class CaptureResult(BaseModel):
     status: str  # COMPLETED | PENDING | DECLINED | ...
     capture_id: str | None = None
     amount: Money | None = None
+    # PP-11: PayPal's Seller Protection verdict on this capture, when PayPal reports one.
+    seller_protection: str | None = None  # ELIGIBLE | PARTIALLY_ELIGIBLE | NOT_ELIGIBLE
+    protected_categories: list[str] = []
 
 
 class RefundInfo(BaseModel):

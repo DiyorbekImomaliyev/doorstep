@@ -733,3 +733,20 @@ still confirmed by such a scan, as today, because the locked SL-02 browser test 
 in the seller's browser context; confirmation is not possession proof, so the liability decision is
 unaffected. Whether a seller-browser scan should confirm at all is an open question for the human.
 
+
+## ADR-043 — PayPal's Seller Protection verdict is shown, never used (PP-11)
+
+**Context.** The critique (Nov 5) found Doorstep quoting Seller Protection rules
+(`paypal_sp_v1.yaml`) without ever reading PayPal's own verdict for the payment. Every capture
+(and the `PAYMENT.CAPTURE.COMPLETED` webhook) carries `seller_protection.status` (`ELIGIBLE`,
+`PARTIALLY_ELIGIBLE`, `NOT_ELIGIBLE`) and the dispute categories it covers.
+**Decision.** The capture job and the webhook read it (SDK field `OrdersCapture.seller_protection`)
+and append each new verdict to the order's audit trail (actor `paypal`, action
+`paypal.seller_protection`); a repeat writes nothing. The Control Room shows the latest verdict on
+the order and case panels, labelled as PayPal's information. It is deliberately kept out of the
+`evidence` table: the pre-refund fingerprint (PO-13) hashes every evidence row, so storing it there
+would let a late webhook block a refund, and the engine must not treat PayPal's eligibility as
+proof of delivery. No schema change (ADR-024: no migrations).
+**Trade-off.** Seeded demo orders have no real capture, so they show no verdict; only orders paid
+through the sandbox checkout do. The verdict is not a decision input, so a `NOT_ELIGIBLE` payment
+is decided exactly like any other.

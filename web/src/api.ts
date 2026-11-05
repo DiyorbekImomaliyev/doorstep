@@ -146,6 +146,7 @@ export type OrderRow = {
   packing_cleared: boolean;
   delivery_risk: number | null;
   risk_reasons: string[];
+  seller_protection: string | null;
 };
 
 export type AgentRun = {

@@ -34,6 +34,8 @@ from app.orders.models import (
 )
 from app.proof.models import Receipt
 from app.proof.seal import AFTER_HANDOVER, BEFORE_HANDOVER, SELLER_BROWSER, counted_scan
+from app.proof.seller_protection import ACTION as SELLER_PROTECTION_ACTION
+from app.proof.seller_protection import protection_status
 from app.worker.simulated import SIMULATED_STATUS, is_simulated
 
 _OPEN_CASE = [s.value for s in CaseState if s not in (CaseState.SETTLED, CaseState.CLOSED)]
@@ -193,6 +195,17 @@ def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]
         is not None
     )
     for row in audit:
+        if row.action == SELLER_PROTECTION_ACTION:
+            if not for_buyer:  # PP-11: PayPal's verdict, for the seller only
+                items.append(
+                    TimelineItem(
+                        at=row.at,
+                        kind="money",
+                        title="PayPal Seller Protection",
+                        detail=str(row.after.get("status", "")).replace("_", " ").lower(),
+                    )
+                )
+            continue
         carrier_state = row.after.get("state") in _CARRIER_DRIVEN
         if row.entity_type == "order" and carrier_state and has_carrier_events:
             continue  # the carrier event itself is shown; skip the duplicate state row
@@ -393,6 +406,8 @@ class OrderRow(BaseModel):
     # RK: live delivery risk for the chosen method and address outcome, before delivery only.
     delivery_risk: float | None = None
     risk_reasons: list[str] = []
+    # PP-11: PayPal's Seller Protection verdict on the capture; information only.
+    seller_protection: str | None = None
 
 
 _RISK_STATES = {
@@ -497,6 +512,7 @@ def order_row(s: Session, order: Order) -> OrderRow:
         packing_cleared=bool(packing_result.get("cleared", False)),
         delivery_risk=risk_now,
         risk_reasons=risk_reasons,
+        seller_protection=protection_status(s, order.id),
     )
 
 

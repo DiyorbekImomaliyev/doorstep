@@ -32,6 +32,12 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - PP-09 Dispute `provide-evidence` is supported. `make-offer` is not built (xfail limitation).
 - PP-10 `update_shipping_address` PATCHes the PayPal order's shipping address before capture.
   The live smoke test verifies PATCH; if PayPal behaves differently, write an ADR first.
+- PP-11 PayPal's own Seller Protection verdict on the capture (`ELIGIBLE`, `PARTIALLY_ELIGIBLE`
+  or `NOT_ELIGIBLE`, plus its dispute categories), from the capture job or the
+  `PAYMENT.CAPTURE.COMPLETED` webhook, is appended to the order's audit trail when it is new; a
+  repeat or a capture without the field writes nothing. The Control Room shows the latest report
+  as information from PayPal. It is not evidence: the engine's signals and the pre-refund evidence
+  fingerprint are unchanged by it.
 
 ## WH — Webhooks
 - WH-01 PayPal webhook with an invalid signature → 400 and nothing stored.
