@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type ICellRendererParams } from "ag-grid-community";
-import { BookOpen, FolderOpen, Inbox, Landmark, Lightbulb, List, RefreshCw, Truck, Wallet } from "lucide-react";
+import { BookOpen, FolderOpen, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
 import { api, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, Bar, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
-import { FAILURE_POINT, METHOD, ROUTE, ago, money, pct, riskTone } from "../format";
+import { DeliveryCell, ItemCell, JourneyCell, RiskCell, StakeCell } from "../components/gridCells";
+import { FAILURE_POINT, METHOD, ROUTE, ago, money } from "../format";
 import CaseDrawer from "./CaseDrawer";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -13,19 +14,23 @@ const theme = themeQuartz.withParams({
   fontFamily: "inherit",
   fontSize: 13.5,
   foregroundColor: "#1f1a18",
-  headerFontWeight: 550,
+  backgroundColor: "#ffffff",
+  headerFontWeight: 600,
   headerFontSize: 12.5,
-  headerBackgroundColor: "#ffffff",
-  headerTextColor: "#8b827d",
-  headerColumnResizeHandleColor: "transparent",
+  headerBackgroundColor: "#faf8f6",
+  headerTextColor: "#5a524e",
+  headerColumnResizeHandleColor: "#e8e2dc",
+  headerColumnBorder: false,
   borderColor: "#ede8e3",
+  rowBorder: { color: "#f1ece7" },
   rowHoverColor: "#fbf6f7",
   selectedRowBackgroundColor: "#f6ecee",
   accentColor: "#7b2d3d",
+  iconColor: "#8b827d",
   wrapperBorder: false,
   wrapperBorderRadius: 0,
-  rowHeight: 60,
-  headerHeight: 42,
+  rowHeight: 62,
+  headerHeight: 44,
   spacing: 7,
   cellHorizontalPadding: 18,
 });
@@ -78,6 +83,14 @@ function Tip({ t }: { t: PreventionTip }) {
   );
 }
 
+const JOURNEY_RANK: Record<string, number> = {
+  CREATED: 0, PAID: 1, PACKED: 2, SHIPPED: 3, IN_TRANSIT: 4, EXCEPTION: 5,
+  DELIVERED: 6, PICKED_UP: 6, CONFIRMED: 7, CASE_OPEN: 8, RESOLVED: 9,
+};
+function journeyRank(r: OrderRow | undefined): number {
+  return r ? JOURNEY_RANK[r.state] ?? 0 : 0;
+}
+
 function NextStep({ r }: { r: OrderRow }) {
   const key = r.case_state && ROUTE[r.case_state] ? r.case_state : r.route;
   if (!key || !ROUTE[key]) {
@@ -103,6 +116,8 @@ export default function Seller({ token }: { token: string }) {
   const [filter, setFilter] = useState<Filter | null>(null);
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [visible, setVisible] = useState<number | null>(null);
 
   const counts = useMemo(() => {
     const r = rows ?? [];
@@ -114,25 +129,25 @@ export default function Seller({ token }: { token: string }) {
 
   const columns = useMemo<ColDef<OrderRow>[]>(() => [
     {
-      headerName: "Order", field: "item", flex: 2, minWidth: 230,
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => {
-        const r = p.data!;
-        return (
-          <div className="cell-two">
-            <span style={{ fontWeight: 550 }}>{r.item}</span>
-            <span className="sub">{r.order_ref} · {r.buyer_area || r.buyer_country}{r.method ? ` · ${METHOD[r.method] ?? r.method}` : ""}</span>
-          </div>
-        );
-      },
+      headerName: "Order", field: "item", flex: 2.2, minWidth: 250,
+      filter: "agTextColumnFilter",
+      getQuickFilterText: (p) => `${p.data.item} ${p.data.order_ref} ${p.data.buyer_area} ${p.data.status}`,
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => <ItemCell r={p.data!} />,
     },
     {
-      headerName: "Status", field: "status", width: 190,
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => <span className="cell-center muted">{p.data!.status}</span>,
+      headerName: "Journey", field: "status", width: 190,
+      comparator: (_a, _b, x, y) => journeyRank(x.data) - journeyRank(y.data),
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => <JourneyCell r={p.data!} />,
     },
     {
-      headerName: "Next step", field: "route", flex: 1.3, minWidth: 200,
+      headerName: "Next step", field: "route", flex: 1.4, minWidth: 200,
       valueGetter: (p) => p.data?.case_state ?? p.data?.route ?? "",
       cellRenderer: (p: ICellRendererParams<OrderRow>) => <div className="cell-center"><NextStep r={p.data!} /></div>,
+    },
+    {
+      headerName: "Delivery", field: "method", width: 136,
+      valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => <DeliveryCell r={p.data!} />,
     },
     {
       headerName: "Evidence", width: 140,
@@ -142,24 +157,17 @@ export default function Seller({ token }: { token: string }) {
       ),
     },
     {
-      headerName: "Risk", field: "delivery_risk", width: 92,
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => {
-        const r = p.data!;
-        if (r.delivery_risk == null) return <span className="faint">—</span>;
-        const tone = riskTone(r.delivery_risk);
-        const color = tone === "bad" ? "var(--bad)" : tone === "warn" ? "var(--warn)" : "var(--text-2)";
-        return <span className="num" title={r.risk_reasons.join("\n")} style={{ color, fontWeight: tone === "neutral" ? 400 : 600 }}>{pct(r.delivery_risk)}</span>;
-      },
+      headerName: "Risk", field: "delivery_risk", width: 96, type: "rightAligned",
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => <RiskCell r={p.data!} />,
     },
     {
-      headerName: "At stake", field: "money_at_stake_minor", width: 110, type: "rightAligned",
-      valueFormatter: (p) => (p.data && p.data.money_at_stake_minor ? money(p.data.money_at_stake_minor, p.data.currency) : "—"),
-      cellClass: "num",
+      headerName: "At stake", field: "money_at_stake_minor", width: 118, type: "rightAligned",
+      cellRenderer: (p: ICellRendererParams<OrderRow>) => <StakeCell r={p.data!} />,
     },
     {
-      headerName: "Updated", field: "last_update", width: 116, sort: "desc",
+      headerName: "Updated", field: "last_update", width: 112, sort: "desc", type: "rightAligned",
       valueFormatter: (p) => (p.value ? ago(String(p.value)) : ""),
-      cellStyle: { color: "#8b827d" },
+      cellClass: "faint-cell",
     },
   ], []);
 
@@ -231,9 +239,13 @@ export default function Seller({ token }: { token: string }) {
                 <div className="head">
                   <div className="row" style={{ gap: 10 }}>
                     <h2 style={{ fontSize: 15 }}>{activeMeta.label}</h2>
-                    <span className="faint num">{shown.length}</span>
+                    <span className="count-chip num">{shown.length}</span>
                   </div>
-                  {rows.some((r) => r.simulated) && <span className="faint">Demo orders: refunds on them are simulated</span>}
+                  <label className="grid-search">
+                    <Search aria-hidden />
+                    <input type="search" placeholder="Search orders, areas, status" aria-label="Search orders"
+                      value={search} onChange={(e) => setSearch(e.target.value)} />
+                  </label>
                 </div>
                 <AgGridReact<OrderRow>
                   theme={theme}
@@ -242,10 +254,21 @@ export default function Seller({ token }: { token: string }) {
                   getRowId={(p) => p.data.order_id}
                   onRowClicked={(e) => e.data && setOpen(e.data)}
                   rowStyle={{ cursor: "pointer" }}
-                  overlayNoRowsTemplate={`<span style='color:#8b827d'>${activeMeta.empty}</span>`}
+                  overlayNoRowsTemplate={`<span style='color:#8b827d'>${search ? "No orders match your search." : activeMeta.empty}</span>`}
+                  quickFilterText={search}
+                  defaultColDef={{ sortable: true, resizable: true, suppressHeaderMenuButton: true }}
+                  onModelUpdated={(e) => setVisible(e.api.getDisplayedRowCount())}
+                  animateRows
                   suppressCellFocus
                   domLayout="autoHeight"
                 />
+                <div className="grid-foot">
+                  <span className="faint">{rows.some((r) => r.simulated) ? "Demo orders: refunds on them are simulated" : "Live PayPal sandbox orders"}</span>
+                  <span className="foot-stats num">
+                    <span>Rows <strong>{visible ?? shown.length}</strong> of {shown.length}</span>
+                    <span>At stake <strong>{sumStake(shown)}</strong></span>
+                  </span>
+                </div>
               </div>
             </>
           )}

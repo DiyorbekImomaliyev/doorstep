@@ -459,3 +459,45 @@ a.demo-item:hover .di-go svg { transform: translateX(3px); }
   .seal-print, .seal-print * { visibility: visible; }
   .seal-print { position: absolute; left: 0; top: 0; border: none; }
 }
+
+/* ---------- Control Room grid (after AG Grid's finance demo) ---------- */
+.table-card .head h2 { margin: 0; }
+.count-chip { display: inline-grid; place-items: center; min-width: 24px; height: 20px; padding: 0 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; }
+.grid-search { display: flex; align-items: center; gap: 8px; height: 34px; width: min(320px, 46%); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--text-3); transition: border-color .15s, box-shadow .15s; }
+.grid-search:focus-within { border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.grid-search svg { width: 15px; height: 15px; flex: none; }
+.grid-search input { border: 0; outline: 0; padding: 0; height: 100%; width: 100%; background: transparent; font: inherit; font-size: 13.5px; color: var(--text); }
+.grid-search input:focus { outline: 0; border: 0; }
+.grid-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 18px; border-top: 1px solid var(--line); background: #fcfbfa; font-size: 12.5px; }
+.foot-stats { display: flex; gap: 22px; color: var(--text-3); }
+.foot-stats strong { color: var(--text); font-weight: 600; margin-left: 4px; }
+
+.item-cell { display: flex; align-items: center; gap: 12px; height: 100%; min-width: 0; }
+.item-tile { flex: none; width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line); }
+.item-tile svg { width: 17px; height: 17px; stroke-width: 1.8; }
+.item-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.journey-cell { display: flex; flex-direction: column; justify-content: center; gap: 7px; height: 100%; }
+.journey-track { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; width: 128px; }
+.journey-track > span { height: 5px; border-radius: 3px; background: #ece6e1; }
+.journey-track > span.on { background: var(--accent-3); }
+.journey-track.tone-neutral > span.on.last { background: var(--accent); }
+.journey-track.tone-accent > span.on.last { background: var(--accent); }
+.journey-track.tone-good > span.on { background: #9cc3ad; }
+.journey-track.tone-good > span.on.last { background: var(--good); }
+.journey-track.tone-warn > span.on.last { background: #d29a3a; }
+.journey-track.tone-bad > span.on.last { background: var(--bad); }
+.journey-label { font-size: 12.5px; color: var(--text-2); line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.method { display: inline-flex; align-items: center; gap: 7px; color: var(--text); }
+.method svg { width: 15px; height: 15px; color: var(--text-3); }
+
+.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill.plain { background: transparent; color: var(--text-2); font-weight: 500; padding: 0; }
+.pill.accent { background: var(--accent-soft); color: var(--accent); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.faint-cell { color: var(--text-3); }
+.ag-cell { display: flex; align-items: center; }
+.ag-cell.ag-right-aligned-cell { justify-content: flex-end; }
