@@ -91,4 +91,7 @@ class RoutingRefundGateway:
     def provide_dispute_evidence(
         self, dispute_id: str, *, evidence: DisputeEvidence, request_id: str
     ) -> None:
-        self.real.provide_dispute_evidence(dispute_id, evidence=evidence, request_id=request_id)
+        # Seeded scratch disputes (ids starting SIM-) never reach PayPal (PR-05).
+        self._for(dispute_id).provide_dispute_evidence(
+            dispute_id, evidence=evidence, request_id=request_id
+        )

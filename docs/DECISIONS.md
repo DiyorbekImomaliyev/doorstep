@@ -646,12 +646,32 @@ saw our evidence.
 - The seller action `send-evidence` makes the policy service create one
   `MoneyAction(kind=evidence)`. The existing unique (decision_id, kind) constraint stops double
   sends.
-- A `policy.dispute_evidence` job carrying a `PayPal-Request-Id` calls provide-evidence through
+- A `paypal.dispute_evidence` job carrying a `PayPal-Request-Id` calls provide-evidence through
   the policy gateway (`PROOF_OF_FULFILLMENT`, carrier and tracking number).
 - Notes hold facts only and are checked against the explainer's accusing-words guard.
 - `SIM-` captures use the simulated gateway. A signed receipt records the submission.
 **Trade-off.** Evidence is sent only on the seller's tap, never automatically. That is slower,
 but a person always decides what goes to PayPal about a buyer.
+**Built (Nov 5).**
+- `app/policy/evidence.py` holds the money action, the job (`paypal.dispute_evidence`) and its
+  handler. The notes are built in `app/cases/dispute_evidence.py` from code facts:
+  - the carrier and tracking number;
+  - the last 8 tracking events;
+  - a counted seal scan (an uncounted or missing scan is never mentioned);
+  - the scan-audit verdict;
+  - the receipt verify link.
+  There is no address, no buyer note and no name. Notes are capped at PayPal's 2,000 characters.
+- The evidence action is a `MoneyAction` with `amount_minor = 0`, so it moves no money. The
+  Control Room's refund column ignores it.
+- The case stays in `DISPUTE_EVIDENCE` after sending. PayPal decides the dispute, and its
+  `CUSTOMER.DISPUTE.RESOLVED` webhook is the outcome; Doorstep does not settle the case.
+- The handler checks again at send time. If the dispute is no longer open, the action is
+  `BLOCKED` and nothing is sent. A 4xx marks it `FAILED`; 429 and 5xx retry with the same
+  request id.
+- Two receipts are signed: `send-evidence` (the seller's tap) and `evidence` (what PayPal
+  received, with the SHA-256 of the exact notes).
+- PayPal carrier codes are mapped for Royal Mail, USPS, UPS and FedEx. Any other carrier is
+  sent with no carrier code, as `OTHER`, so we never guess a code.
 
 ## ADR-039 — Hardware and ML options we did not build
 

@@ -19,7 +19,7 @@ from app.cases.signals import EvidenceKind
 from app.checkout.risk import seller_case_rate, seller_order_count
 from app.geo import postcode_district  # re-exported: shown in the Control Room
 from app.money import MINOR_UNIT_EXPONENT, parse_currency
-from app.orders.enums import CaseState, OrderState
+from app.orders.enums import CaseState, MoneyActionKind, OrderState
 from app.orders.models import (
     AuditLog,
     Case,
@@ -412,12 +412,24 @@ def delivery_risk(s: Session, order: Order) -> tuple[float | None, list[str]]:
     return score.p_failure, [r.text for r in score.top_reasons]
 
 
+def _awaits_evidence(s: Session, case: Case) -> bool:
+    """DE-01: an open PayPal dispute waits for the seller's evidence (PayPal sets a deadline)."""
+    if case.state != CaseState.DISPUTE_EVIDENCE.value:
+        return False
+    sent = s.scalars(
+        select(MoneyAction.id).where(
+            MoneyAction.case_id == case.id, MoneyAction.kind == MoneyActionKind.EVIDENCE.value
+        )
+    ).first()
+    return sent is None
+
+
 def order_row(s: Session, order: Order) -> OrderRow:
     case = latest_case(s, order.id)
     decision = latest_decision(s, case.id) if case else None
     ma = s.scalars(
         select(MoneyAction)
-        .where(MoneyAction.order_id == order.id)
+        .where(MoneyAction.order_id == order.id, MoneyAction.kind != MoneyActionKind.EVIDENCE.value)
         .order_by(MoneyAction.created_at.desc())
     ).first()
     packing = s.scalars(
@@ -462,7 +474,8 @@ def order_row(s: Session, order: Order) -> OrderRow:
             case
             and case.state in (CaseState.AWAITING_SELLER.value, CaseState.HOLD_FOR_REVIEW.value)
         )
-        or order.state in (OrderState.PAID.value, OrderState.PACKED.value),
+        or order.state in (OrderState.PAID.value, OrderState.PACKED.value)
+        or (case is not None and _awaits_evidence(s, case)),
         last_update=last or order.created_at,
         simulated=is_simulated(order.capture_id),
         packing_verdict=packing_result.get("verdict"),
@@ -644,6 +657,10 @@ def case_view(s: Session, case: Case) -> CaseView:
         actions = ["approve", "decline"]
     elif case.state == CaseState.HOLD_FOR_REVIEW.value:
         actions = ["approve"]
+    elif case.state == CaseState.DISPUTE_EVIDENCE.value and not any(
+        m.kind == MoneyActionKind.EVIDENCE.value for m in money
+    ):
+        actions = ["send-evidence"]  # DE-01: once per decision
     receipts = len(list(s.scalars(select(Receipt.id).where(Receipt.case_id == case.id))))
     return CaseView(
         case_id=case.id,

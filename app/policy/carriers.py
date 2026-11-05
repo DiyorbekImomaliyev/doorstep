@@ -27,7 +27,8 @@ _ID = re.compile(r"[a-z][a-z0-9_]*")
 
 def normalise(carrier: str) -> str:
     """'Royal Mail' / 'royal-mail' / 'ROYAL_MAIL' -> 'royal_mail'."""
-    return re.sub(r"[^a-z0-9]+", "_", carrier.strip().lower()).strip("_")
+    collapsed = re.sub(r"[^a-z0-9]+", "_", carrier.strip().lower())
+    return collapsed.strip("_")  # pragma: no mutate - only "_" can lead or trail here
 
 
 class CarrierEntry(_Strict):

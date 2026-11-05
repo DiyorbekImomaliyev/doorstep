@@ -39,6 +39,7 @@ from app.api.views import (
     recovery_view,
 )
 from app.cases.actions import CaseActions, seller_approver
+from app.cases.dispute_evidence import UnsafeEvidence
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import BuyerActionError, CasePipeline
 from app.cases.recovery import RecoveryError, SellerMark, seller_mark
@@ -639,13 +640,20 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         )
 
     @router.post("/api/seller/{token}/cases/{case_id}/{action}", response_model=ActionOut)
-    def act(token: str, case_id: str, action: Literal["approve", "decline"], s: Db) -> ActionOut:
+    def act(
+        token: str,
+        case_id: str,
+        action: Literal["approve", "decline", "send-evidence"],
+        s: Db,
+    ) -> ActionOut:
+        """approve / decline, or (DE-01) send the facts-only evidence to the open PayPal dispute."""
         seller = _seller(s, token)
         case = _seller_case(s, seller, case_id)
         actions = CaseActions(s, rulebook, deps.clock, services.receipts)
+        verify_url = f"{services.app_base_url}/cases/{case.id}/verify"
         try:
-            money = actions.act(case, action, seller_approver(seller.id))
-        except (PolicyError, IllegalTransition) as exc:
+            money = actions.act(case, action, seller_approver(seller.id), verify_url=verify_url)
+        except (PolicyError, IllegalTransition, UnsafeEvidence) as exc:
             s.rollback()
             raise HTTPException(409, str(exc)) from None
         s.commit()

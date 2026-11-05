@@ -20,6 +20,7 @@ from app.ai.recovery import RecoveryDrafter
 from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expired
 from app.orders.enums import MoneyActionStatus
 from app.orders.models import MoneyAction
+from app.policy.evidence import DISPUTE_EVIDENCE_JOB, DisputeEvidenceJobHandler
 from app.policy.rules import load_rules
 from app.policy.service import REFUND_JOB, RefundJobHandler
 from app.proof.receipts import ReceiptSigner, issue_receipt
@@ -89,7 +90,11 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
         handlers[ADD_TRACKING] = AddTrackingHandler(rt.services.orders, rt.clock)
     else:
         real = NotConfigured("PayPal refunds", "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET")
-    refunds = RefundJobHandler(RoutingRefundGateway(real, sim), rulebook, rt.clock)
+    gateway = RoutingRefundGateway(real, sim)
+    refunds = RefundJobHandler(gateway, rulebook, rt.clock)
+    handlers[DISPUTE_EVIDENCE_JOB] = DisputeEvidenceJobHandler(  # DE-01..04
+        gateway, rt.clock, rt.services.receipts
+    )
     handlers[REFUND_JOB] = ReceiptingRefundHandler(refunds, rt.services.receipts, rt.clock)
     if rt.shippo is not None:
         handlers[REGISTER_TRACK] = RegisterTrackHandler(rt.shippo)
