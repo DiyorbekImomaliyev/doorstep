@@ -16,6 +16,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.recovery import RecoveryDrafter
+from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expired
 from app.orders.enums import MoneyActionStatus
 from app.orders.models import MoneyAction
 from app.policy.rules import load_rules
@@ -91,6 +93,8 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     handlers[REFUND_JOB] = ReceiptingRefundHandler(refunds, rt.services.receipts, rt.clock)
     if rt.shippo is not None:
         handlers[REGISTER_TRACK] = RegisterTrackHandler(rt.shippo)
+    llm = rt.services.explainer.llm if rt.services.explainer is not None else None
+    handlers[DRAFT_RECOVERY] = DraftRecoveryHandler(RecoveryDrafter(llm))  # RC-03
     inbox_handlers: dict[tuple[str, str], Any] = {
         ("shippo", "track_updated"): handle_shippo_track_updated,
         **paypal_inbox_handlers(rulebook, rt.clock),
@@ -103,7 +107,10 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
 def sweep(rt: Runtime) -> int:
     with rt.session_factory() as s:
         flagged = ShippingService(s, rt.clock, rt.settings).sweep_stale()
+        expired = sweep_expired(s, rt.clock.now())  # RC-06: carrier claim deadlines
         s.commit()
+        if expired:
+            log.info("sweep expired %d carrier claim(s) past their deadline", len(expired))
         return len(flagged)
 
 

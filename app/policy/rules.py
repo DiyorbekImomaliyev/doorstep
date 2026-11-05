@@ -12,7 +12,7 @@ import re
 from collections.abc import Iterable
 from itertools import combinations
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
@@ -21,6 +21,9 @@ from app.money import Currency, Money
 from app.orders.enums import BuyerType, Fix, ProofKind
 from app.orders.models import Seller
 from app.orders.schemas import Address
+
+if TYPE_CHECKING:
+    from app.policy.carriers import CarrierTerms
 
 LiableParty = Literal["seller", "buyer", "undetermined"]
 _COUNTRY = re.compile(r"[A-Z]{2}")
@@ -183,10 +186,13 @@ class RuleBook:
         liability: Iterable[RuleSet],
         money_limits: MoneyLimits,
         seller_protection: SellerProtection,
+        carriers: CarrierTerms | None = None,
     ) -> None:
         self.liability = list(liability)
         self.money_limits = money_limits
         self.seller_protection = seller_protection
+        # rules/carriers/: carrier claim terms (RC-02); not a liability rule, so not in rule_ids.
+        self.carriers = carriers
         self.rule_ids: list[str] = [r.id for r in self.liability] + [
             money_limits.id,
             seller_protection.id,
@@ -236,7 +242,10 @@ def _exactly_one[T](rules: list[T], kind: str) -> T:
 
 
 def load_rules(directory: Path) -> RuleBook:
-    """Validate every file; raise RuleValidationError on any invalid or overlapping rule."""
+    """Validate every file; raise RuleValidationError on any invalid or overlapping rule.
+    rules/carriers/carrier_claims_v1.yaml is validated with them (RC-02)."""
+    from app.policy.carriers import load_carrier_terms  # carriers.py builds on this module
+
     paths = sorted(directory.glob("*.yaml"))
     if not paths:
         raise RuleValidationError(f"no rule files in {directory}")
@@ -253,6 +262,7 @@ def load_rules(directory: Path) -> RuleBook:
         liability,
         _exactly_one([r for r in rules if isinstance(r, MoneyLimits)], "money_limits"),
         _exactly_one([r for r in rules if isinstance(r, SellerProtection)], "seller_protection"),
+        load_carrier_terms(directory),
     )
 
 

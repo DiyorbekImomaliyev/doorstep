@@ -67,6 +67,17 @@ class MoneyActionKind(StrEnum):
     EVIDENCE = "evidence"
 
 
+class RecoveryStatus(StrEnum):
+    """Carrier recovery (RC-04): Doorstep prepares the claim, the seller submits it."""
+
+    PREPARED = "PREPARED"
+    SUBMITTED = "SUBMITTED"
+    PAID = "PAID"
+    DENIED = "DENIED"
+    WITHDRAWN = "WITHDRAWN"
+    EXPIRED = "EXPIRED"
+
+
 class MoneyActionStatus(StrEnum):
     QUEUED = "queued"
     COMPLETED = "completed"

@@ -616,6 +616,26 @@ windows and standard cover are business rules (hard rule 2), but they are not li
 **Trade-off.** Small sellers have no carrier claims API, so Doorstep prepares and tracks the
 claim and the seller submits it on the carrier's site. The order and case state machines stay
 untouched.
+**Built (Nov 5).**
+- The carrier file is loaded by `load_rules` and attached as `RuleBook.carriers`. It is
+  validated wherever the rule book is: the web app, the worker and the scripts. It is not in
+  `rule_ids`, so the locked RL-01/RL-09 tests are unchanged.
+- Values were checked on each carrier's own pages on 2026-11-05: Royal Mail (Tracked 24/48:
+  £150, 30 days), Evri (£20 basic cover, 28 days), USPS (DMM 609: $100 included, 60 days), UPS
+  (2026 tariff: $100, notice within 60 days of delivery) and FedEx ($100; 60 days for damage,
+  9 months for loss). Where a carrier publishes several windows, the shortest for the named
+  service is used.
+- DPD UK uses `default`. Only third-party pages were found for it, and they disagree, so we do
+  not guess (CLAUDE.md: do not guess).
+- A deadline that runs from delivery falls back to posting when there is no delivered scan. That
+  is earlier, so it is never late.
+- The template pack is written at once. The AI wording runs later in the worker
+  (`draft_recovery` job), so the buyer's "Not here" never waits on a model. A retried job does
+  not call the model twice.
+- Number check: tokens are normalised, so "£60" matches "£60.00" and "9:14" matches "09:14".
+  A sentence with any other number is dropped. Accusing words are dropped too (EX-02 guard).
+- US facts use the ZIP5, the US equivalent of a postcode district (hard rule 9). Facts never
+  hold the street address, the name or the buyer's free text.
 
 ## ADR-038 — Dispute evidence goes through the policy outbox
 

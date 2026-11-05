@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.explainer import ExplainContext, Explainer
 from app.cases.engine import ClaimReason, Confidence, FailurePoint, assess
+from app.cases.recovery import prepare_recovery
 from app.cases.scan_audit import audit_order
 from app.cases.signals import EvidenceKind, assemble_signals
 from app.clock import Clock
@@ -185,6 +186,8 @@ class CasePipeline:
             "explainer": explanation.model_dump(mode="json"),
         }
         s.flush()
+        if self.rulebook.carriers is not None:  # RC-01: claim back from a carrier at fault
+            prepare_recovery(s, case, decision, self.rulebook.carriers, self.clock)
 
         receipt = issue_receipt(
             s,

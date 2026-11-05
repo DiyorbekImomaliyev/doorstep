@@ -27,6 +27,7 @@ from app.orders.models import (
     Evidence,
     MoneyAction,
     Order,
+    Recovery,
     Seller,
     Shipment,
     TrackingEvent,
@@ -502,6 +503,85 @@ class MoneyView(BaseModel):
     refund_id: str | None
 
 
+class ClaimSentenceView(BaseModel):
+    text: str
+    fact_ids: list[str]
+
+
+class FactView(BaseModel):
+    id: str
+    kind: str
+    text: str
+
+
+class RecoveryView(BaseModel):
+    """RC-01..05: the carrier claim the seller can submit, and its status."""
+
+    recovery_id: str
+    case_id: str
+    status: str
+    carrier: str
+    carrier_name: str
+    carrier_known: bool  # False: the default entry; the seller checks the carrier's terms
+    failure_point: str
+    claim_minor: int
+    currency: str
+    cover_minor: int | None
+    deadline_at: datetime
+    window_days: int
+    terms_source: str
+    terms_url: str
+    terms_note: str
+    terms_rule: str
+    sentences: list[ClaimSentenceView]
+    facts: list[FactView]
+    pack_source: str
+    recovered_minor: int | None
+    submitted_at: datetime | None
+    resolved_at: datetime | None
+    actions: list[str]
+
+
+_RECOVERY_ACTIONS = {
+    "PREPARED": ["submitted", "withdraw"],
+    "SUBMITTED": ["paid", "refused"],
+}
+
+
+def recovery_view(r: Recovery) -> RecoveryView:
+    terms = r.terms or {}
+    pack = r.pack or {}
+    return RecoveryView(
+        recovery_id=r.id,
+        case_id=r.case_id,
+        status=r.status,
+        carrier=r.carrier,
+        carrier_name=str(terms.get("carrier_name") or r.carrier),
+        carrier_known=not terms.get("is_default", True),
+        failure_point=r.failure_point,
+        claim_minor=r.claim_minor,
+        currency=r.currency,
+        cover_minor=terms.get("cover_minor"),
+        deadline_at=r.deadline_at,
+        window_days=int(terms.get("window_days") or 0),
+        terms_source=str(terms.get("source") or ""),
+        terms_url=str(terms.get("terms_url") or ""),
+        terms_note=str(terms.get("note") or ""),
+        terms_rule=f"{terms.get('rule_id', '')} {terms.get('rule_version', '')}".strip(),
+        sentences=[ClaimSentenceView(**x) for x in pack.get("sentences", [])],
+        facts=[FactView(**x) for x in pack.get("facts", [])],
+        pack_source=str(pack.get("source") or "template"),
+        recovered_minor=r.recovered_minor,
+        submitted_at=r.submitted_at,
+        resolved_at=r.resolved_at,
+        actions=list(_RECOVERY_ACTIONS.get(r.status, [])),
+    )
+
+
+def case_recovery(s: Session, case_id: str) -> Recovery | None:
+    return s.scalars(select(Recovery).where(Recovery.case_id == case_id)).first()
+
+
 class CaseView(BaseModel):
     case_id: str
     state: str
@@ -515,6 +595,8 @@ class CaseView(BaseModel):
     receipts: int
     timeline: list[TimelineItem]
     disclaimer: str = "Information, not legal advice. The seller decides."
+    scan_audit: dict[str, Any] | None = None  # SA-01: verdict and checks of the latest decision
+    recovery: RecoveryView | None = None  # RC-01: the carrier claim, if any
 
 
 def case_view(s: Session, case: Case) -> CaseView:
@@ -575,4 +657,6 @@ def case_view(s: Session, case: Case) -> CaseView:
         actions=actions,
         receipts=receipts,
         timeline=timeline(s, order, for_buyer=False),
+        scan_audit=(d.signals.get("scan_audit") if d is not None else None),
+        recovery=recovery_view(rec) if (rec := case_recovery(s, case.id)) else None,
     )

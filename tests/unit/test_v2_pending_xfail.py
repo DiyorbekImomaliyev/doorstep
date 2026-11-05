@@ -7,41 +7,6 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.mark.xfail(strict=True, reason="RC-01: carrier recovery not built yet")
-def test_RC_01_pending():
-    raise AssertionError("not built")
-
-
-@pytest.mark.xfail(strict=True, reason="RC-02: carrier terms file not built yet")
-def test_RC_02_pending():
-    raise AssertionError("not built")
-
-
-@pytest.mark.xfail(strict=True, reason="RC-03: claim pack verifier not built yet")
-def test_RC_03_pending():
-    raise AssertionError("not built")
-
-
-@pytest.mark.xfail(strict=True, reason="RC-04: recovery transitions not built yet")
-def test_RC_04_pending():
-    raise AssertionError("not built")
-
-
-@pytest.mark.xfail(strict=True, reason="RC-05: seller recovery taps not built yet")
-def test_RC_05_pending():
-    raise AssertionError("not built")
-
-
-@pytest.mark.xfail(strict=True, reason="RC-06: recovery expiry sweep not built yet")
-def test_RC_06_pending():
-    raise AssertionError("not built")
-
-
-@pytest.mark.xfail(strict=True, reason="RC-07: healthz recovery wording not updated yet")
-def test_RC_07_pending():
-    raise AssertionError("not built")
-
-
 @pytest.mark.xfail(strict=True, reason="DE-01: dispute evidence job not built yet")
 def test_DE_01_pending():
     raise AssertionError("not built")

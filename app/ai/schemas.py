@@ -58,3 +58,16 @@ class AgentStep(BaseModel):
     ]
     reason: str = Field(max_length=200)
     dispute_id: str | None = Field(default=None, max_length=64)
+
+
+class DraftSentence(BaseModel):
+    """One sentence of a carrier claim and the fact ids it relies on (RC-03)."""
+
+    text: str = Field(min_length=1, max_length=400)
+    fact_ids: list[str] = Field(default_factory=list, max_length=8)
+
+
+class RecoveryDraft(BaseModel):
+    """What the claim-pack model must return: sentences that each cite facts (RC-03)."""
+
+    sentences: list[DraftSentence] = Field(min_length=1, max_length=14)

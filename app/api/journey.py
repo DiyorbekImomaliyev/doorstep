@@ -31,13 +31,17 @@ from app.api.views import (
     BuyerView,
     CaseView,
     OrderRow,
+    RecoveryView,
     buyer_view,
+    case_recovery,
     case_view,
     order_row,
+    recovery_view,
 )
 from app.cases.actions import CaseActions, seller_approver
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import BuyerActionError, CasePipeline
+from app.cases.recovery import RecoveryError, SellerMark, seller_mark
 from app.checkout.address import AddressChecker, AddressCheckResult
 from app.checkout.service import CheckoutError, CheckoutService, DeliveryQuote
 from app.db import Base
@@ -45,7 +49,7 @@ from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
 from app.mcp.server import MCP_SCOPE
 from app.money import Currency, Money
 from app.orders.enums import OrderState, ShippingMethod
-from app.orders.models import Case, Order, Seller
+from app.orders.models import Case, Order, Recovery, Seller
 from app.orders.schemas import Address
 from app.orders.state import IllegalTransition
 from app.policy.rules import RuleBook
@@ -145,10 +149,22 @@ class SealView(BaseModel):
     counted: bool
 
 
+class RecoveryMarkIn(BaseModel):
+    amount_minor: int | None = Field(default=None, ge=1)  # "paid" only
+
+
+class RecoverySummary(BaseModel):
+    """RC-05: money recovered from carriers and claims still open, per currency."""
+
+    recovered_minor: dict[str, int]
+    open_claims: int
+    open_claim_minor: dict[str, int]
+
+
 class SealReportIn(BaseModel):
-    reason: Literal[
-        ClaimReason.DAMAGED, ClaimReason.WRONG_ITEM, ClaimReason.MISSING_ITEM
-    ] = ClaimReason.DAMAGED
+    reason: Literal[ClaimReason.DAMAGED, ClaimReason.WRONG_ITEM, ClaimReason.MISSING_ITEM] = (
+        ClaimReason.DAMAGED
+    )
 
 
 class ChoiceIn(BaseModel):
@@ -570,6 +586,57 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     @router.get("/api/seller/{token}/cases/{case_id}", response_model=CaseView)
     def case_page(token: str, case_id: str, s: Db) -> CaseView:
         return case_view(s, _seller_case(s, _seller(s, token), case_id))
+
+    @router.get("/api/seller/{token}/cases/{case_id}/recovery", response_model=RecoveryView)
+    def recovery_page(token: str, case_id: str, s: Db) -> RecoveryView:
+        case = _seller_case(s, _seller(s, token), case_id)
+        recovery = case_recovery(s, case.id)
+        if recovery is None:
+            raise HTTPException(404, "no carrier claim for this case")
+        return recovery_view(recovery)
+
+    @router.post("/api/seller/{token}/cases/{case_id}/recovery/{mark}", response_model=RecoveryView)
+    def recovery_mark(
+        token: str, case_id: str, mark: SellerMark, s: Db, body: RecoveryMarkIn | None = None
+    ) -> RecoveryView:
+        """RC-05: Submitted / Carrier paid (amount) / Carrier refused / Withdraw, one tap each."""
+        seller = _seller(s, token)
+        recovery = case_recovery(s, _seller_case(s, seller, case_id).id)
+        if recovery is None:
+            raise HTTPException(404, "no carrier claim for this case")
+        try:
+            seller_mark(
+                s,
+                recovery,
+                mark,
+                actor=f"seller:{seller.id}",
+                now=deps.clock.now(),
+                amount_minor=body.amount_minor if body else None,
+            )
+        except RecoveryError as exc:
+            s.rollback()
+            raise HTTPException(422, str(exc)) from None
+        except IllegalTransition as exc:
+            s.rollback()
+            raise HTTPException(409, str(exc)) from None
+        s.commit()
+        return recovery_view(recovery)
+
+    @router.get("/api/seller/{token}/recoveries", response_model=RecoverySummary)
+    def recoveries(token: str, s: Db) -> RecoverySummary:
+        seller = _seller(s, token)
+        recovered: dict[str, int] = {}
+        open_minor: dict[str, int] = {}
+        open_claims = 0
+        for r in s.scalars(select(Recovery).where(Recovery.seller_id == seller.id)):
+            if r.status == "PAID":
+                recovered[r.currency] = recovered.get(r.currency, 0) + (r.recovered_minor or 0)
+            elif r.status in ("PREPARED", "SUBMITTED"):
+                open_claims += 1
+                open_minor[r.currency] = open_minor.get(r.currency, 0) + r.claim_minor
+        return RecoverySummary(
+            recovered_minor=recovered, open_claims=open_claims, open_claim_minor=open_minor
+        )
 
     @router.post("/api/seller/{token}/cases/{case_id}/{action}", response_model=ActionOut)
     def act(token: str, case_id: str, action: Literal["approve", "decline"], s: Db) -> ActionOut:

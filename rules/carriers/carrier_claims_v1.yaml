@@ -1,0 +1,75 @@
+# Carrier claim terms for carrier recovery (RC-01, RC-02, ADR-037). Code reads this file; it never
+# decides who is liable to the buyer (that is rules/*.yaml). Values were checked on each carrier's
+# own published terms on 2026-11-05. Where a carrier publishes several windows, the shortest one
+# for the service named in service_basis is used, so a seller never files late. A carrier whose
+# terms could not be confirmed on its own site (for example DPD UK) uses `default`.
+id: carrier_claims_v1
+kind: carrier_claims
+version: "2026-11-05"
+source: "Each carrier's published terms (source and terms_url per entry), checked 2026-11-05"
+disclaimer: >-
+  Carrier terms differ by service and account and change over time. Check the carrier's current
+  terms before filing; Doorstep prepares the claim and the seller submits it.
+carriers:
+  royal_mail:
+    name: Royal Mail
+    aliases: [royalmail, royal_mail_tracked]
+    service_basis: "Tracked 24 / Tracked 48, retail"
+    standard_cover_minor: {GBP: 15000}  # up to £150 or the item's value, whichever is lower
+    loss_window_days: 30  # Tracked 24/48: 30 calendar days from posting (80 for other services)
+    damage_window_days: 30
+    window_starts: posting
+    source: "Royal Mail retail compensation policy (damage and part loss); Tracked 48 product page"
+    terms_url: "https://www.royalmail.com/retail-compensation-policy-damage"
+  evri:
+    name: Evri
+    aliases: [hermes, hermes_uk, myhermes]
+    service_basis: "UK parcel services, basic cover"
+    standard_cover_minor: {GBP: 2000}  # basic cover up to £20 at no cost
+    loss_window_days: 28  # claims within 28 days of the order date for UK services
+    damage_window_days: 28
+    window_starts: posting
+    source: "Evri terms and conditions; Evri parcel cover guide"
+    terms_url: "https://www.evri.com/terms-and-conditions"
+  usps:
+    name: USPS
+    aliases: [us_postal_service, united_states_postal_service]
+    service_basis: "Priority Mail and Ground Advantage (insurance included)"
+    standard_cover_minor: {USD: 10000}  # up to $100 insurance included
+    loss_window_days: 60  # insured mail, lost: no sooner than 15 and no later than 60 days
+    damage_window_days: 60  # damaged or missing contents: no later than 60 days from mailing
+    window_starts: posting
+    source: "USPS Domestic Mail Manual 609 (filing indemnity claims); USPS Publication 122"
+    terms_url: "https://pe.usps.com/text/dmm300/609.htm"
+    note: "A claim for a lost parcel can be filed no sooner than 15 days after mailing."
+  ups:
+    name: UPS
+    aliases: [united_parcel_service]
+    service_basis: "US domestic, no declared value"
+    standard_cover_minor: {USD: 10000}  # liability up to $100 per package unless declared higher
+    loss_window_days: 60  # notice of claim within 60 days after delivery (domestic)
+    damage_window_days: 60
+    window_starts: delivery  # a lost parcel with no delivery scan counts from posting
+    source: "UPS Tariff/Terms and Conditions of Service, United States (claims and legal action)"
+    terms_url: "https://assets.ups.com/adobe/assets/urn:aaid:aem:90a58d70-5608-4385-baf8-da3503a67171/original/as/claims-legal-action-us-en.pdf"
+  fedex:
+    name: FedEx
+    aliases: [fedex_ground, fedex_express, federal_express]
+    service_basis: "US domestic, no declared value"
+    standard_cover_minor: {USD: 10000}  # liability limited to $100 per package unless declared
+    loss_window_days: 270  # undelivered or lost: within 9 months of the shipment date
+    damage_window_days: 60  # damaged or missing contents: 60 days from the shipment date (US)
+    window_starts: posting
+    source: "FedEx claims page; FedEx packing pledge (liability limit)"
+    terms_url: "https://www.fedex.com/en-us/customer-support/claims.html"
+  default:
+    name: Your carrier
+    aliases: []
+    service_basis: "Unknown carrier or service"
+    standard_cover_minor: {}  # unknown: the claim asks for the item value
+    loss_window_days: 14  # conservative: file within two weeks while you check the terms
+    damage_window_days: 14
+    window_starts: posting
+    source: "No confirmed terms for this carrier; check your carrier's claim terms before filing"
+    terms_url: ""  # none: the note asks the seller to check their carrier
+    note: "Doorstep has no confirmed terms for this carrier: check its claim window and cover."

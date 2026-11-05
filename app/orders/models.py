@@ -169,6 +169,30 @@ class Dispute(Base):
     opened_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
 
 
+class Recovery(Base):
+    """A claim the seller can make against the carrier (RC-01). Never moves PayPal money."""
+
+    __tablename__ = "recoveries"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), unique=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
+    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"), index=True)
+    decision_id: Mapped[str] = mapped_column(ForeignKey("decisions.id"))
+    carrier: Mapped[str] = mapped_column(String(64))  # as on the shipment
+    carrier_id: Mapped[str] = mapped_column(String(64))  # entry in carrier_claims_v1.yaml
+    failure_point: Mapped[str] = mapped_column(String(32))
+    claim_minor: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(16))
+    deadline_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    terms: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # ClaimTerms
+    pack: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # ClaimPack
+    recovered_minor: Mapped[int | None] = mapped_column(Integer)
+    submitted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
