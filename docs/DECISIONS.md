@@ -699,3 +699,17 @@ so it skips the lock. The unique `seq` stays as the last guard.
 **Trade-off.** Chain appends are serialised across the whole app, and a long transaction (a demo
 seed) holds the lock until it commits. Appends are rare and quick, so that is acceptable; a chain
 per seller would remove the contention later.
+
+## ADR-041 — Test-only signing secrets that gitleaks flags are ignored by exact fingerprint
+
+**Context.** The CI secrets job (gitleaks) failed on the v2 push. Its `generic-api-key` rule
+flagged two made-up `LinkSigner` secrets in unit tests (`test_sl_seal.py:38`,
+`test_de_dispute_evidence.py:62`): their hex suffix raised the entropy over the rule's threshold.
+Neither is a real key; signing keys come only from env vars (hard rule 10).
+**Decision.** `.gitleaksignore` lists exactly those two fingerprints (commit, file, rule, line).
+There is no path or rule-wide allowlist, so a real secret anywhere else, including later in these
+two files, still fails CI. New test secrets should use low-entropy words (for example
+`"test-signing-secret-0123456789"`), as the older tests do.
+**Trade-off.** Each new false positive needs its own fingerprint line, which is more friction
+than a path allowlist. That friction is deliberate: an allowlisted path would also hide a real
+leak.
