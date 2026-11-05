@@ -1,109 +1,123 @@
 # Doorstep — Devpost submission draft
 
-Fill every `[TODO]` with real numbers from the eval report. Never submit a number you did not
-measure. Official deadline (Devpost page): **Nov 12, 2026, 12:00pm PST = 11pm GMT+3**.
-Our target: submitted by the afternoon of Nov 12 (GMT+3).
+Only `[TODO]` items remain, and each needs the human (a link, a quote, a lived experience). Every
+number below was measured on the current commit; re-run `make test trace` before submitting and
+update them if they changed. Deadline (Devpost): **Nov 12, 2026, 12:00pm PST = 11pm GMT+3**.
+Target: submitted by the afternoon of Nov 12 (GMT+3).
 
 ## Required fields
 
 **Project name:** Doorstep
 
-**Elevator pitch (one or two sentences):**
-Doorstep is an AI delivery agent for small PayPal sellers and their buyers: it prevents failed
-deliveries at checkout, proves every handoff, and settles what still goes wrong fairly through
-PayPal, in minutes instead of weeks.
+**Elevator pitch:**
+When a parcel says "Delivered" but isn't there, Doorstep refunds the buyer through PayPal in
+minutes, proves who really had the parcel, and helps the honest seller claim the money back from
+the courier.
 
-**Public GitHub repo:** [TODO link] — must show the MIT `LICENSE` file at the root.
+**Public GitHub repo:** https://github.com/DiyorbekImomaliyev/doorstep (MIT `LICENSE` at the root;
+make it public after the secret scan in the checklist).
 
-**Demo video (under 3 minutes, showing the product actually working):** [TODO link]
+**Demo video (under 3 minutes):** [TODO link]
 
-**Live demo + judge's path:** [TODO Render URL] — the README opens with the 60-second table.
+**Live demo:** https://doorstep-ojmg.onrender.com (the README opens with a 60-second judge's path).
 
 **New or existing project:** New, built during the hackathon (Nov 2026).
 
-## Project story (Devpost sections)
+## Project story
 
 ### Inspiration
-In the UK, a record 15 million people had a problem with their latest parcel delivery. In the US,
-nearly 1 in 3 households had a package stolen last year, and 24% of retailers refused
-responsibility. In the UK and EU the law says the seller carries the risk until the buyer
-physically holds the package, so small sellers pay for failures they cannot see or prove.
-[TODO: one line from a real seller you spoke to.]
+In the UK, a record 15 million people had a problem with their latest delivery, and 43% of those
+then had a further problem trying to resolve it. UK law already says the seller carries the risk
+until the buyer physically holds the parcel (Consumer Rights Act 2015, s.29). A courier's
+"Delivered" scan wins every argument, so the buyer and the honest seller fight while the courier
+walks away. PayPal already refunds buyers; the unsolved part is that the wrong party pays.
+[TODO: one sentence from a real seller you spoke to, with their permission.]
 
 ### What it does
-- **Prevent:** fixes incomplete addresses and offers home, locker or signature inside PayPal
-  checkout, recommended by a risk model.
-- **Prove:** checks the packed item with vision AI, registers tracking on the PayPal payment, and
-  watches carrier events.
-- **Resolve:** when a buyer taps "Not here", it names the most likely failure point, applies the
-  UK/EU or US rule, and settles through PayPal: automatically under the seller's limit, with one
-  tap above it.
-- **Prove it was fair:** every money decision gets a signed receipt anyone can verify.
+- **Prevent:** fixes incomplete addresses inside PayPal checkout (PATCHed before capture) and
+  suggests home, locker or signature delivery from a calibrated risk model.
+- **Prove:** checks the packed item against the order, puts a possession seal (QR code) in the box
+  so the buyer confirms with one scan, and registers tracking on the PayPal payment.
+- **Resolve:** when the buyer taps "Not here", a deterministic engine names the likely failure
+  point, audits the courier's own "Delivered" scan, applies the UK/EU or US rule, and settles
+  through PayPal: automatically under the seller's limit, with one tap above it, never by accusing
+  the buyer. If a PayPal dispute is open, it sends the facts as dispute evidence instead.
+- **Recover:** for a courier fault it builds a claim pack in which every sentence cites a verified
+  fact, with the deadline from the carrier's terms.
+- **Prove it was fair:** every money decision gets an Ed25519-signed, hash-chained receipt that
+  anyone can verify.
 
 ### How we built it
-Spec-first with Claude Code: a written spec, then numbered acceptance criteria, then tests that
-cover every criterion, then code until the tests passed. Python/FastAPI on Render, Postgres,
-PayPal Orders, Payments, Shipment Tracking, Disputes and Webhooks; a bounded-autonomy agent on
-PayPal's Agent Toolkit; Claude for vision and explanations; XGBoost + SHAP for risk; AG Studio for
-the seller's Control Room; Bryntum Scheduler for the deadline radar.
-[TODO: test count, eval accuracy, red-team result.]
+Spec first, with Claude Code: a written spec, then numbered acceptance criteria, then a test for
+every criterion, then code until the tests passed. 1,108 unit and property tests pass; all 157
+acceptance criteria have a test; branch coverage is 100% on the money policy and the order state
+machine; mutation testing leaves no surviving logic mutants in the money path; Schemathesis finds no
+500s; 8 Playwright journeys run in a real browser. Python and FastAPI on Render with Postgres;
+PayPal Orders v2 through the PayPal Server SDK; Shipment Tracking, Refunds, Disputes and Webhooks
+over REST; a bounded agent on PayPal's Agent Toolkit; Claude for vision and explanations with
+Gemini as fallback; XGBoost with TreeSHAP reasons; React and AG Grid for the Control Room.
 
 ### Challenges we ran into
-[TODO: real ones, e.g. a sandbox behaviour that differed from the docs and how you handled it.]
+[TODO: a real one. Candidates from the logs: the Render worker's own env rows overriding the shared
+group (the live claim-pack model), and making a seller unable to fake a buyer's seal scan.]
 
 ### Accomplishments that we're proud of
-[TODO: e.g. "0 unsafe money actions across N property tests and 40 attack prompts".]
+Zero unsafe money actions: no code path outside the policy service can reach a PayPal write
+(proved by import contracts in CI), every write is idempotent, and property tests show refunds
+never exceed the capture.
 
 ### What we learned
 [TODO]
 
 ### What's next
-More regions (EU rule set is ready), real locker networks, carrier claim filing, and the same
-engine for high-value and perishable goods.
+The EU rule set (same possession law), real locker networks, carrier claim filing where carriers
+offer an API, and offering Doorstep to PayPal merchants as a native feature.
 
 ## Built with (tags)
-python, fastapi, postgresql, pgvector, paypal, paypal-agent-toolkit, paypal-ai-toolkit,
-claude, anthropic, langchain, xgboost, shap, react, ag-studio, ag-grid, bryntum, render, postman,
-apimatic, shippo, langfuse, deepeval, ragas, promptfoo, hypothesis, playwright
+python, fastapi, postgresql, sqlalchemy, pydantic, paypal, paypal-server-sdk,
+paypal-agent-toolkit, paypal-ai-toolkit, apimatic, langchain, claude, anthropic, gemini, xgboost,
+fastmcp, react, vite, ag-grid, shippo, render, hypothesis, schemathesis, playwright, mutmut
 
 ## Tools and how we used them
 
 | Tool | How we used it |
 |---|---|
-| PayPal Orders v2 | Delivery choice (home / locker / signature) as shipping options in checkout |
-| PayPal Payments | Captures and full or partial refunds, only through the policy service |
-| PayPal Shipment Tracking | Proof of shipment on every payment |
-| PayPal Disputes | Evidence submission when a dispute is already open |
-| PayPal Webhooks | Verified, deduplicated events drive the whole workflow |
-| PayPal Agent Toolkit | The runtime agent's PayPal tools, with an action allowlist |
-| PayPal AI Toolkit | Claude Code plugin during development; `/paypal:doctor` on every phase |
-| Claude (Anthropic) | Packing and damage photo checks; plain-English explanations; drafts |
-| XGBoost + SHAP | Delivery-risk score with reasons |
-| AG Studio + AG Grid | Seller Control Room: theme, custom widgets, custom agent with Studio's agents |
-| Bryntum Scheduler | Deadline radar for dispute and carrier-claim windows |
-| Render | Web service, worker, cron, Postgres, one-click deploy |
-| Postman | Public collection of the full loop with tests, run in CI |
-| APIMatic Context Plugin | Guided Claude Code when integrating the PayPal Server SDK |
-| Shippo (test mode) | Address validation and realistic carrier tracking events |
+| PayPal Orders v2 (Server SDK) | Delivery choice as shipping options; address PATCH before capture; capture |
+| PayPal Payments | Full or partial refunds, only through the policy service, with idempotency keys |
+| PayPal Shipment Tracking | Proof of shipment registered on every payment |
+| PayPal Disputes | `provide-evidence` with the facts when a dispute is already open |
+| PayPal Webhooks | Verified, deduplicated events drive capture, refunds and disputes |
+| PayPal Seller Protection | PayPal's own verdict on each capture, shown to the seller |
+| PayPal Agent Toolkit | The case agent's PayPal reads (LangChain adapter), with an action allowlist |
+| PayPal AI Toolkit | Claude Code plugin during development; `/paypal:doctor` checks |
+| APIMatic Context Plugin | Guided Claude Code through the APIMatic-generated PayPal Server SDK |
+| Claude (Anthropic) | Packing photo checks, explanations, buyer messages, claim-pack sentences |
+| Gemini | Automatic fallback when the main model is unavailable |
+| XGBoost | Delivery-risk score with exact TreeSHAP reasons in plain words |
+| AG Grid | The seller's Delivery Control Room |
+| Render | Web service, worker and Postgres from one `render.yaml` |
+| Shippo (test mode) | Address validation and carrier tracking events |
 
-**APIMatic plug-in question (answer honestly):** [TODO: what you used it for, e.g. "Claude Code
-used the APIMatic Context Plugin to build our Orders and Payments integration with the PayPal
-Server SDK, including retries and error handling."] Also send the free-subscription form.
+**APIMatic plug-in question:** [TODO: confirm in your own words, e.g. "Claude Code used the
+APIMatic Context Plugin to integrate Orders and Payments with the PayPal Server SDK, including
+error handling and retries."] Also send the free-subscription form.
 
 ## Prize categories to select
 Grand prize; Most impactful; Best demo delivery; Best use of PayPal + AI; Best use of agentic
-commerce; Best use of AG Grid; Best use of APIMatic; Best use of Bryntum; Best use of Render.
+commerce; Best use of AG Grid; Best use of APIMatic; Best use of Render.
+(Not Bryntum: the deadline radar was not built.)
 
-## Honest limits (also in README and video)
-Lockers and rerouting are simulated; carrier claims are drafted, not filed; the risk model is
-trained on synthetic data; rules are information, not legal advice.
+## Honest limits (also in the README and the video)
+Lockers and rerouting are simulated; carrier claim packs are prepared, not filed; carrier event
+locations in the seeded demo are simulated; the risk model is trained on synthetic data; AG Studio,
+Bryntum, Promptfoo and Ragas are not built; rules are information, not legal advice.
 
 ## Pre-submit checklist
-- [ ] Repo public, MIT `LICENSE` present, no secrets (gitleaks clean)
-- [ ] Video under 3:00, real clicks, refund shown from merchant and buyer sides, sources captioned
-- [ ] Live URL works in a private browser window; judge's path table tested by someone else
-- [ ] Postman collection link works; CI badge green
+- [ ] Full-history secret scan clean (`gitleaks detect` over all commits), then make the repo public
+- [ ] Video under 3:00, real clicks, refund shown from the merchant and buyer sides, sources captioned
+- [ ] Live URL works in a private browser window; judge's path tested by someone else
+- [ ] CI green on the final commit
 - [ ] `/paypal:doctor` clean on the final commit
-- [ ] Every number in this file comes from `evals/report.md`
+- [ ] Every number in this file re-measured on the final commit
 - [ ] All tools listed with how they were used; APIMatic question answered
 - [ ] Submitted, and the confirmation page saved
