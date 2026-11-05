@@ -484,10 +484,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return view
 
     @router.post("/api/buyer/{token}/got-it", response_model=BuyerView)
-    def got_it(token: str, s: Db) -> BuyerView:
+    def got_it(token: str, request: Request, s: Db) -> BuyerView:
         order = _order(s, token)
+        actor = SELLER_BROWSER if _from_seller_browser(request, order) else BUYER  # SL-08
         try:
-            _pipeline(s).confirm_received(order)
+            _pipeline(s).confirm_received(order, actor=actor)
         except BuyerActionError as exc:
             raise HTTPException(409, str(exc)) from None
         s.commit()

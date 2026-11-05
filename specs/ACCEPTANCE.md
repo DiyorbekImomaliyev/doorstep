@@ -294,6 +294,9 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   with reason `seller_browser`, and the audit trail names the seller's browser as the actor. A
   forged, expired or other-seller cookie changes nothing. A later scan from another device still
   counts.
+- SL-08 A "Got it" from the seller's own browser (the same SL-07 cookie, on the buyer's tracking
+  link) is recorded with the seller's browser as the actor, and no confirmation from the seller's
+  browser fills the "possession proof" part of the evidence meter.
 
 ## SA — Delivered-scan audit (SPEC section 7a.2)
 - SA-01 Every case gets a scan audit with verdict `contradicted`, `consistent`, `unverified` or

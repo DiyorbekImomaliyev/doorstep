@@ -763,3 +763,9 @@ the only retry. A timeout raises `ProviderDown`, so the order is primary → fal
 **Trade-off.** A transient 529 on Anthropic now goes straight to Gemini instead of retrying, and a
 very long claim pack could hit the bound and use its template. Moving the explainer to a worker job
 would remove the wait entirely but changes the locked report contract; not done in the hackathon.
+
+**Addendum (SL-08, Nov 5).** A screenshot showed the evidence meter at 100% after the seller's own
+"I have it": the scan did not count, but the confirmation row filled "possession proof". The meter
+now ignores confirmations whose source is the seller's browser, and "Got it" on the buyer's
+tracking link (which the seller can open from the Control Room) uses the same cookie check, so the
+audit trail names the seller's browser. The order still moves to "Received" (ADR-042 trade-off).

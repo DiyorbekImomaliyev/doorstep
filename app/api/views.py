@@ -110,7 +110,18 @@ class EvidenceScore(BaseModel):
 
 
 def evidence_completeness(s: Session, order: Order) -> EvidenceScore:
-    kinds = set(s.scalars(select(Evidence.kind).where(Evidence.order_id == order.id)))
+    rows = s.execute(
+        select(Evidence.kind, Evidence.ai_result).where(Evidence.order_id == order.id)
+    ).all()
+    # SL-08: a confirmation from the seller's own browser is not the buyer's.
+    kinds = {
+        kind
+        for kind, result in rows
+        if not (
+            kind == EvidenceKind.BUYER_CONFIRMATION.value
+            and (result or {}).get("source") == SELLER_BROWSER
+        )
+    }
     shipment = latest_shipment(s, order.id)
     delivered = False
     if shipment is not None:
