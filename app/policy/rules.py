@@ -72,6 +72,9 @@ class RuleSet(_RuleBase):
     when_no_possession_proof: OutcomeSpec
     when_possession_proven: OutcomeSpec
     policy_text: StrictStr = ""  # RAG / explanations only; never read by evaluate()
+    # SA-04: whether a delivered scan the carrier's own data contradicts still counts as proof.
+    contradicted_scan_counts_as_proof: bool = True
+    buyer_rights: StrictStr = ""  # RT-01: shown to the buyer after "Not here"; never decides
     disclaimer: StrictStr = Field(min_length=1)
 
     def matches(self, buyer_country: str, buyer_type: BuyerType) -> bool:
@@ -85,7 +88,11 @@ class RuleSet(_RuleBase):
         all_required = bool(self.proof_required) and set(self.proof_required) <= proofs
         return any_one or all_required
 
-    def evaluate(self, proofs: frozenset[ProofKind]) -> LiabilityOutcome:
+    def evaluate(
+        self, proofs: frozenset[ProofKind], *, scan_contradicted: bool = False
+    ) -> LiabilityOutcome:
+        if scan_contradicted and not self.contradicted_scan_counts_as_proof:
+            proofs = proofs - {ProofKind.DELIVERED_SCAN}  # SA-04
         proven = self.possession_proven(proofs)
         spec = self.when_possession_proven if proven else self.when_no_possession_proof
         return LiabilityOutcome(

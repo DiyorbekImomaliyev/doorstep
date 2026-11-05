@@ -31,6 +31,7 @@ from app.orders.models import (
     TrackingEvent,
 )
 from app.proof.models import Receipt
+from app.proof.seal import counted_scan
 from app.worker.simulated import SIMULATED_STATUS, is_simulated
 
 _OPEN_CASE = [s.value for s in CaseState if s not in (CaseState.SETTLED, CaseState.CLOSED)]
@@ -133,7 +134,9 @@ def evidence_completeness(s: Session, order: Order) -> EvidenceScore:
         "packing photo": EvidenceKind.PACKING_PHOTO.value in kinds,
         "tracking": shipment is not None,
         "delivered scan": delivered or order.state == OrderState.PICKED_UP.value,
-        "possession proof": bool(kinds & _POSSESSION) or order.state == OrderState.PICKED_UP.value,
+        "possession proof": bool(kinds & _POSSESSION)
+        or order.state == OrderState.PICKED_UP.value
+        or counted_scan(s, order.id) is not None,
     }
     present = [k for k, ok in checks.items() if ok]
     missing = [k for k, ok in checks.items() if not ok]
@@ -289,6 +292,8 @@ class BuyerView(BaseModel):
     # Where the parcel got to before any case: drives the progress bar, so a "Not here" report
     # never shows the parcel as received.
     progress_state: str = ""
+    # RT-01: the rule file's buyer_rights text, once the buyer has reported a problem.
+    rights: str = ""
 
 
 _CASE_STATES = {OrderState.CASE_OPEN.value, OrderState.RESOLVED.value}

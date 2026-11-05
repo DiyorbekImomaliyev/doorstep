@@ -44,13 +44,23 @@ from app.db import Base
 from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
 from app.mcp.server import MCP_SCOPE
 from app.money import Currency, Money
-from app.orders.enums import ShippingMethod
+from app.orders.enums import OrderState, ShippingMethod
 from app.orders.models import Case, Order, Seller
 from app.orders.schemas import Address
 from app.orders.state import IllegalTransition
 from app.policy.rules import RuleBook
 from app.policy.service import PolicyError
 from app.proof.receipts import VerifyReport, verify_chain
+from app.proof.seal import (
+    SEAL_SCOPE,
+    SealError,
+    counted_scan,
+    issue_seal,
+    record_scan,
+    seal_scans,
+    seal_svg,
+    seal_url,
+)
 from app.security.links import InvalidLink
 from app.shipping.packing import PackingError, PackingService
 from app.shipping.service import ShippingError, ShippingService
@@ -113,6 +123,32 @@ class ReportOut(BaseModel):
     case_id: str
     status: str
     message: str
+    rights: str = ""  # RT-01: the matching rule file's buyer_rights text
+
+
+class SealCardOut(BaseModel):
+    """SL-01: what the seller prints (QR on the packing slip, or the URL on an NFC sticker)."""
+
+    order_ref: str
+    url: str
+    svg: str
+
+
+class SealView(BaseModel):
+    """SL-02: item and seller only; never the address."""
+
+    order_ref: str
+    item: str
+    seller_name: str
+    status: Literal["not_shipped", "ready", "confirmed", "case_open"]
+    scanned: bool
+    counted: bool
+
+
+class SealReportIn(BaseModel):
+    reason: Literal[
+        ClaimReason.DAMAGED, ClaimReason.WRONG_ITEM, ClaimReason.MISSING_ITEM
+    ] = ClaimReason.DAMAGED
 
 
 class ChoiceIn(BaseModel):
@@ -238,6 +274,37 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             rulebook,
             deps.clock,
             deps.settings,
+        )
+
+    def _seal_order(s: Session, token: str) -> Order:
+        order = s.get(Order, _subject(token, SEAL_SCOPE))
+        if order is None:
+            raise HTTPException(404, "not found")
+        return order
+
+    def _rights(order: Order) -> str:
+        rule = rulebook.select(order.buyer_country)
+        return rule.buyer_rights if rule is not None else ""
+
+    def _seal_view(s: Session, order: Order) -> SealView:
+        seller = s.get(Seller, order.seller_id)
+        state = OrderState(order.state)
+        status: Literal["not_shipped", "ready", "confirmed", "case_open"]
+        if state in (OrderState.CREATED, OrderState.PAID, OrderState.PACKED):
+            status = "not_shipped"
+        elif state in (OrderState.CASE_OPEN, OrderState.RESOLVED):
+            status = "case_open"
+        elif state == OrderState.CONFIRMED:
+            status = "confirmed"
+        else:
+            status = "ready"
+        return SealView(
+            order_ref=order.id[:8].upper(),
+            item=order.item_description or "Your order",
+            seller_name=seller.name if seller else "",
+            status=status,
+            scanned=bool(seal_scans(s, order.id)),
+            counted=counted_scan(s, order.id) is not None,
         )
 
     def _buyer_url(token: str) -> str:
@@ -368,7 +435,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
 
     @router.get("/api/buyer/{token}", response_model=BuyerView)
     def buyer(token: str, s: Db) -> BuyerView:
-        return buyer_view(s, _order(s, token))
+        order = _order(s, token)
+        view = buyer_view(s, order)
+        if view.case_open:
+            view.rights = _rights(order)
+        return view
 
     @router.post("/api/buyer/{token}/got-it", response_model=BuyerView)
     def got_it(token: str, s: Db) -> BuyerView:
@@ -389,7 +460,49 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             raise HTTPException(409, str(exc)) from None
         s.commit()
         return ReportOut(
-            case_id=report.case_id, status=report.route.value, message=report.buyer_message
+            case_id=report.case_id,
+            status=report.route.value,
+            message=report.buyer_message,
+            rights=_rights(order),
+        )
+
+    # ------------------------------------------------------------ possession seal (SL)
+
+    @router.get("/api/seal/{token}", response_model=SealView)
+    def seal_page(token: str, s: Db) -> SealView:
+        return _seal_view(s, _seal_order(s, token))
+
+    @router.post("/api/seal/{token}/confirm", response_model=SealView)
+    def seal_confirm(token: str, s: Db) -> SealView:
+        """SL-03: "I have it". The scan is recorded even when the order can't be confirmed."""
+        order = _seal_order(s, token)
+        try:
+            record_scan(s, order, deps.clock.now())
+        except SealError as exc:
+            raise HTTPException(409, str(exc)) from None
+        try:
+            _pipeline(s).confirm_received(order, actor="buyer_seal")
+        except BuyerActionError:
+            pass  # e.g. a case is already open: the scan still stands as evidence
+        s.commit()
+        return _seal_view(s, order)
+
+    @router.post("/api/seal/{token}/report", response_model=ReportOut)
+    def seal_report(token: str, body: SealReportIn, s: Db) -> ReportOut:
+        """SL-06: "Something's wrong" from the same scan: the buyer holds the parcel."""
+        order = _seal_order(s, token)
+        try:
+            record_scan(s, order, deps.clock.now())
+            report = _pipeline(s).report(order, ClaimReason(body.reason), reported_by=BUYER)
+        except (SealError, BuyerActionError) as exc:
+            s.rollback()
+            raise HTTPException(409, str(exc)) from None
+        s.commit()
+        return ReportOut(
+            case_id=report.case_id,
+            status=report.route.value,
+            message=report.buyer_message,
+            rights=_rights(order),
         )
 
     @router.post("/api/buyer/{token}/agent-link", response_model=AgentLinkOut)
@@ -446,6 +559,13 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         order = _seller_order(s, _seller(s, token), order_id)
         buyer_token = services.links.issue(order.id, scope=BUYER)
         return {"buyer_token": buyer_token, "buyer_url": _buyer_url(buyer_token)}
+
+    @router.get("/api/seller/{token}/orders/{order_id}/seal", response_model=SealCardOut)
+    def seal_card(token: str, order_id: str, s: Db) -> SealCardOut:
+        """SL-01: the seal to print inside the parcel (same URL works on an NFC sticker)."""
+        order = _seller_order(s, _seller(s, token), order_id)
+        url = seal_url(services.app_base_url, issue_seal(services.links, order.id))
+        return SealCardOut(order_ref=order.id[:8].upper(), url=url, svg=seal_svg(url))
 
     @router.get("/api/seller/{token}/cases/{case_id}", response_model=CaseView)
     def case_page(token: str, case_id: str, s: Db) -> CaseView:

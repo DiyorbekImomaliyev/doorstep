@@ -5,14 +5,16 @@ id: us_seller_policy_v1
 kind: liability
 region: US
 source: "Seller written delivery policy (demo seller defaults); no single US rule — SPEC section 6"
-version: "2026-11-04"
+version: "2026-11-06"  # seal proof, contradicted scans (ADR-035/036)
 applies_if:
   buyer_country: [US]
   buyer_type: consumer
 # Possession is proven when ALL of proof_required are present ...
 proof_required: [delivered_scan, delivery_photo]
 # ... or when ANY ONE of these stronger proofs is present.
-possession_proof: [signature, locker_pickup_code]
+possession_proof: [signature, locker_pickup_code, buyer_seal_scan]
+# A delivered scan that the carrier's own data contradicts is not proof of delivery (SA-04).
+contradicted_scan_counts_as_proof: false
 when_no_possession_proof:
   liable_party: seller
   recommended_fix: [refund, reship]
@@ -25,4 +27,7 @@ policy_text: >-
   We ship with tracking. A package counts as delivered when the carrier shows a delivered scan
   and a delivery photo, or when it was signed for or picked up from a locker with your code.
   If it did not arrive, we refund or reship.
+buyer_rights: >-
+  This seller's written delivery policy decides what happens next, and the seller will reply
+  here. If it is not resolved, you can still open a dispute with PayPal.
 disclaimer: "Information, not legal advice. Seller decides."

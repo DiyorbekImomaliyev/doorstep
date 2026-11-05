@@ -72,7 +72,12 @@ class EngineResult(BaseModel):
 
 # Proofs that the buyer (or someone they chose) physically received the parcel.
 POSSESSION_PROOFS = frozenset(
-    {ProofKind.SIGNATURE, ProofKind.LOCKER_PICKUP_CODE, ProofKind.PHOTO_AT_BUYER_ADDRESS}
+    {
+        ProofKind.SIGNATURE,
+        ProofKind.LOCKER_PICKUP_CODE,
+        ProofKind.PHOTO_AT_BUYER_ADDRESS,
+        ProofKind.BUYER_SEAL_SCAN,
+    }
 )
 
 _SIGNAL_TEXT = {
@@ -83,7 +88,7 @@ _SIGNAL_TEXT = {
     "no_delivered_scan_and_stale": "no delivered scan and tracking went stale",
     "delivered_scan_without_possession_proof": "delivered scan but no proof of possession",
     "delivered_scan": "carrier scanned the parcel as delivered",
-    "possession_proof": "proof of possession (signature, locker code or doorstep photo)",
+    "possession_proof": "proof of possession (signature, locker code, doorstep photo or seal scan)",
     "buyer_photo_shows_damage": "buyer photo shows damage",
     "buyer_photo_shows_no_damage": "buyer photo shows no damage",
     "packing_match": "packing photo matched the order",

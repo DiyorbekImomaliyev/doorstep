@@ -31,6 +31,7 @@ class EvidenceKind(StrEnum):
     LOCKER_CODE = "locker_code"
     DOORSTEP_PHOTO = "doorstep_photo"  # carrier photo at the buyer's address
     BUYER_CONFIRMATION = "buyer_confirmation"  # "Got it" (BC-02)
+    SEAL_SCAN = "seal_scan"  # ai_result: {counted, reason} (SL-03, SL-04)
 
 
 _PROOF_BY_KIND = {
@@ -66,6 +67,8 @@ def assemble_signals(
         )
 
     proofs = {_PROOF_BY_KIND[e.kind] for e in evidence if e.kind in _PROOF_BY_KIND}
+    if any(e.kind == EvidenceKind.SEAL_SCAN.value and e.ai_result.get("counted") for e in evidence):
+        proofs.add(ProofKind.BUYER_SEAL_SCAN)  # SL-04: only a scan after carrier handover counts
     if order.state == OrderState.PICKED_UP.value:  # picked up from a locker with the code
         proofs.add(ProofKind.LOCKER_PICKUP_CODE)
     delivered = any(e.status == "DELIVERED" for e in events)

@@ -27,6 +27,7 @@ class Reason(StrEnum):
     DAILY_CAP_REACHED = "daily_cap_reached"
     OVER_AUTO_APPROVE_LIMIT = "over_auto_approve_limit"
     AUTO_REFUND = "auto_refund"
+    SCAN_CONTRADICTED = "scan_contradicted"  # informational: SA-04 removed the delivered scan
     # Pre-refund re-check refusals (PO-12).
     CASE_FINISHED = "case_finished"
     DISPUTE_OPENED = "dispute_opened"
@@ -58,6 +59,9 @@ MESSAGES: dict[Reason, str] = {  # pragma: no mutate
     Reason.DAILY_CAP_REACHED: "daily refund cap {cap} reached: seller approves",  # pragma: no mutate
     Reason.OVER_AUTO_APPROVE_LIMIT: "over auto-approve limit {limit}: seller approves",  # pragma: no mutate
     Reason.AUTO_REFUND: "at or under auto-approve limit {limit}: automatic refund",  # pragma: no mutate
+    Reason.SCAN_CONTRADICTED: (  # pragma: no mutate
+        "the carrier's own data contradicts its delivered scan: not proof of delivery"  # pragma: no mutate
+    ),  # pragma: no mutate
     Reason.CASE_FINISHED: "case is {state}: no money moves",  # pragma: no mutate
     Reason.DISPUTE_OPENED: "a PayPal dispute opened after the decision",  # pragma: no mutate
     Reason.EVIDENCE_CHANGED: "evidence changed since the decision",  # pragma: no mutate

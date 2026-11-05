@@ -77,6 +77,8 @@ class CaseFacts(BaseModel):
     proofs: frozenset[ProofKind] = frozenset()
     claim_amount: Money
     preferred_fix: Fix = Fix.REFUND
+    # SA-04: the delivered-scan audit found the carrier's own data contradicts the scan.
+    scan_contradicted: bool = False
 
 
 class Approver(BaseModel):
@@ -249,7 +251,11 @@ class PolicyService:
 
         transition_case(s, case, CaseState.DECIDED, actor="policy", reason="decision recorded")
         rule = self.rulebook.select(facts.buyer_country, facts.buyer_type)
-        outcome = rule.evaluate(facts.proofs) if rule is not None else None
+        outcome = (
+            rule.evaluate(facts.proofs, scan_contradicted=facts.scan_contradicted)
+            if rule is not None
+            else None
+        )
         fix = facts.preferred_fix
         remaining = _remaining_refundable(s, order)
         refund = (
@@ -258,6 +264,9 @@ class PolicyService:
             else _order_money(order, min(facts.claim_amount.amount_minor, remaining.amount_minor))
         )
         notes: list[tuple[Reason, str]] = []
+        scan_discounted = rule is not None and not rule.contradicted_scan_counts_as_proof
+        if facts.scan_contradicted and scan_discounted:
+            notes.append((Reason.SCAN_CONTRADICTED, message(Reason.SCAN_CONTRADICTED)))
         route = self._route(case, order, seller, result, outcome, rule is not None, refund, notes)
         codes = [code for code, _ in notes]
         reasons = [*result.reasons, *(text for _, text in notes)]

@@ -3,12 +3,13 @@ id: uk_possession_v1
 kind: liability
 region: GB
 source: "Consumer Rights Act 2015 s.29 — https://www.legislation.gov.uk/ukpga/2015/15/section/29"
-version: "2026-11-04"
+version: "2026-11-06"  # added buyer_seal_scan (ADR-035)
 applies_if:
   buyer_country: [GB]
   buyer_type: consumer
 # Any one of these proves the buyer (or a person they chose) physically holds the goods.
-possession_proof: [signature, locker_pickup_code, photo_at_buyer_address]
+# buyer_seal_scan: the seal inside the parcel was scanned after carrier handover (ADR-035).
+possession_proof: [signature, locker_pickup_code, photo_at_buyer_address, buyer_seal_scan]
 when_no_possession_proof:
   liable_party: seller
   recommended_fix: [refund, reship]
@@ -17,4 +18,8 @@ when_possession_proven:
   liable_party: buyer
   recommended_fix: []
   also: ask_for_more_information_seller_decides
+buyer_rights: >-
+  Under the Consumer Rights Act 2015 (section 29), the seller is responsible for your order until
+  you, or someone you chose, physically hold it. You do not need to contact the courier: the
+  seller deals with them.
 disclaimer: "Information, not legal advice. Seller decides."

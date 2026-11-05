@@ -46,6 +46,7 @@ class ProofKind(StrEnum):
     PHOTO_AT_BUYER_ADDRESS = "photo_at_buyer_address"
     DELIVERED_SCAN = "delivered_scan"
     DELIVERY_PHOTO = "delivery_photo"
+    BUYER_SEAL_SCAN = "buyer_seal_scan"  # the buyer scanned the seal inside the parcel (ADR-035)
 
 
 class Fix(StrEnum):
