@@ -8,6 +8,8 @@ Doorstep is an AI delivery agent for small PayPal sellers and their buyers: it p
 
 **One-line pitch:** "In the UK, 15 million people had a problem with their last parcel; in the US, nearly 1 in 3 households had one stolen. Doorstep stops those failures, proves who had the package, and settles the money fairly with PayPal."
 
+**v2 focus (Nov 5):** the liability router in section 7a: possession proven by the buyer's phone (seal), the carrier's "Delivered" scan audited against its own data, carrier recovery packs with verified facts, and PayPal dispute evidence sent end to end.
+
 **Mission:** no buyer loses money and no honest seller pays for a delivery failure they could not see or prove.
 
 **Hackathon scope (Nov 4–12, 2026):** a working end-to-end build in the PayPal sandbox and Shippo test mode, for UK and US orders, covering four stages:
@@ -179,6 +181,104 @@ The engine names the most likely failure point from several signals, then a code
 **Engine is code:** the failure-point engine is deterministic, with weights from `tuning/engine_config.py`; it never calls a model. Outcomes that would blame the buyer (bad address after a buyer override, stolen after safe delivery) go to the seller (`AWAITING_SELLER`) with the explanation; never an automatic denial.
 
 **Confidence:** the engine reports a confidence label (high / medium / low) with its reasons; low confidence always routes to a human.
+
+## 7a. Liability router: possession seal, delivered-scan audit, carrier recovery (v2, Nov 5)
+
+Research (docs/DECISIONS.md ADR-035..039) showed that refunding the buyer is the easy part: PayPal
+Buyer Protection already does it. The unsolved part is that the **wrong party pays**. A carrier's
+"Delivered" scan wins every argument, the honest seller absorbs the loss, and nobody can cheaply
+prove physical possession, which is exactly what the law (CRA 2015 s.29) turns on. v2 routes the
+loss to the party that actually failed.
+
+**One-line pitch (v2):** "When a parcel says Delivered but isn't there, the buyer and the seller
+fight while the carrier walks away. Doorstep refunds the buyer in minutes, proves who really had the
+parcel, and makes the carrier pay, using the carrier's own tracking data as evidence."
+
+**1. Possession seal (the buyer's phone is the hardware).** Each shipped order gets a seal: a QR
+code printed on the packing slip inside the parcel ("Opened it? Scan to confirm"). The same URL
+can sit on an NFC sticker, which phones open natively, so it needs no extra code. The URL holds a
+signed token scoped `seal` to one order.
+
+- Scanning opens a page with two actions:
+  - "I have it": records possession;
+  - "Something's wrong": damaged, wrong item or something missing, which opens a case.
+- No app, no login, no typing, no location tracking.
+- A scan counts as possession proof (`buyer_seal_scan`) only after the carrier has handled the
+  parcel, i.e. a transit, delivered, failure or returned event exists at or before the scan. An
+  earlier scan (e.g. by the seller while packing) is recorded but not counted.
+- The rule files list `buyer_seal_scan` as possession proof. A counted scan followed by
+  "Not here" routes to the seller (`AWAITING_SELLER`), never to an automatic denial (FE-11).
+- Why not GPS trackers: a location at the address is not possession (porch theft happens at the
+  address), and trackers cost money, need batteries in the post and raise privacy issues.
+
+**2. Delivered-scan audit (deterministic code, no model).** Every case with carrier events gets an
+audit of the carrier's own data:
+
+| Check | Contradicts the "Delivered" claim when | Unknown when |
+| --- | --- | --- |
+| Location | The delivered event's postcode district (UK) or ZIP5 (US) differs from the order's | No location, or the Shippo test carrier (sample data) |
+| Sequence | "Delivered" comes before any transit event, or lies in the future | Too few events |
+| Batch scan | At least `SCAN_AUDIT_BATCH_MIN` of the seller's parcels to different districts are marked delivered within `SCAN_AUDIT_BATCH_WINDOW_S` | Fewer events |
+| Reported soon (context only) | Never contradicts; reported when "Not here" arrives within `SCAN_AUDIT_REPORT_SOON_H` of the scan | — |
+
+- Verdict:
+  - `contradicted`: any check contradicts;
+  - `consistent`: possession is proven (seal, signature or locker code);
+  - `unverified`: a delivered scan without possession proof;
+  - `no_scan`: no delivered scan at all.
+- The audit is stored on the decision. A rule file with `contradicted_scan_counts_as_proof: false`
+  (the US seller policy) does not count a contradicted delivered scan as proof of delivery.
+  Thresholds live in `tuning/engine_config.py`.
+
+**3. Carrier recovery (AI drafts, code verifies, the seller submits).** A seller-liable case whose
+failure point is a carrier fault (`CARRIER_LOST`, `DAMAGED_IN_TRANSIT`) gets a recovery:
+
+- the carrier;
+- the claim amount: the item value, capped by the carrier's standard cover;
+- the deadline from `rules/carriers/carrier_claims_v1.yaml`. That file has its own strict loader,
+  a source per carrier, and startup fails if it is invalid. Its `default` entry tells the seller
+  to check their carrier's terms.
+
+The claim pack is built from **facts** that code assembles: tracking events, audit findings, the
+PayPal capture value, the packing photo and the carrier terms. Only the postcode district is used,
+never the address, and never the buyer's free text.
+
+- The configured model writes sentences, and each sentence must cite fact ids.
+- A sentence citing an unknown fact, or containing a number that is not in its cited facts, is
+  dropped. This is chain-of-verification done in code.
+- Invalid output gets one retry, then a template built only from the facts.
+
+Recovery status changes only through its own transition table, with an audit row for each change:
+
+| From | To |
+| --- | --- |
+| PREPARED | SUBMITTED, WITHDRAWN, EXPIRED |
+| SUBMITTED | PAID, DENIED |
+| PAID, DENIED, WITHDRAWN, EXPIRED | — (terminal) |
+
+The seller taps "Submitted" (on the carrier's site), "Carrier paid" (amount at most the claim) or
+"Carrier refused". The cron sweep expires prepared recoveries past their deadline. Filing on carrier
+portals stays out of scope: Doorstep prepares and tracks, and the seller submits.
+
+**4. PayPal dispute evidence, wired end to end.** A case in `DISPUTE_EVIDENCE` offers "Send evidence
+to PayPal".
+
+- The seller's tap makes the policy service create one `EVIDENCE` money action (unique per
+  decision) and a job carrying a `PayPal-Request-Id`.
+- The job calls `POST /v1/customer/disputes/{id}/provide-evidence` with `PROOF_OF_FULFILLMENT`,
+  the carrier and tracking number, and notes. The notes hold only facts: tracking events, the
+  seal scan time, the audit verdict and the receipt verify link. No address and no accusation.
+- Retries reuse the request id, and each submission writes a signed receipt.
+- Only `app/policy` calls the dispute write.
+
+**5. Counterfactual and prevention.** Each decision states which proof from the rule file would
+have changed the liable party ("a seal scan, signature or locker pickup would have made this the
+buyer's risk"). The seller sees prevention suggestions computed in code from their own
+seller-liable cases: delivery method and value band.
+
+**6. Buyer rights card.** After "Not here" the buyer sees the rule file's `buyer_rights` text. In
+the UK: the seller is responsible until you hold the parcel (s.29), so you don't need to contact
+the courier.
 
 ## 8. System architecture and data model
 
@@ -414,13 +514,13 @@ The demo runs one seeded scenario (`make demo`) on the live Render deployment, u
 
 | Time | Scene | What viewers see | Proof shown on screen |
 | --- | --- | --- | --- |
-| 0:00–0:20 | The problem | "In the UK, 15 million people had a problem with their last parcel. In the US, nearly 1 in 3 households had one stolen. In the UK and EU, the seller pays until the buyer holds the package." | Source captions |
-| 0:20–0:50 | Prevent | Sam's checkout: missing flat number fixed; Sam picks a locker inside the PayPal flow | PayPal sandbox order with shipping option |
-| 0:50–1:10 | Prove | Maria's photo: AI catches a blue jacket instead of black before shipping | Vision result with reasons |
-| 1:10–1:35 | Watch | Failed attempt event arrives; Sam picks rebook in one tap | Shippo test event (`SHIPPO_FAILURE`) |
-| 1:35–2:15 | Resolve (UK) | "Delivered" scan, no possession proof, Sam taps "Not here": rule UK s.29 → refund + carrier claim letter; Maria taps Approve; PayPal refund completes | Rule id on screen; PayPal refund id |
-| 2:15–2:35 | Fairness | "Empty box" claim contradicts weight + photo → held for review, not denied | Evidence timeline |
-| 2:35–3:00 | Control Room + engineering | AG Grid Control Room; architecture; eval results (accuracy, 0 unsafe actions); Deploy-to-Render button | Eval report, CI badge |
+| 0:00–0:20 | The problem | "Delivered" is not delivered. 15 million UK parcel problems; 31% of shoppers told to contact the courier even though the seller is responsible; the honest seller pays and the carrier walks away | Source captions |
+| 0:20–0:45 | Prevent + prove | Sam's checkout fixes the flat number inside PayPal; Maria's packing photo catches the wrong colour; the seal goes in the box | PayPal sandbox order; vision result |
+| 0:45–1:15 | "Not here" | Sam taps "Not here"; his rights card says he doesn't need to chase the courier; Maria approves; the PayPal refund completes | Real sandbox refund id |
+| 1:15–1:45 | The scan audit | The carrier's "Delivered" scan came from another postcode district, in the same minute as two of Maria's other parcels (simulated data, labelled) | Audit checks on the case page |
+| 1:45–2:10 | Recovery | The claim pack: every sentence linked to a fact, the deadline from the carrier's terms; Maria taps Submitted; the Control Room shows money recovered | Pack with fact chips; rule file |
+| 2:10–2:35 | The other side: possession proven | A US buyer scanned the seal, then opened a PayPal dispute; Maria taps "Send evidence to PayPal": seal scan time, tracking, signed receipt; nothing accuses the buyer | provide-evidence call; receipt verify |
+| 2:35–3:00 | Control Room + engineering | Scan a real seal with a phone; Control Room KPIs; tests, evals, 0 unsafe money actions; Deploy to Render | CI badge, `/verify`, `/healthz` |
 
 **Recording rules:** real clicks only (no mock screens), captions for every figure with its source, honest-limits slide is shown, final cut under 3:00. Judge's path: the README opens with a 60-second table: live URL, a one-command scratch scenario per judge (no login, never touches the filmed demo data), offline \`make test && make demo\`, \`/healthz\` naming what is simulated, and a receipt verify link.
 
@@ -461,7 +561,9 @@ The biggest risk is time, so every risk has a fallback that keeps the core loop 
 **Honest limits (stated in README and video):**
 
 - No live carrier rerouting or real locker booking; both are simulated in the demo.
-- Carrier claims are drafted, not filed on carrier portals.
+- Carrier claim packs are prepared and tracked by Doorstep, but the seller submits them on the carrier's site (no carrier claim APIs for small sellers).
+- Carrier event locations in the seeded demo are simulated; for the Shippo test carrier the location check reports unknown.
+- A seal scan proves someone opened the parcel; not scanning proves nothing and is never held against a buyer.
 - Risk model trained on synthetic data for the demo.
 - Rules are information, not legal advice; the seller decides.
 - In production, acting on a seller's PayPal account needs their explicit permission.

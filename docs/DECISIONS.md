@@ -545,3 +545,91 @@ would fail at once and go to `HOLD_FOR_REVIEW`. That is safe, but it means needl
   that a tracking job survives a 429.
 **Trade-off.** Retries can arrive sooner than PayPal's `Retry-After` header asks, because the
 job backoff ignores that header. With at most `max_attempts` tries this is harmless here.
+
+## ADR-035 — Possession seal: the buyer's own phone proves possession
+
+**Context.** CRA 2015 s.29 (and EU Art. 20) puts the risk on the seller until the buyer has
+*physical possession*. The proofs we had (signature, locker code, a carrier photo) cost money or
+depend on the carrier. A "Delivered" scan proves nothing about possession. The research round
+(Nov 5) found no cheap, carrier-independent possession proof for small sellers.
+**Decision.**
+- A QR code goes on the packing slip inside the parcel. It holds a signed token
+  (`LinkSigner`, scope `seal`, 180 days) for one order. The same URL can be written to an NFC
+  sticker, which phones open natively, so it needs no code.
+- The seal page offers "I have it" and "Something's wrong". There is no login, no typing and no
+  location.
+- A scan counts as `buyer_seal_scan` possession proof only if a carrier transit, delivered,
+  failure or returned event exists at or before it. This stops a seller pre-scanning while
+  packing. Scans before shipping are refused.
+- The UK, EU and US rule files list the proof (rule versions bumped to 2026-11-06). A counted
+  scan followed by "Not here" goes to the seller (FE-11), never to an automatic denial.
+**Trade-off.** A dishonest buyer can simply not scan. Not scanning is never evidence against
+anyone, so the seal helps honest sellers against later "not received" claims and gives honest
+buyers the fastest path for damaged or wrong items. Scan rates are unknown and will be measured,
+not assumed.
+
+## ADR-036 — Delivered-scan audit is deterministic code
+
+**Context.** Carriers deny claims and sellers lose arguments because the "Delivered" scan is
+treated as fact. Couriers under time pressure scan early, and drivers deviate from routes. The
+carrier's own event data (Shippo `tracking_status.location`, event order, timestamps across a
+seller's parcels) can contradict the scan.
+**Decision.**
+- `app/cases/scan_audit.py` is a pure function. It runs three contradiction checks (location
+  district or ZIP5, impossible sequence, batch scan) and one context-only check (reported soon).
+- Verdicts: contradicted, consistent, unverified, no_scan.
+- Unknown inputs never count as a contradiction. The Shippo test carrier's sample locations count
+  as unknown (PR-08).
+- Thresholds live in `tuning/engine_config.py`.
+- A rule can set `contradicted_scan_counts_as_proof: false` (the US seller policy). Then a
+  contradicted scan is not proof of delivery, and the decision records `SCAN_CONTRADICTED`.
+**Trade-off.** We chose rules over an anomaly model. Without real carrier data, a model would be
+trained on synthetic data, and carrier claims need findings a person can read and check.
+Location precision depends on the carrier (city or postcode, not GPS).
+
+## ADR-037 — Carrier terms in rules/carriers/, recovery as its own small state machine
+
+**Context.** Locked tests RL-01 and RL-09 pin the core rule book to five files. Carrier claim
+windows and standard cover are business rules (hard rule 2), but they are not liability rules.
+**Decision.**
+- `rules/carriers/carrier_claims_v1.yaml` has its own strict loader
+  (`app/policy/carriers.py`): extra keys forbidden, quoted version, id equals file name, a
+  source per carrier. Startup fails if the file is invalid. A `default` entry covers unknown
+  carriers and tells the seller to check their carrier's terms.
+- A `recoveries` table holds one row per case. Its transition table is PREPARED → SUBMITTED |
+  WITHDRAWN | EXPIRED and SUBMITTED → PAID | DENIED, with an audit row per change.
+- Claim packs are verified in code. Each sentence must cite fact ids built by code, and any
+  number in it must appear in those facts. A failing sentence is dropped. If too few survive, a
+  template built from the facts is used.
+**Trade-off.** Small sellers have no carrier claims API, so Doorstep prepares and tracks the
+claim and the seller submits it on the carrier's site. The order and case state machines stay
+untouched.
+
+## ADR-038 — Dispute evidence goes through the policy outbox
+
+**Context.** Cases reached `DISPUTE_EVIDENCE`, but nothing called
+`provide_dispute_evidence`. The PayPal dispute, where PayPal is the judge in the middle, never
+saw our evidence.
+**Decision.**
+- The seller action `send-evidence` makes the policy service create one
+  `MoneyAction(kind=evidence)`. The existing unique (decision_id, kind) constraint stops double
+  sends.
+- A `policy.dispute_evidence` job carrying a `PayPal-Request-Id` calls provide-evidence through
+  the policy gateway (`PROOF_OF_FULFILLMENT`, carrier and tracking number).
+- Notes hold facts only and are checked against the explainer's accusing-words guard.
+- `SIM-` captures use the simulated gateway. A signed receipt records the submission.
+**Trade-off.** Evidence is sent only on the seller's tap, never automatically. That is slower,
+but a person always decides what goes to PayPal about a buyer.
+
+## ADR-039 — Hardware and ML options we did not build
+
+- **GPS or BLE tracker per parcel:** rejected. A location at the address is not possession, and
+  porch theft happens at the address. Trackers also cost money per parcel, need batteries in the
+  post, need returns logistics and raise privacy issues. Any future tracker feed can arrive as
+  another evidence kind.
+- **Phone GPS on the seal page:** rejected. It adds privacy cost and little proof, because the scan
+  already needs the opened parcel.
+- **Anomaly-detection model on carrier scans:** rejected for now (ADR-036).
+- **Doorbell-camera frames as evidence:** next, not built.
+- **Vision damage check on the seal page photo:** planned last and cut first (the
+  `DamageCheckResult` schema exists).

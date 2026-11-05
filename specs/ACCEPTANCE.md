@@ -262,6 +262,75 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - PR-08 Status words never overclaim: a check that could not run reports `not_run` or
   `partial`, never `passed`.
 
+## SL — Possession seal (SPEC section 7a.1)
+- SL-01 A shipped order has a seal link: a signed token scoped `seal` to one order. The seller gets
+  it as a printable QR card (SVG). A seal token never opens another order or another scope (buyer,
+  MCP), and those tokens never open a seal.
+- SL-02 The seal page shows the item and seller only (no address), with "I have it" and
+  "Something's wrong" (damaged, wrong item, something missing). No login, no typing.
+- SL-03 "I have it" records a `seal_scan` evidence row and confirms the order when its state
+  allows. Repeats change nothing: at most one counted and one not-counted row, each keeping its
+  first time. No personal data is stored.
+- SL-04 A seal scan counts as possession proof (`buyer_seal_scan`) only if a carrier transit,
+  delivered, failure or returned event exists at or before the scan. An earlier scan is recorded
+  as not counted, with the reason. A scan before the order shipped is refused.
+- SL-05 The UK, EU and US rule files list `buyer_seal_scan` as possession proof. With a counted
+  scan, a later "Not here" routes to AWAITING_SELLER (FE-11), never an automatic denial.
+- SL-06 "Something's wrong" records the seal scan and opens a case with that reason through the
+  normal pipeline.
+
+## SA — Delivered-scan audit (SPEC section 7a.2)
+- SA-01 Every case gets a scan audit with verdict `contradicted`, `consistent`, `unverified` or
+  `no_scan`, plus each check's result and finding; the audit is stored on the decision.
+- SA-02 Location: a delivered event whose postcode district (UK) or ZIP5 (US) differs from the
+  order's contradicts the scan. A missing location, or the Shippo test carrier, is `unknown`, never
+  a contradiction.
+- SA-03 Sequence ("delivered" before any transit event, or in the future) and batch scan (at least
+  N of the seller's parcels to different districts marked delivered within W seconds; N and W in
+  config) contradict the scan. "Reported soon" is context only.
+- SA-04 Under a rule with `contradicted_scan_counts_as_proof: false` (the US seller policy), a
+  contradicted delivered scan is not proof of delivery, and the decision records reason code
+  `SCAN_CONTRADICTED`.
+- SA-05 The audit is deterministic code and never calls a model; the same inputs always give the
+  same audit.
+
+## RC — Carrier recovery (SPEC section 7a.3)
+- RC-01 A seller-liable case with failure point CARRIER_LOST or DAMAGED_IN_TRANSIT gets a
+  recovery: carrier, claim amount (the item value, capped by the carrier's standard cover for that
+  currency) and deadline (from the carrier's claim window).
+- RC-02 Carrier terms live in `rules/carriers/carrier_claims_v1.yaml`: `id`, quoted `version`,
+  `source`, and a source per carrier. The file is validated strictly at startup; an unknown carrier
+  uses the `default` entry, which tells the seller to check their carrier's terms.
+- RC-03 The claim pack: every sentence cites at least one fact id from the code-built facts. A
+  sentence citing an unknown fact, or containing a number that is not in its cited facts, is
+  dropped. Invalid output gets one retry, then a template built only from facts. Facts carry no
+  address beyond the postcode district and no buyer free text.
+- RC-04 Recovery status changes only through its transition table (PREPARED → SUBMITTED |
+  WITHDRAWN | EXPIRED; SUBMITTED → PAID | DENIED). Illegal transitions raise, and every change
+  writes an audit row.
+- RC-05 The seller marks submitted, paid (an amount from 1 up to the claim) or refused in one tap;
+  the seller's orders view reports money recovered per currency.
+- RC-06 The sweep expires PREPARED recoveries whose deadline has passed.
+- RC-07 `/healthz` describes claim filing as prepared by Doorstep and submitted by the seller.
+
+## DE — PayPal dispute evidence (SPEC section 7a.4)
+- DE-01 A case in DISPUTE_EVIDENCE accepts the seller action `send-evidence`. It creates one
+  EVIDENCE money action and one job with a PayPal-Request-Id; only `app/policy` calls the
+  provide-evidence write.
+- DE-02 Evidence notes hold facts only: tracking events, seal scan time, scan audit verdict and the
+  receipt verify link. They contain no address, no buyer free text and no accusing words (EX-02).
+- DE-03 A second tap, or a retried job, never sends twice; retries reuse the same request id.
+- DE-04 Each submission writes a signed receipt.
+
+## CF — Counterfactual and prevention (SPEC section 7a.5)
+- CF-01 Each decision states which possession proofs from the rule file would have changed the
+  liable party, or that one was present.
+- CF-02 The seller sees prevention suggestions computed in code from their own seller-liable cases
+  (delivery method and value band); no model is involved.
+
+## RT — Buyer rights (SPEC section 7a.6)
+- RT-01 After "Not here", the buyer view shows the matching rule file's `buyer_rights` text.
+
 ## E2E — Whole product
 - E2E-01 Playwright: checkout → ship → "Not here" → approve → PayPal refund id shown.
 - E2E-02 `make demo` seeds the Sam and Maria scenario identically every time.
