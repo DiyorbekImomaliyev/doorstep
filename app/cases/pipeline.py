@@ -3,7 +3,7 @@
 "Got it" records possession proof and confirms the order. "Not here" (or "damaged", "empty box")
 opens the order's single case and runs it straight through:
 
-    open_case -> GATHERING_EVIDENCE -> assemble_signals -> engine.assess (code, no model)
+    open_case -> GATHERING_EVIDENCE -> assemble_signals -> scan audit -> engine.assess (code)
     -> PolicyService.decide (code; the only path to money) -> explainer (words only)
     -> signed receipt (PR-01)
 
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.explainer import ExplainContext, Explainer
 from app.cases.engine import ClaimReason, Confidence, FailurePoint, assess
+from app.cases.scan_audit import audit_order
 from app.cases.signals import EvidenceKind, assemble_signals
 from app.clock import Clock
 from app.config import Settings
@@ -130,7 +131,8 @@ class CasePipeline:
         )
         now = self.clock.now()
         signals, proofs = assemble_signals(s, order, reason, now, self.settings)
-        result = assess(signals)
+        scan_audit = audit_order(s, order, proofs, now)  # SA-01: the carrier's own data
+        result = assess(signals.model_copy(update={"scan_contradicted": scan_audit.contradicted}))
         amount = Money(amount_minor=order.amount_minor, currency=Currency(order.currency))
         fix = Fix.REFUND
         policy = PolicyService(s, self.rulebook, self.clock).decide(
@@ -141,6 +143,7 @@ class CasePipeline:
                 proofs=proofs,
                 claim_amount=amount,
                 preferred_fix=fix,
+                scan_contradicted=scan_audit.contradicted,
             ),
         )
         decision = s.scalars(
@@ -149,6 +152,7 @@ class CasePipeline:
             .order_by(Decision.created_at.desc())
             .limit(1)
         ).one()
+        decision.signals = {**decision.signals, "scan_audit": scan_audit.model_dump(mode="json")}
 
         shipment = s.scalars(select(Shipment).where(Shipment.order_id == order.id)).first()
         rule = self.rulebook.select(order.buyer_country)
@@ -198,6 +202,7 @@ class CasePipeline:
                 "currency": decision.currency,
                 "reason_codes": list(decision.reason_codes),
                 "evidence_fingerprint": decision.evidence_fingerprint,
+                "scan_audit": scan_audit.verdict.value,
             },
             at=now,
         )

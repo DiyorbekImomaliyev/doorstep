@@ -285,12 +285,14 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - SA-02 Location: a delivered event whose postcode district (UK) or ZIP5 (US) differs from the
   order's contradicts the scan. A missing location, or the Shippo test carrier, is `unknown`, never
   a contradiction.
-- SA-03 Sequence ("delivered" before any transit event, or in the future) and batch scan (at least
-  N of the seller's parcels to different districts marked delivered within W seconds; N and W in
-  config) contradict the scan. "Reported soon" is context only.
+- SA-03 Sequence ("delivered" before the first transit event, or dated beyond a small clock skew
+  after the report) and batch scan (at least N of the seller's parcels with the same carrier, to
+  different districts, marked delivered within W seconds; N and W in config) contradict the scan.
+  For the Shippo test carrier the batch check is `unknown`. "Reported soon" is context only.
 - SA-04 Under a rule with `contradicted_scan_counts_as_proof: false` (the US seller policy), a
   contradicted delivered scan is not proof of delivery, and the decision records reason code
-  `SCAN_CONTRADICTED`.
+  `SCAN_CONTRADICTED`. Under every rule, a contradicted scan is a `CARRIER_LOST` signal for the
+  failure-point engine.
 - SA-05 The audit is deterministic code and never calls a model; the same inputs always give the
   same audit.
 

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.ai.risk import RiskFeatures, load_model
 from app.cases.signals import EvidenceKind
 from app.checkout.risk import seller_case_rate, seller_order_count
+from app.geo import postcode_district  # re-exported: shown in the Control Room
 from app.money import MINOR_UNIT_EXPONENT, parse_currency
 from app.orders.enums import CaseState, OrderState
 from app.orders.models import (
@@ -69,16 +70,6 @@ SELLER_STATUS = {
     "PACKED": "Packed, ready to ship",
     "CASE_OPEN": "Case open",
 }
-
-
-def postcode_district(postcode: str) -> str:
-    """'N1 9GU' -> 'N1'; US ZIP '94107' -> '941xx'. Minimum data (hard rule 9)."""
-    text = postcode.strip().upper()
-    if not text:
-        return ""
-    if text[:5].isdigit():
-        return text[:3] + "xx"
-    return text.split()[0] if " " in text else text[:-3] or text
 
 
 # ---------------------------------------------------------------- shared lookups

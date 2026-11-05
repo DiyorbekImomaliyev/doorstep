@@ -586,6 +586,18 @@ seller's parcels) can contradict the scan.
 **Trade-off.** We chose rules over an anomaly model. Without real carrier data, a model would be
 trained on synthetic data, and carrier claims need findings a person can read and check.
 Location precision depends on the carrier (city or postcode, not GPS).
+**Built (Nov 5).**
+- The batch check counts only parcels with the **same carrier**, because a batch scan is one
+  carrier's behaviour. For the Shippo test carrier it reports unknown, as location does, because
+  test-mode scan times are sample data and would flag every demo order.
+- A scan dated up to `SCAN_AUDIT_FUTURE_SKEW_S` (15 min) after the report is clock skew, not a
+  scan from the future.
+- A contradicted scan is also a failure-point engine signal (`scan_contradicted` → CARRIER_LOST).
+  The signal is off by default, so the existing engine tests and the eval set are unchanged.
+- The carrier's doorstep photo now also gives `delivery_photo`. Before this, the US rule's
+  `proof_required: [delivered_scan, delivery_photo]` could never be met through the pipeline.
+  A US case with a photo whose scan is contradicted gets two engine candidates (stolen after
+  delivery, carrier lost) and goes to the seller. It is never decided automatically.
 
 ## ADR-037 — Carrier terms in rules/carriers/, recovery as its own small state machine
 

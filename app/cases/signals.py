@@ -34,10 +34,15 @@ class EvidenceKind(StrEnum):
     SEAL_SCAN = "seal_scan"  # ai_result: {counted, reason} (SL-03, SL-04)
 
 
-_PROOF_BY_KIND = {
-    EvidenceKind.SIGNATURE.value: ProofKind.SIGNATURE,
-    EvidenceKind.LOCKER_CODE.value: ProofKind.LOCKER_PICKUP_CODE,
-    EvidenceKind.DOORSTEP_PHOTO.value: ProofKind.PHOTO_AT_BUYER_ADDRESS,
+_PROOFS_BY_KIND: dict[str, tuple[ProofKind, ...]] = {
+    EvidenceKind.SIGNATURE.value: (ProofKind.SIGNATURE,),
+    EvidenceKind.LOCKER_CODE.value: (ProofKind.LOCKER_PICKUP_CODE,),
+    # The carrier's photo at the door: "photo at the buyer's address" in the UK/EU rules and the
+    # "delivery photo" a US seller policy asks for alongside the delivered scan.
+    EvidenceKind.DOORSTEP_PHOTO.value: (
+        ProofKind.PHOTO_AT_BUYER_ADDRESS,
+        ProofKind.DELIVERY_PHOTO,
+    ),
 }
 
 
@@ -66,7 +71,7 @@ def assemble_signals(
             session.scalars(select(TrackingEvent).where(TrackingEvent.shipment_id == shipment.id))
         )
 
-    proofs = {_PROOF_BY_KIND[e.kind] for e in evidence if e.kind in _PROOF_BY_KIND}
+    proofs = {p for e in evidence for p in _PROOFS_BY_KIND.get(e.kind, ())}
     if any(e.kind == EvidenceKind.SEAL_SCAN.value and e.ai_result.get("counted") for e in evidence):
         proofs.add(ProofKind.BUYER_SEAL_SCAN)  # SL-04: only a scan after carrier handover counts
     if order.state == OrderState.PICKED_UP.value:  # picked up from a locker with the code

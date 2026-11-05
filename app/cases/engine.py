@@ -59,6 +59,8 @@ class Signals(BaseModel):
     packing_mismatch_cleared: bool = False
     buyer_photo_damage: bool | None = None
     label_weight_matches: bool | None = None
+    # The delivered-scan audit found the carrier's own data contradicting its scan (SA-04).
+    scan_contradicted: bool = False
 
 
 class EngineResult(BaseModel):
@@ -95,6 +97,7 @@ _SIGNAL_TEXT = {
     "packing_mismatch_not_cleared": "packing photo mismatch was not cleared before shipping",
     "packing_mismatch_cleared": "packing mismatch was checked and cleared before shipping",
     "label_weight_matches": "label weight matches the packed item",
+    "scan_contradicted": "the carrier's own data contradicts its delivered scan",
 }
 
 
@@ -120,6 +123,7 @@ def _facts(s: Signals) -> dict[str, bool]:
             s.packing_check == PackingCheck.MISMATCH and s.packing_mismatch_cleared
         ),
         "label_weight_matches": s.label_weight_matches is True,
+        "scan_contradicted": s.scan_contradicted,
     }
 
 
@@ -132,7 +136,9 @@ def _matches(s: Signals, f: dict[str, bool]) -> set[FailurePoint]:
     ):
         found.add(FailurePoint.BAD_ADDRESS)
     if not_received and (
-        f["no_delivered_scan_and_stale"] or f["delivered_scan_without_possession_proof"]
+        f["no_delivered_scan_and_stale"]
+        or f["delivered_scan_without_possession_proof"]
+        or f["scan_contradicted"]  # misdelivered: the scan is not where or when it says
     ):
         found.add(FailurePoint.CARRIER_LOST)
     if not_received and f["possession_proof"]:

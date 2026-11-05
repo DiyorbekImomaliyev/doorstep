@@ -217,8 +217,8 @@ audit of the carrier's own data:
 | Check | Contradicts the "Delivered" claim when | Unknown when |
 | --- | --- | --- |
 | Location | The delivered event's postcode district (UK) or ZIP5 (US) differs from the order's | No location, or the Shippo test carrier (sample data) |
-| Sequence | "Delivered" comes before any transit event, or lies in the future | Too few events |
-| Batch scan | At least `SCAN_AUDIT_BATCH_MIN` of the seller's parcels to different districts are marked delivered within `SCAN_AUDIT_BATCH_WINDOW_S` | Fewer events |
+| Sequence | "Delivered" comes before the first transit event, or is dated more than `SCAN_AUDIT_FUTURE_SKEW_S` after the report | No transit events |
+| Batch scan | At least `SCAN_AUDIT_BATCH_MIN` of the seller's parcels with the same carrier, to different districts, are marked delivered within `SCAN_AUDIT_BATCH_WINDOW_S` | The Shippo test carrier (sample times) |
 | Reported soon (context only) | Never contradicts; reported when "Not here" arrives within `SCAN_AUDIT_REPORT_SOON_H` of the scan | — |
 
 - Verdict:
@@ -229,6 +229,9 @@ audit of the carrier's own data:
 - The audit is stored on the decision. A rule file with `contradicted_scan_counts_as_proof: false`
   (the US seller policy) does not count a contradicted delivered scan as proof of delivery.
   Thresholds live in `tuning/engine_config.py`.
+- A contradicted scan is also a signal for the failure-point engine: it points to
+  `CARRIER_LOST` (misdelivered). If the carrier's own photo still says "at the door", the
+  engine names both failure points and the case goes to a person.
 
 **3. Carrier recovery (AI drafts, code verifies, the seller submits).** A seller-liable case whose
 failure point is a carrier fault (`CARRIER_LOST`, `DAMAGED_IN_TRANSIT`) gets a recovery:
