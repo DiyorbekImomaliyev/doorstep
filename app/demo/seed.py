@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.explainer import Explainer
+from app.cases.actions import CaseActions, seller_approver
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import CasePipeline
 from app.cases.signals import EvidenceKind
@@ -29,6 +30,7 @@ from app.config import Settings
 from app.orders.enums import OrderState
 from app.orders.models import (
     AuditLog,
+    Case,
     Dispute,
     Evidence,
     Order,
@@ -88,6 +90,7 @@ class _Spec:
     delivered_offset_s: int = 0  # seconds after the computed delivered time (batch scans, SA-03)
     seal_scan_after_h: int | None = None  # the buyer scanned the seal this long after delivery
     dispute: bool = False  # the buyer opened a (simulated) PayPal dispute before reporting
+    approved: bool = False  # Maria already approved this refund (AP-01 precedent)
 
 
 _PACKED = (EvidenceKind.PACKING_PHOTO, {"verdict": "match", "expected_weight_g": 900})
@@ -299,6 +302,45 @@ SCENARIO: tuple[_Spec, ...] = (
         seal_scan_after_h=2,
         dispute=True,
     ),
+    # Maria's week (AP-01): two lost parcels over her £50 limit that she approved herself. Kept no
+    # older than the other demo orders, so Insights' simulated history still ends where it did.
+    # After she approves Sam's £60 refund, Doorstep offers to handle these for her.
+    _Spec(
+        "past-scarf",
+        "Owen Hughes",
+        "Silk scarf, green",
+        5500,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "LS1 4AP",
+        "Leeds",
+        68,
+        (_PACKED,),
+        report=ClaimReason.NOT_RECEIVED,
+        carrier="royal_mail",
+        delivered_zip="LS9 8AB",
+        approved=True,
+    ),
+    _Spec(
+        "past-belt",
+        "Chloe Martin",
+        "Leather belt, brown",
+        5800,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "B1 1BB",
+        "Birmingham",
+        52,
+        (_PACKED,),
+        report=ClaimReason.NOT_RECEIVED,
+        carrier="royal_mail",
+        delivered_zip="B12 0XS",
+        approved=True,
+    ),
 )
 
 
@@ -378,6 +420,7 @@ def _build(
     )
     session.flush()
     pipeline = CasePipeline(session, rulebook, clock, settings, Explainer(), signer)
+    actions = CaseActions(session, rulebook, clock, signer)
     for spec in SCENARIO:
         oid = _id(tag, spec.key)
         created = now - timedelta(hours=spec.hours_ago)
@@ -474,7 +517,11 @@ def _build(
         if spec.confirm:
             pipeline.confirm_received(order, actor="demo-seed")
         if spec.report is not None:
-            pipeline.report(order, spec.report, reported_by="buyer")
+            report = pipeline.report(order, spec.report, reported_by="buyer")
+            if spec.approved:
+                case = session.get(Case, report.case_id)
+                assert case is not None
+                actions.act(case, "approve", seller_approver(seller_id))
     session.flush()
 
 

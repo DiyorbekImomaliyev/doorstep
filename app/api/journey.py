@@ -83,6 +83,8 @@ from app.worker.simulated import is_simulated
 log = logging.getLogger("doorstep.api")
 
 BUYER, SELLER = "buyer", "seller"
+# AT-06: opening a case again within this many seconds, in the same state, reuses the agent run.
+AGENT_REUSE_S = 600
 
 
 def _session(request: Request) -> Iterator[Session]:
@@ -749,18 +751,27 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             case_id=case.id, state=case.state, money_action_id=money.id if money else None
         )
 
+    recent_runs: dict[str, tuple[float, str, AgentRun]] = {}  # case id -> (when, state, run)
+
     @router.post("/api/seller/{token}/agent/cases/{case_id}", response_model=AgentRun)
     def run_agent(token: str, case_id: str, s: Db) -> AgentRun:
         """AT-01..05: the Doorstep agent reads the PayPal side and asks the policy; it stops
-        at the seller's limit. Seeded demo orders use simulated reads."""
+        at the seller's limit. Seeded demo orders use simulated reads. AT-06: a run on the same
+        case in the same state within AGENT_REUSE_S is reused, so opening a case twice never
+        repeats the PayPal reads or the timeline rows."""
         case = _seller_case(s, _seller(s, token), case_id)
         order = s.get(Order, case.order_id)
         assert order is not None
+        now = deps.clock.monotonic()
+        last = recent_runs.get(case.id)
+        if last is not None and last[1] == case.state and now - last[0] <= AGENT_REUSE_S:
+            return last[2]
         real = services.agent_tools
         tools = real if real is not None and not is_simulated(order.capture_id) else None
         agent = DoorstepAgent(tools or simulated_tools(s, order), llm=services.agent_llm)
         run = agent.run(s, case, clock=deps.clock)
         s.commit()
+        recent_runs[case.id] = (now, case.state, run)
         return run
 
     @router.post("/api/seller/{token}/policy/cases/{case_id}", response_model=ReaderAnswer)

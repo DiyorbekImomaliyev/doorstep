@@ -3,7 +3,7 @@
 id: money_limits_v1
 kind: money_limits
 source: "Doorstep default policy — SPEC section 7, ADR-003/ADR-006"
-version: "2026-11-04"
+version: "2026-11-06"
 # A refund at or under this amount auto-approves when the seller is liable (ADR-004).
 auto_approve_limit_minor:
   GBP: 5000
@@ -16,3 +16,16 @@ daily_refund_cap_minor:
 repeat_claims:
   threshold: 3
   window_days: 90
+# Seller autopilot rules (AP-01..05). Doorstep suggests one only from the seller's own approvals
+# of cases that waited for them because of the auto-approve limit; only the seller turns it on.
+# A rule lifts that one limit for one failure point and currency, never above the ceiling; every
+# other check (dispute, holds, liability, daily cap) still runs first. Remove this block to turn
+# autopilot off everywhere.
+seller_rules:
+  min_precedents: 3
+  window_days: 90
+  # Carrier faults only: the seller is liable to the buyer and can recover the loss from the carrier.
+  failure_points: [CARRIER_LOST, DAMAGED_IN_TRANSIT]
+  ceiling_minor:
+    GBP: 20000
+    USD: 20000

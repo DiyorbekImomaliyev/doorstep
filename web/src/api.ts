@@ -211,6 +211,15 @@ export type VerifyReport = {
   receipts: { seq: number; kind: string; hash: string; valid: boolean }[];
 };
 
+/** AP: autopilot rules learned from the seller's own approvals. */
+export type RuleSuggestion = {
+  failure_point: string; currency: string; max_amount_minor: number; approved: number; window_days: number; case_ids: string[];
+};
+export type SellerRule = {
+  id: string; failure_point: string; currency: string; max_amount_minor: number; status: string; precedents: number; updated_at: string;
+};
+export type Autopilot = { rules: SellerRule[]; suggestions: RuleSuggestion[] };
+
 export type Quote = {
   options: { method: string; label: string; amount: Money }[];
   recommended: string;
@@ -304,6 +313,13 @@ export const api = {
   keepAddress: (t: string) => call<BuyerView>("POST", `/api/buyer/${t}/keep-address`),
 
   me: (t: string) => call<{ seller_id: string; name: string; region: string }>("GET", `/api/seller/${t}/me`),
+  autopilot: (t: string) => call<Autopilot>("GET", `/api/seller/${t}/autopilot`),
+  autopilotOn: (t: string, failure_point: string, currency: string) =>
+    call<SellerRule>("POST", `/api/seller/${t}/autopilot`, { failure_point, currency }),
+  autopilotDismiss: (t: string, failure_point: string, currency: string) =>
+    call<SellerRule>("POST", `/api/seller/${t}/autopilot/dismiss`, { failure_point, currency }),
+  autopilotOff: (t: string, ruleId: string) =>
+    call<SellerRule>("POST", `/api/seller/${t}/autopilot/${encodeURIComponent(ruleId)}/off`),
   orders: (t: string) => call<OrderRow[]>("GET", `/api/seller/${t}/orders`),
   casePage: (t: string, caseId: string) => call<CaseView>("GET", `/api/seller/${t}/cases/${caseId}`),
   act: (t: string, caseId: string, action: "approve" | "decline" | "send-evidence") =>

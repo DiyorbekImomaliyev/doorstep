@@ -350,6 +350,30 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - CF-02 The seller sees prevention suggestions computed in code from their own seller-liable cases
   (delivery method and value band); no model is involved.
 
+## AP — Seller autopilot rules (Learn stage: learned from the seller's own decisions)
+- AP-01 Doorstep suggests an autopilot rule only from the seller's own decisions, computed in code
+  (no model): at least `seller_rules.min_precedents` seller approvals in the last
+  `seller_rules.window_days`, of cases that went to the seller only because the refund was over
+  the auto-approve limit, with the same failure point and currency; no seller decline of that kind
+  in the window; the failure point is listed in `seller_rules.failure_points` (carrier faults).
+- AP-02 A suggested rule's maximum is the largest refund the seller approved among those cases,
+  capped by `seller_rules.ceiling_minor`; nobody types an amount. Only the seller turns a rule on,
+  and only from a current suggestion.
+- AP-03 With an active rule, a case of that failure point and currency whose refund is over the
+  auto-approve limit but within the rule's maximum (and the ceiling) is refunded automatically;
+  the decision names the rule (reason `seller_rule`) and the system approval names it
+  (`seller-rule:<id>`).
+- AP-04 A rule replaces only the auto-approve limit check (the last PO-13 step): an open dispute,
+  every hold condition, no rule set, a liable party other than the seller, a would-blame-buyer
+  outcome, a reship and the daily cap still win. A rule never holds or denies a case.
+- AP-05 The seller turns a rule off with one tap, or dismisses a suggestion with "Not now"; either
+  stops further suggestions of that kind. Every change writes an audit row.
+- AP-06 The Control Room shows the suggestion with its evidence and each active rule with an off
+  switch; in the seeded demo the suggestion appears after Maria approves Sam's refund.
+- AT-06 The agent's PayPal pre-check runs on its own when the seller opens a case that needs them;
+  opening it again within `AGENT_REUSE_S` (or before the case changes) reuses that run, so the
+  timeline never repeats it.
+
 ## RT — Buyer rights (SPEC section 7a.6)
 - RT-01 After "Not here", the buyer view shows the matching rule file's `buyer_rights` text.
 

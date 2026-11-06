@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Bot, Camera, CircleCheck, CircleHelp, CircleX, Copy, ExternalLink, FileText, Info, Landmark, Link2,
-  ListChecks, MessageSquare, QrCode, Scale, ScanLine, Send, Truck, Wallet, X,
+  ListChecks, MessageSquare, QrCode, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
 } from "lucide-react";
 import { api, type AgentRun, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
 import { Badge, Bar, ErrorBox, Loading, SectionHead, Timeline, useAsync } from "../components/ui";
@@ -86,6 +86,15 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
                 </span>
               )}
             </div>
+            {d.reason_codes.includes("seller_rule") && (
+              <div className="notice good" aria-label="Refunded by your autopilot rule">
+                <Zap aria-hidden />
+                <div className="col" style={{ gap: 2 }}>
+                  <strong>Refunded by your autopilot rule</strong>
+                  <span className="muted">{cap(d.reasons.find((r) => r.includes("autopilot")) ?? "Within the rule you turned on.")}. Turn it off in the Control Room any time.</span>
+                </div>
+              </div>
+            )}
             {c.counterfactual && (
               <div className="notice accent" aria-label="What would have changed this">
                 <Info aria-hidden />
@@ -153,7 +162,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
         )}
 
         <PolicyPanel token={token} caseId={c.case_id} />
-        <AgentPanel token={token} caseId={c.case_id} onDone={reload} />
+        <AgentPanel token={token} caseId={c.case_id} auto={NEEDS_SELLER.includes(c.state)} onDone={reload} />
 
         <section className="sec">
           <SectionHead title="Timeline" right={
@@ -416,7 +425,13 @@ function PolicyPanel({ token, caseId }: { token: string; caseId: string }) {
 }
 
 /** AT-01..05: the agent reads the PayPal side (Agent Toolkit, read-only) and asks the policy. */
-function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; onDone: () => void }) {
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
+/** AT-06: cases whose agent pre-check already started in this tab (the server also reuses runs). */
+const AUTO_RAN = new Set<string>();
+const NEEDS_SELLER = ["AWAITING_SELLER", "HOLD_FOR_REVIEW", "DISPUTE_EVIDENCE"];
+
+function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: string; auto: boolean; onDone: () => void }) {
   const [run, setRun] = useState<AgentRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -425,20 +440,27 @@ function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; 
     try { setRun(await api.runAgent(token, caseId)); onDone(); }
     catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
+  // The agent works before the seller looks: on a case that needs them, it checks PayPal on its own.
+  useEffect(() => {
+    if (auto && !AUTO_RAN.has(caseId)) { AUTO_RAN.add(caseId); void go(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, caseId]);
   const outcome = run?.outcome ? AGENT_OUTCOME[run.outcome] : null;
+  const shown = run?.steps.filter((s) => s.tool !== "finish") ?? [];
   return (
     <section className="sec" aria-label="Doorstep agent">
       <SectionHead icon={<Bot aria-hidden />} title="Doorstep agent" right={outcome && <Badge tone={outcome.tone}>{outcome.label}</Badge>} />
       <p className="muted" style={{ fontSize: 13 }} title="PayPal Agent Toolkit, read-only. Money goes only through the policy service, within your limits.">
-        Reads PayPal (read-only), then asks the policy. It can't approve for you.
+        {run ? "Checked PayPal for you, read-only, then asked your policy. It can't approve for you." : "Checks PayPal for you (read-only), then asks your policy. It can't approve for you."}
       </p>
-      {!run && <button className="btn" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Working…" : "Run the agent"}</button>}
+      {busy && !run && <Loading height={96} />}
       {err && <ErrorBox message={err} />}
       {run && (
-        <ol className="steps-list">
-          {run.steps.map((s, i) => (
+        <ol className="checks agent-checks">
+          {shown.map((s, i) => (
             <li key={i}>
-              <span className="col" style={{ gap: 1 }}>
+              <CircleCheck className="r-supports" aria-hidden />
+              <span className="col" style={{ gap: 1, minWidth: 0 }}>
                 <strong style={{ fontWeight: 600 }}>{AGENT_STEP[s.tool] ?? s.tool}</strong>
                 <span className="muted">{s.summary}</span>
               </span>
@@ -446,7 +468,10 @@ function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; 
           ))}
         </ol>
       )}
-      {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline.</span>}
+      <div className="row wrap" style={{ gap: 10 }}>
+        <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Checking PayPal…" : run ? "Run the agent again" : "Run the agent"}</button>
+        {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline.</span>}
+      </div>
     </section>
   );
 }

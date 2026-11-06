@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { ArrowRight, BarChart3, BookOpen, Columns3, Download, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
-import { api, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
+import { ArrowRight, BarChart3, BookOpen, Columns3, Download, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
+import { api, type Autopilot, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import { money } from "../format";
 import CaseDrawer from "./CaseDrawer";
@@ -53,12 +53,70 @@ function Tip({ t }: { t: PreventionTip }) {
   );
 }
 
+const KIND: Record<string, string> = { CARRIER_LOST: "lost parcels", DAMAGED_IN_TRANSIT: "parcels damaged in transit" };
+const kindText = (fp: string) => KIND[fp] ?? fp.toLowerCase().replaceAll("_", " ");
+
+/** AP-06: the seller's own pattern, offered as a rule they turn on; active rules with an off switch.
+ *  Suggestions are computed in code from the seller's approvals; money still moves only through the policy. */
+function AutopilotCard({ token, data, onChange }: { token: string; data: Autopilot; onChange: (m: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function act(fn: () => Promise<unknown>, done: string) {
+    setBusy(true); setErr(null);
+    try { await fn(); onChange(done); } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
+  }
+  const s = data.suggestions[0];
+  if (s) {
+    const kind = kindText(s.failure_point);
+    const max = money(s.max_amount_minor, s.currency);
+    return (
+      <section className="autopilot" aria-label="Autopilot suggestion">
+        <span className="ap-icon" aria-hidden><Zap /></span>
+        <div className="col grow" style={{ gap: 3, minWidth: 0 }}>
+          <span className="ap-title">Let Doorstep refund {kind} up to {max} for you</span>
+          <span className="ap-text">
+            You approved {s.approved} of {s.approved} like this in the last {s.window_days} days. Disputes, held cases and anything over {max} still come to you.
+          </span>
+          {err && <ErrorBox message={err} />}
+        </div>
+        <div className="ap-actions">
+          <button className="btn ghost" disabled={busy} onClick={() => act(() => api.autopilotDismiss(token, s.failure_point, s.currency), "Okay. These keep coming to you.")}>Not now</button>
+          <button className="btn primary" disabled={busy} onClick={() => act(() => api.autopilotOn(token, s.failure_point, s.currency), `Autopilot on: ${kind} up to ${max}.`)}>Turn on</button>
+        </div>
+      </section>
+    );
+  }
+  if (!data.rules.length) return null;
+  return (
+    <section className="autopilot on" aria-label="Autopilot rules">
+      <span className="ap-icon" aria-hidden><Zap /></span>
+      <div className="col grow" style={{ gap: 6, minWidth: 0 }}>
+        {data.rules.map((r) => {
+          const kind = kindText(r.failure_point);
+          const max = money(r.max_amount_minor, r.currency);
+          return (
+            <div key={r.id} className="ap-rule">
+              <span className="col" style={{ gap: 2, minWidth: 0 }}>
+                <span className="ap-title">Autopilot on: {kind} up to {max}</span>
+                <span className="ap-text">Refunded automatically, within your daily cap. Learned from {r.precedents} refunds you approved.</span>
+              </span>
+              <button className="btn ghost" disabled={busy} onClick={() => act(() => api.autopilotOff(token, r.id), `Autopilot off: ${kind} come to you again.`)}>Turn off</button>
+            </div>
+          );
+        })}
+        {err && <ErrorBox message={err} />}
+      </div>
+    </section>
+  );
+}
+
 export default function Seller({ token }: { token: string }) {
   const me = useAsync(() => api.me(token), [token]);
   const { data: rows, error, reload: reloadOrders } = useAsync(() => api.orders(token), [token]);
   const recovered = useAsync(() => api.recoveries(token), [token]);
   const tips = useAsync(() => api.prevention(token), [token]);
-  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); };
+  const auto = useAsync(() => api.autopilot(token), [token]);
+  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); auto.reload(); };
   const [filter, setFilter] = useState<Filter | null>(null);
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -181,7 +239,8 @@ export default function Seller({ token }: { token: string }) {
                 <RecoveredKpi s={recovered.data ?? null} onClick={() => go("insights")} />
               </section>
 
-              {tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />}
+              {auto.data && <AutopilotCard token={token} data={auto.data} onChange={(m) => { setToast(m); reload(); }} />}
+              {!auto.data?.suggestions.length && tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />}
 
               <div className="table-card">
                 <div className="head">

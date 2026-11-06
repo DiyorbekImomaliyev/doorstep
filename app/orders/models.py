@@ -29,6 +29,22 @@ class Seller(Base):
     policy_text: Mapped[str] = mapped_column(Text, default="")
 
 
+class SellerRule(Base):
+    """AP-02..05: a seller's autopilot rule, suggested from their own approvals and turned on by
+    them. One row per (seller, failure point, currency); status on | off | dismissed."""
+
+    __tablename__ = "seller_rules"
+    __table_args__ = (UniqueConstraint("seller_id", "failure_point", "currency"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"), index=True)
+    failure_point: Mapped[str] = mapped_column(String(32))
+    currency: Mapped[str] = mapped_column(String(3))
+    max_amount_minor: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(12))
+    precedents: Mapped[list[str]] = mapped_column(JSON, default=list)  # approved case ids
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
+
+
 class Order(Base):
     __tablename__ = "orders"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)

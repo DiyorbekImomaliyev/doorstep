@@ -765,3 +765,17 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .chain li { position: relative; align-items: center; }
 .chain li:not(:last-child)::after { content: ""; position: absolute; left: 22px; top: calc(50% + 12px); height: calc(100% - 24px); width: 2px; border-radius: 2px; background: rgba(47, 107, 79, .28); z-index: 1; }
 .chain .hash { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* AP-06 autopilot: the seller's own pattern, offered as a rule */
+.autopilot { display: flex; gap: 12px; align-items: flex-start; padding: 14px 18px; border: 1px solid var(--accent-line); border-radius: var(--r-lg); background: linear-gradient(180deg, var(--surface), var(--accent-soft)); }
+.autopilot.on { background: var(--surface); border-color: var(--line); }
+.autopilot .ap-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--accent); color: #fff; display: grid; place-items: center; flex: none; }
+.autopilot.on .ap-icon { background: var(--accent-soft); color: var(--accent); }
+.autopilot .ap-icon svg { width: 16px; height: 16px; }
+.autopilot .ap-title { font-weight: 600; }
+.autopilot .ap-text { color: var(--text-2); font-size: 13px; }
+.autopilot .ap-actions { display: flex; gap: 8px; flex: none; align-self: center; }
+.autopilot .ap-rule { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.autopilot .ap-rule + .ap-rule { border-top: 1px solid var(--line); padding-top: 8px; }
+@media (max-width: 700px) { .autopilot { flex-wrap: wrap; } .autopilot .ap-actions { width: 100%; justify-content: flex-end; } }
+.agent-checks li { grid-template-columns: 20px 1fr; }

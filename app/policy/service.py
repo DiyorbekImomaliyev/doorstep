@@ -44,6 +44,7 @@ from app.orders.models import (
     MoneyAction,
     Order,
     Seller,
+    SellerRule,
 )
 from app.orders.state import (
     CASE_TRANSITIONS,
@@ -53,6 +54,7 @@ from app.orders.state import (
 )
 from app.paypal_client.idempotency import request_id_for
 from app.paypal_client.types import RefundInfo, RefundResult
+from app.policy.autopilot import matching_rule
 from app.policy.fingerprint import evidence_fingerprint
 from app.policy.ports import RefundGateway
 from app.policy.reasons import Reason, message
@@ -267,7 +269,10 @@ class PolicyService:
         scan_discounted = rule is not None and not rule.contradicted_scan_counts_as_proof
         if facts.scan_contradicted and scan_discounted:
             notes.append((Reason.SCAN_CONTRADICTED, message(Reason.SCAN_CONTRADICTED)))
-        route = self._route(case, order, seller, result, outcome, rule is not None, refund, notes)
+        applied: list[SellerRule] = []  # AP-03: the seller rule that lifted the limit, if any
+        route = self._route(
+            case, order, seller, result, outcome, rule is not None, refund, notes, applied
+        )
         codes = [code for code, _ in notes]
         reasons = [*result.reasons, *(text for _, text in notes)]
         liability = outcome.model_dump(mode="json") if outcome else None  # pragma: no mutate
@@ -307,8 +312,9 @@ class PolicyService:
 
         ma_id: str | None = None
         if route == CaseState.AUTO_REFUND:  # liable seller, refund under every limit
+            approver_id = f"seller-rule:{applied[0].id}" if applied else "policy"
             approval = self._record_approval(
-                case, decision, Approver(kind=ApproverKind.SYSTEM, id="policy"), decision.rule_id
+                case, decision, Approver(kind=ApproverKind.SYSTEM, id=approver_id), decision.rule_id
             )
             ma_id = self._queue_refund(order, case, decision, cast(Money, refund), approval).id
         return PolicyDecision(
@@ -332,6 +338,7 @@ class PolicyService:
         has_rule: bool,
         refund: Money | None,
         notes: list[tuple[Reason, str]],
+        applied: list[SellerRule],
     ) -> CaseState:
         """PO-13 order of checks. Records (code, sentence) for each step that speaks.
 
@@ -395,10 +402,18 @@ class PolicyService:
         if self._refunded_today(seller.id, refund.currency) + refund > limits.daily_cap:
             note(Reason.DAILY_CAP_REACHED, cap=limits.daily_cap)
             return CaseState.AWAITING_SELLER
-        # 6. Auto-approve limit, inclusive (ADR-004).
+        # 6. Auto-approve limit, inclusive (ADR-004), or the seller's own autopilot rule (AP-03).
         if refund > limits.auto_approve:
-            note(Reason.OVER_AUTO_APPROVE_LIMIT, limit=limits.auto_approve)
-            return CaseState.AWAITING_SELLER
+            seller_rule = matching_rule(
+                self.session, self.rulebook, seller.id, result.failure_point, refund
+            )
+            if seller_rule is None:
+                note(Reason.OVER_AUTO_APPROVE_LIMIT, limit=limits.auto_approve)
+                return CaseState.AWAITING_SELLER
+            applied.append(seller_rule)
+            rule_max = Money(amount_minor=seller_rule.max_amount_minor, currency=refund.currency)
+            note(Reason.SELLER_RULE, limit=limits.auto_approve, rule_max=rule_max)
+            return CaseState.AUTO_REFUND
         note(Reason.AUTO_REFUND, limit=limits.auto_approve)
         return CaseState.AUTO_REFUND
 

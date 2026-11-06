@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 
+from app.cases.engine import FailurePoint
 from app.money import Currency, Money
 from app.orders.enums import BuyerType, Fix, ProofKind
 from app.orders.models import Seller
@@ -119,17 +120,32 @@ class RepeatClaims(_Strict):
     window_days: StrictInt = Field(ge=1)
 
 
+class SellerRuleLimits(_Strict):
+    """AP-01..05: when Doorstep may suggest a seller autopilot rule, and its hard ceiling."""
+
+    min_precedents: StrictInt = Field(ge=1)
+    window_days: StrictInt = Field(ge=1)
+    failure_points: list[FailurePoint] = Field(min_length=1)
+    ceiling_minor: dict[Currency, Annotated[StrictInt, Field(ge=0)]]
+
+    def ceiling(self, currency: Currency) -> Money:
+        return Money(amount_minor=self.ceiling_minor[currency], currency=currency)
+
+
 class MoneyLimits(_RuleBase):
-    """rules/money_limits_v1.yaml (RL-11, ADR-006)."""
+    """rules/money_limits_v1.yaml (RL-11, ADR-006; AP seller_rules)."""
 
     kind: Literal["money_limits"]
     auto_approve_limit_minor: dict[Currency, Annotated[StrictInt, Field(ge=0)]]
     daily_refund_cap_minor: dict[Currency, Annotated[StrictInt, Field(ge=0)]]
     repeat_claims: RepeatClaims
+    seller_rules: SellerRuleLimits | None = None  # absent: autopilot is off everywhere
 
     def model_post_init(self, _: Any) -> None:
         _per_currency(self.auto_approve_limit_minor, "auto_approve_limit_minor")
         _per_currency(self.daily_refund_cap_minor, "daily_refund_cap_minor")
+        if self.seller_rules is not None:
+            _per_currency(self.seller_rules.ceiling_minor, "seller_rules.ceiling_minor")
 
     @property
     def repeat_claims_threshold(self) -> int:

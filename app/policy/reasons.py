@@ -27,6 +27,7 @@ class Reason(StrEnum):
     DAILY_CAP_REACHED = "daily_cap_reached"
     OVER_AUTO_APPROVE_LIMIT = "over_auto_approve_limit"
     AUTO_REFUND = "auto_refund"
+    SELLER_RULE = "seller_rule"
     SCAN_CONTRADICTED = "scan_contradicted"  # informational: SA-04 removed the delivered scan
     # Pre-refund re-check refusals (PO-12).
     CASE_FINISHED = "case_finished"
@@ -59,6 +60,7 @@ MESSAGES: dict[Reason, str] = {  # pragma: no mutate
     Reason.DAILY_CAP_REACHED: "daily refund cap {cap} reached: seller approves",  # pragma: no mutate
     Reason.OVER_AUTO_APPROVE_LIMIT: "over auto-approve limit {limit}: seller approves",  # pragma: no mutate
     Reason.AUTO_REFUND: "at or under auto-approve limit {limit}: automatic refund",  # pragma: no mutate
+    Reason.SELLER_RULE: "over auto-approve limit {limit}, within your autopilot rule up to {rule_max}: automatic refund",  # pragma: no mutate
     Reason.SCAN_CONTRADICTED: (  # pragma: no mutate
         "the carrier's own data contradicts its delivered scan: not proof of delivery"  # pragma: no mutate
     ),  # pragma: no mutate
