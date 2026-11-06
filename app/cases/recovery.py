@@ -12,6 +12,7 @@ for each change.
 
 from __future__ import annotations
 
+import threading
 from collections import defaultdict
 from datetime import datetime
 from typing import Literal
@@ -53,6 +54,7 @@ RECOVERY_TRANSITIONS: dict[RecoveryStatus, frozenset[RecoveryStatus]] = {
 }
 CARRIER_FAULTS = frozenset({FailurePoint.CARRIER_LOST, FailurePoint.DAMAGED_IN_TRANSIT})
 DRAFT_RECOVERY = "draft_recovery"
+DRAFT_RETRY_S = 300  # RC-08: a failed on-open draft waits this long before the model is asked again
 SellerMark = Literal["submitted", "paid", "refused", "withdraw"]
 _MARK_TO: dict[str, RecoveryStatus] = {
     "submitted": R.SUBMITTED,
@@ -325,6 +327,21 @@ def recovered_totals(session: Session, seller_id: str) -> dict[str, int]:
 # ---------------------------------------------------------------- AI wording (worker job)
 
 
+def _drafted(recovery: Recovery) -> bool:
+    return (recovery.pack or {}).get("source") == "model"
+
+
+def draft_pack(session: Session, recovery: Recovery, drafter: RecoveryDrafter) -> bool:
+    """The model rewrites a PREPARED recovery's fact-only pack; code verifies every sentence.
+    True when the model's draft was kept (otherwise the pack stays built from the facts)."""
+    if recovery.status != R.PREPARED.value or _drafted(recovery):
+        return False  # already drafted, or no longer a claim to send: nothing to write
+    pack = drafter.draft(ClaimPack.model_validate(recovery.pack).facts)
+    recovery.pack = pack.model_dump(mode="json")
+    session.flush()
+    return pack.source == "model"
+
+
 class DraftRecoveryHandler:
     """DRAFT_RECOVERY: the model rewrites the template pack; code verifies every sentence."""
 
@@ -333,14 +350,50 @@ class DraftRecoveryHandler:
 
     def run(self, session: Session, job: Job) -> None:
         recovery = session.get(Recovery, str(job.payload.get("recovery_id")))
-        if recovery is None or recovery.status != R.PREPARED.value:
-            return
-        current = ClaimPack.model_validate(recovery.pack)
-        if current.source == "model":
-            return  # already drafted; a retried job changes nothing
-        pack = self.drafter.draft(current.facts)
-        recovery.pack = pack.model_dump(mode="json")
-        session.flush()
+        if recovery is not None:
+            draft_pack(session, recovery, self.drafter)
 
     def on_failed(self, session: Session, job: Job, error: Exception) -> None:
         """The template pack stays; nothing else to undo."""
+
+
+class ClaimDraftOnOpen:
+    """RC-08: AI where it is seen. A seeded case's claim pack is drafted by the model when the
+    seller first opens it, then saved. One process-wide instance: two opens at once make one call,
+    and a failed draft is not retried for DRAFT_RETRY_S (the fact-only pack stays meanwhile).
+    No database connection is held while the model writes."""
+
+    def __init__(self, drafter: RecoveryDrafter, clock: Clock) -> None:
+        self.drafter = drafter
+        self.clock = clock
+        self._guard = threading.Lock()
+        self._locks: dict[str, threading.Lock] = {}
+        self._failed_at: dict[str, float] = {}
+
+    def _wanted(self, recovery: Recovery) -> bool:
+        if recovery.status != R.PREPARED.value or _drafted(recovery):
+            return False  # already drafted, or the claim was already sent: its text is final
+        failed = self._failed_at.get(recovery.id)
+        return failed is None or self.clock.monotonic() - failed >= DRAFT_RETRY_S
+
+    def draft(self, session: Session, recovery: Recovery) -> Recovery:
+        if not self._wanted(recovery):
+            return recovery
+        with self._guard:
+            lock = self._locks.setdefault(recovery.id, threading.Lock())
+        with lock:
+            session.refresh(recovery)  # another open may have drafted it while this one waited
+            if not self._wanted(recovery):
+                return recovery
+            facts = ClaimPack.model_validate(recovery.pack).facts
+            session.commit()  # end the read before the model call
+            pack = self.drafter.draft(facts)
+            if pack.source != "model":
+                self._failed_at[recovery.id] = self.clock.monotonic()
+                return recovery
+            self._failed_at.pop(recovery.id, None)
+            session.refresh(recovery, with_for_update=True)  # the seller may have marked it
+            if recovery.status == R.PREPARED.value and not _drafted(recovery):
+                recovery.pack = pack.model_dump(mode="json")
+            session.commit()
+        return recovery

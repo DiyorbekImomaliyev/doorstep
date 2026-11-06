@@ -26,6 +26,7 @@ from app.ai.insights_agent import InsightAnswer, InsightsAgent
 from app.ai.llm import Image
 from app.ai.packing import PackingChecker
 from app.ai.policy_reader import PolicyReader, ReaderAnswer
+from app.ai.recovery import RecoveryDrafter
 from app.api.agent import MCP_MOUNT, MCP_PATH
 from app.api.deps import SIMULATED_COMPONENTS, AppDeps, Services
 from app.api.insights import InsightsOut, insights
@@ -45,7 +46,7 @@ from app.cases.counterfactual import PreventionSuggestion, prevention
 from app.cases.dispute_evidence import UnsafeEvidence
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import BuyerActionError, CasePipeline
-from app.cases.recovery import RecoveryError, SellerMark, seller_mark
+from app.cases.recovery import ClaimDraftOnOpen, RecoveryError, SellerMark, seller_mark
 from app.checkout.address import AddressChecker, AddressCheckResult
 from app.checkout.service import CheckoutError, CheckoutService, DeliveryQuote
 from app.db import Base
@@ -669,6 +670,18 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             raise HTTPException(404, "no carrier claim for this case")
         return recovery_view(recovery)
 
+    # RC-08: one per process, so two opens at once make one model call.
+    claim_drafts = ClaimDraftOnOpen(RecoveryDrafter(services.agent_llm), deps.clock)
+
+    @router.post("/api/seller/{token}/cases/{case_id}/recovery/draft", response_model=RecoveryView)
+    def recovery_draft(token: str, case_id: str, s: Db) -> RecoveryView:
+        """RC-08: the model drafts the claim pack when the seller first opens it, then saved.
+        Registered before the {mark} route, so "draft" is never read as a seller mark."""
+        recovery = case_recovery(s, _seller_case(s, _seller(s, token), case_id).id)
+        if recovery is None:
+            raise HTTPException(404, "no carrier claim for this case")
+        return recovery_view(claim_drafts.draft(s, recovery))
+
     @router.post("/api/seller/{token}/cases/{case_id}/recovery/{mark}", response_model=RecoveryView)
     def recovery_mark(
         token: str, case_id: str, mark: SellerMark, s: Db, body: RecoveryMarkIn | None = None
@@ -754,12 +767,12 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     recent_runs: dict[str, tuple[float, str, AgentRun]] = {}  # case id -> (when, state, run)
 
     @router.post("/api/seller/{token}/agent/cases/{case_id}", response_model=AgentRun)
-    def run_agent(token: str, case_id: str, s: Db, auto: bool = False) -> AgentRun:
+    def run_agent(token: str, case_id: str, s: Db) -> AgentRun:
         """AT-01..05: the Doorstep agent reads the PayPal side and asks the policy; it stops
         at the seller's limit. Seeded demo orders use simulated reads. AT-06: a run on the same
         case in the same state within AGENT_REUSE_S is reused, so opening a case twice never
-        repeats the PayPal reads or the timeline rows. AT-07: the automatic pre-check (`auto`)
-        runs the fixed plan, so opening cases never spends model budget."""
+        repeats the PayPal reads or the timeline rows. AT-07: the automatic pre-check and the
+        button share that run, so an opened case costs at most one planned run."""
         case = _seller_case(s, _seller(s, token), case_id)
         order = s.get(Order, case.order_id)
         assert order is not None
@@ -769,9 +782,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             return last[2]
         real = services.agent_tools
         tools = real if real is not None and not is_simulated(order.capture_id) else None
-        agent = DoorstepAgent(
-            tools or simulated_tools(s, order), llm=None if auto else services.agent_llm
-        )
+        agent = DoorstepAgent(tools or simulated_tools(s, order), llm=services.agent_llm)
         run = agent.run(s, case, clock=deps.clock)
         s.commit()
         recent_runs[case.id] = (now, case.state, run)

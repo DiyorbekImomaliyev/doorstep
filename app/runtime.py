@@ -189,9 +189,13 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
 
         agent_tools = paypal_tools(env("PAYPAL_CLIENT_ID"), env("PAYPAL_CLIENT_SECRET"))
 
-    from app.ai.llm import adapter_from_env
+    from app.ai.llm import adapter_from_env, daily_limit_from_env
+    from app.ai.usage import DbCallBudget
 
-    llm = adapter_from_env(purpose="runtime")
+    # EX-06: one daily cap on the paid provider, shared by the web service and the worker.
+    llm = adapter_from_env(
+        purpose="runtime", budget=DbCallBudget(session_factory, daily_limit_from_env())
+    )
     services = Services(
         links=LinkSigner(_link_secret(environment), clock),
         receipts=_receipt_signer(environment, database_url),

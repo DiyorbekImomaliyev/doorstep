@@ -220,18 +220,39 @@ class GeminiProvider:
 # ---------------------------------------------------------------- adapter
 
 
+class CallBudget(Protocol):
+    """EX-06: a daily cap on the main provider (app.ai.usage.DbCallBudget)."""
+
+    def take(self, provider: str) -> bool: ...
+
+
 class LLMAdapter:
-    def __init__(self, primary: Provider, fallback: Provider | None = None) -> None:
+    def __init__(
+        self,
+        primary: Provider,
+        fallback: Provider | None = None,
+        *,
+        budget: CallBudget | None = None,
+    ) -> None:
         self.primary = primary
         self.fallback = fallback
+        self.budget = budget
         self.last_provider: str | None = None
+
+    def _generate(self, provider: Provider, schema: type[T], **kw: Any) -> T:
+        if provider is self.primary and self.budget is not None:
+            if not self.budget.take(provider.name):
+                # EX-06: past the daily cap the paid provider counts as down. Each paid attempt
+                # is charged, the retry after invalid output included.
+                raise ProviderDown(f"{provider.name} daily call limit reached")
+        return provider.generate(schema, **kw)
 
     def _try(self, provider: Provider, schema: type[T], **kw: Any) -> T:
         try:
-            return provider.generate(schema, **kw)
+            return self._generate(provider, schema, **kw)
         except InvalidModelOutput as first:
             log.warning("%s output invalid (%s); retrying once", provider.name, first)
-            return provider.generate(schema, **kw)
+            return self._generate(provider, schema, **kw)
 
     def complete_structured(
         self,
@@ -273,6 +294,16 @@ class LLMAdapter:
 
 
 DEFAULT_TIMEOUT_S = 20.0
+DEFAULT_DAILY_CALL_LIMIT = 400
+
+
+def daily_limit_from_env() -> int:
+    """EX-06: LLM_DAILY_CALL_LIMIT; 0 turns the paid provider off; a bad value -> the default."""
+    try:
+        value = int(os.environ.get("LLM_DAILY_CALL_LIMIT", DEFAULT_DAILY_CALL_LIMIT))
+    except ValueError:
+        return DEFAULT_DAILY_CALL_LIMIT
+    return value if value >= 0 else DEFAULT_DAILY_CALL_LIMIT
 
 
 def timeout_from_env() -> float:
@@ -302,9 +333,12 @@ def _provider(name: str) -> Provider | None:
     return None
 
 
-def adapter_from_env(*, purpose: str = "runtime") -> LLMAdapter | None:
-    """runtime: LLM_PROVIDER with LLM_FALLBACK_PROVIDER. eval: EVAL_LLM_PROVIDER only (never the
-    paid key for bulk work). None when no provider has a key (callers use templates)."""
+def adapter_from_env(
+    *, purpose: str = "runtime", budget: CallBudget | None = None
+) -> LLMAdapter | None:
+    """runtime: LLM_PROVIDER with LLM_FALLBACK_PROVIDER, the main one capped by `budget` (EX-06).
+    eval: EVAL_LLM_PROVIDER only (never the paid key for bulk work), uncapped. None when no
+    provider has a key (callers use templates)."""
     if purpose == "eval":
         primary = _provider(os.environ.get("EVAL_LLM_PROVIDER", "gemini"))
         return LLMAdapter(primary) if primary else None
@@ -312,7 +346,7 @@ def adapter_from_env(*, purpose: str = "runtime") -> LLMAdapter | None:
     fallback = _provider(os.environ.get("LLM_FALLBACK_PROVIDER", "gemini"))
     if primary is None:
         return LLMAdapter(fallback) if fallback else None
-    return LLMAdapter(primary, fallback)
+    return LLMAdapter(primary, fallback, budget=budget)
 
 
 _default: LLMAdapter | None = None

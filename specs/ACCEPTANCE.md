@@ -203,6 +203,11 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   the provider SDK makes no hidden retries. A timeout counts as the provider being down: the
   adapter tries the fallback provider once, then the caller uses its template. A buyer's tap
   never waits on more than two bounded calls.
+- EX-06 Spending cap: the main (paid) provider takes at most `LLM_DAILY_CALL_LIMIT` calls per UTC
+  day (config, default 400; 0 turns it off), counted in the database so the web service and the
+  worker share one count. Past the cap a call goes to the fallback provider, then to the caller's
+  own fallback (template, fixed plan, fact-only pack), exactly as when the provider is down. If
+  the count cannot be read, the paid call is not made. Eval runs use the eval provider, uncapped.
 
 ## RG — Policy reader (RAG)
 - RG-01 Answers cite the retrieved passages.
@@ -334,8 +339,11 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   the seller's orders view reports money recovered per currency.
 - RC-06 The sweep expires PREPARED recoveries whose deadline has passed.
 - RC-07 `/healthz` describes claim filing as prepared by Doorstep and submitted by the seller.
-- RC-08 Model budget: cases the demo seed creates keep the claim pack built from the facts only (no
-  model call is queued); a case reported afterwards, during the demo, gets the AI draft as usual.
+- RC-08 AI where it is seen: cases the demo seed creates queue no AI draft; the model drafts a
+  claim pack when the seller first opens it (one call, then saved, so later opens reuse it). Only
+  PREPARED recoveries are drafted. A failed draft keeps the fact-only pack and is not retried for
+  `DRAFT_RETRY_S`; two opens at once make one call. Cases reported during the demo (Sam, Priya)
+  are drafted ahead by the worker, as before.
 
 ## DE — PayPal dispute evidence (SPEC section 7a.4)
 - DE-01 A case in DISPUTE_EVIDENCE accepts the seller action `send-evidence`. It creates one
@@ -381,9 +389,10 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - AT-06 The agent's PayPal pre-check runs on its own when the seller opens a case that needs them;
   opening it again within `AGENT_REUSE_S` (or before the case changes) reuses that run, so the
   timeline never repeats it.
-- AT-07 The automatic pre-check runs the fixed plan (read order, tracking, disputes, ask the policy)
-  with no model call. The model planner runs only when the seller presses the button and no run
-  is reused, so opening cases never spends model budget.
+- AT-07 The automatic pre-check is planned by the configured model, like the button; both share
+  one run per case (AT-06), so an opened case costs at most one planned run per `AGENT_REUSE_S`.
+  The run reports `model:<provider>` when the model planned it and `fixed plan` otherwise (no
+  model, the model failed, or the daily cap was reached); the panel says so in plain words.
 
 ## PC — Policy check (the AI reads the seller's written policy against the rules)
 - PC-01 The check compares the seller's written delivery policy with facts built in code from the

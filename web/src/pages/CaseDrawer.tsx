@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react";
 import {
   Bot, Camera, CircleCheck, CircleHelp, CircleX, Copy, ExternalLink, FileText, Info, Landmark, Link2,
   ListChecks, MessageSquare, QrCode, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
@@ -435,14 +435,14 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
   const [run, setRun] = useState<AgentRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  async function go(automatic = false) {
+  async function go() {
     setBusy(true); setErr(null);
-    try { setRun(await api.runAgent(token, caseId, automatic)); onDone(); }
+    try { setRun(await api.runAgent(token, caseId)); onDone(); }
     catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
   // The agent works before the seller looks: on a case that needs them, it checks PayPal on its own.
   useEffect(() => {
-    if (auto && !AUTO_RAN.has(caseId)) { AUTO_RAN.add(caseId); void go(true); }
+    if (auto && !AUTO_RAN.has(caseId)) { AUTO_RAN.add(caseId); void go(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, caseId]);
   const outcome = run?.outcome ? AGENT_OUTCOME[run.outcome] : null;
@@ -470,7 +470,11 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
       )}
       <div className="row wrap" style={{ gap: 10 }}>
         <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => go()}>{busy ? "Checking PayPal…" : run ? "Run the agent again" : "Run the agent"}</button>
-        {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline.</span>}
+        {run && (
+          <span className="faint" title={run.planner}>
+            {run.planner.startsWith("model") ? "Planned by AI, within code checks." : "Standard checklist (the AI planner was unavailable)."} Every step is in the timeline.
+          </span>
+        )}
       </div>
     </section>
   );
@@ -527,7 +531,20 @@ function daysLeft(iso: string): number {
 
 /** RC-01..05: claim the loss back from the carrier. AI drafts the sentences, code checks every
  * one against the facts; the seller submits on the carrier's own site. */
-function RecoveryPanel({ token, recovery: r, onChanged }: { token: string; recovery: RecoveryView; onChanged: (m: string) => void }) {
+function RecoveryPanel({ token, recovery, onChanged }: { token: string; recovery: RecoveryView; onChanged: (m: string) => void }) {
+  // RC-08: a claim pack built from the facts is drafted by AI the first time it is opened.
+  const [r, setR] = useState(recovery);
+  useEffect(() => setR(recovery), [recovery]);
+  const [drafting, setDrafting] = useState(false);
+  const [tried, setTried] = useState(false);
+  async function draftOnOpen(e: SyntheticEvent<HTMLDetailsElement>) {
+    if (!e.currentTarget.open || tried || r.pack_source === "model" || r.status !== "PREPARED") return;
+    setTried(true); setDrafting(true);
+    try {
+      const drafted = await api.recoveryDraft(token, r.case_id);
+      setR((cur) => (cur.status === "PREPARED" ? drafted : cur)); // never over a claim already sent
+    } catch { /* the fact-only pack stays */ } finally { setDrafting(false); }
+  }
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
@@ -557,9 +574,15 @@ function RecoveryPanel({ token, recovery: r, onChanged }: { token: string; recov
       </div>
       {r.cover_minor != null && <span className="faint">Capped at the carrier's cover ({money(r.cover_minor, r.currency)}).</span>}
       {!r.carrier_known && <div className="notice warn"><Info aria-hidden /><span>{r.terms_note || "Check your carrier's claim terms; Doorstep has no verified terms for this carrier."}</span></div>}
-      <details className="fold">
+      <details className="fold" onToggle={draftOnOpen}>
         <summary><FileText aria-hidden />Claim pack ({r.sentences.length} checked sentence{r.sentences.length === 1 ? "" : "s"})</summary>
         <div className="col" style={{ gap: 10 }}>
+          {drafting ? (
+            <div className="col" style={{ gap: 8 }} aria-live="polite">
+              <span className="muted">AI is writing this claim from the facts; code checks every sentence…</span>
+              <Loading height={120} />
+            </div>
+          ) : (
           <ol className="claim-sentences">
             {r.sentences.map((x, i) => (
               <li key={i}>
@@ -568,11 +591,14 @@ function RecoveryPanel({ token, recovery: r, onChanged }: { token: string; recov
               </li>
             ))}
           </ol>
-          <p className="faint">
-            {r.pack_source === "model" ? "AI draft; every sentence checked against the facts." : "Built from the facts only."} Terms: {r.terms_rule}.
-          </p>
+          )}
+          {!drafting && (
+            <p className="faint">
+              {r.pack_source === "model" ? "AI draft; every sentence checked against the facts." : tried ? "AI unavailable right now; built from the facts only." : "Built from the facts only."} Terms: {r.terms_rule}.
+            </p>
+          )}
           <div className="row">
-            <button className="btn" onClick={() => navigator.clipboard?.writeText(claimText)}><Copy size={14} />Copy claim</button>
+            <button className="btn" disabled={drafting} onClick={() => navigator.clipboard?.writeText(claimText)}><Copy size={14} />Copy claim</button>
             {r.terms_url && <a className="btn ghost" href={r.terms_url} target="_blank" rel="noreferrer">Carrier's terms <ExternalLink size={13} /></a>}
           </div>
         </div>

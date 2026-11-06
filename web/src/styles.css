@@ -190,6 +190,7 @@ input:focus, textarea:focus, select:focus { outline: 3px solid var(--accent-soft
   .sidebar .shop-chip, .sidebar .bottom, .nav-label { display: none; }
   .nav { flex-direction: row; overflow-x: auto; width: 100%; }
   .nav button { width: auto; white-space: nowrap; }
+  .sidebar > div { min-width: 0; max-width: 100%; } /* the nav strip scrolls inside, not the page */
 }
 
 /* ---------- data grid wrapper ---------- */
