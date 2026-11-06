@@ -49,13 +49,14 @@ walks away. PayPal already refunds buyers; the unsolved part is that the wrong p
 
 ### How we built it
 Spec first, with Claude Code: a written spec, then numbered acceptance criteria, then a test for
-every criterion, then code until the tests passed. 1,112 unit and property tests pass; all 158
+every criterion, then code until the tests passed. 1,377 unit and property tests pass; all 174
 acceptance criteria have a test; branch coverage is 100% on the money policy and the order state
 machine; the failure-point engine scores 96.7% on 60 labelled cases and 95% on a hold-out, and
-every miss is low confidence, so it goes to a person; mutation testing leaves no surviving logic mutants in the money path; Schemathesis finds no
-500s; 8 Playwright journeys run in a real browser. Python and FastAPI on Render with Postgres;
-PayPal Orders v2 through the PayPal Server SDK; Shipment Tracking, Refunds, Disputes and Webhooks
-over REST; a bounded agent on PayPal's Agent Toolkit; Claude for vision and explanations with
+every miss is low confidence, so it goes to a person; mutation testing kills every logic
+mutant of the money path (2,402 mutants); 7 tests on a real Postgres prove the row locks;
+Schemathesis finds no 500s; 18 Playwright tests run in a real browser. Python and FastAPI on
+Render with Postgres; PayPal Orders v2 through the PayPal Server SDK; Shipment Tracking, Refunds,
+Disputes and Webhooks over REST; a bounded agent on PayPal's Agent Toolkit; Claude for vision and explanations with
 Gemini as fallback; XGBoost with TreeSHAP reasons; React and AG Grid for the Control Room.
 
 ### Challenges we ran into
@@ -110,8 +111,10 @@ commerce; Best use of AG Grid; Best use of APIMatic; Best use of Render.
 
 ## Honest limits (also in the README and the video)
 Lockers and rerouting are simulated; carrier claim packs are prepared, not filed; carrier event
-locations in the seeded demo are simulated; the risk model is trained on synthetic data; AG Studio,
-Bryntum, Promptfoo and Ragas are not built; rules are information, not legal advice.
+locations in the seeded demo are simulated; the risk model is trained on synthetic data; the
+Bryntum radar, the Promptfoo red team and the Ragas run are not built, and AG Studio's own built-in
+agents need a licence we do not have (our Insights page and its Ask Doorstep agent are built); rules
+are information, not legal advice.
 
 ## Pre-submit checklist
 - [ ] Full-history secret scan clean (`gitleaks detect` over all commits), then make the repo public

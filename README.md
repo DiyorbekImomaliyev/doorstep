@@ -36,16 +36,44 @@ The case agent reads the PayPal order, tracking and disputes through **PayPal's 
 stops at the seller's limit. Buyers' AI assistants can report a problem through the MCP server at
 `/agent/mcp`.
 
+## Architecture
+
+![Doorstep system architecture: web service, worker and Postgres on Render, with PayPal, Shippo and two model providers](docs/img/architecture.svg)
+
+A modular monolith on Render: one FastAPI web service, one worker, one Postgres. Four choices carry
+the design.
+
+- **Inbox and outbox in the same Postgres.** A webhook is verified and stored before it gets a 2xx.
+  Every PayPal write is a job committed in the same transaction as the decision that caused it.
+  Workers claim both with `FOR UPDATE SKIP LOCKED`.
+- **Exactly-once effect, not exactly-once delivery.** Retries reuse one `PayPal-Request-Id`, a
+  unique (decision, kind) row allows one refund per decision, and a re-check against the live
+  capture runs right before money moves.
+- **AI proposes, code decides.** Models word explanations, draft claims and plan read-only steps;
+  a verifier in code drops any sentence that cites an unknown fact. Liability, limits and refunds
+  are deterministic code.
+- **Proof anyone can check.** Each money decision gets an Ed25519-signed receipt in a hash chain,
+  public at `/cases/{id}/verify`.
+
+The full design is in **[docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md)**: requirements, estimates,
+the options weighed for each decision, failure modes and the scale path. It also has the
+[money path as a sequence diagram](docs/img/money-path.svg) and the
+[AI system design](docs/img/ai-system.svg).
+
 ## Safety by construction
 
 - **Money moves only through `app/policy`.** Import contracts (import-linter, run in CI) prove the
   AI, agent and MCP code can never reach a PayPal write, even indirectly.
-- **Every PayPal write** goes through a jobs outbox with a `PayPal-Request-Id`; retries never
-  double-refund. Every webhook is verified and stored in an inbox before it is processed.
+- **Every PayPal write carries a `PayPal-Request-Id`.** Capture, tracking, refunds and dispute
+  evidence go through a jobs outbox, so retries never double-refund; creating the order and fixing
+  its address happen in the buyer's own request, before any money moves. Every webhook is verified
+  and stored in an inbox before it is processed.
 - **Never accuse or deny automatically.** Contradictions, low confidence and repeat claims go to a
   person; outcomes that would blame the buyer go to the seller.
-- **The seller can't fake proof.** A seal scan from the seller's own browser is recorded but never
-  counts (signed HttpOnly cookie, SL-07).
+- **A seller's own scan never counts.** A seal scan from the seller's signed-in browser is recorded
+  but never counted (signed HttpOnly cookie, SL-07). A seller could still scan from another device,
+  so a scan is one signal among several, and an outcome that would blame the buyer always goes to a
+  person, never to an automatic denial.
 - **Rules live in versioned YAML** (`rules/*.yaml`); every decision stores the rule id and version.
 - **One model adapter** (`app/ai/llm.py`): structured Pydantic output, one retry, template
   fallback, Claude with Gemini as fallback, a 20-second bound per call, and only the postcode
@@ -59,13 +87,14 @@ All numbers measured on the current commit.
 
 | Check | Result |
 | --- | --- |
-| Unit + property tests (`make test`) | 1,112 passed; 19 strict `xfail` for criteria not built, each naming why |
-| Acceptance trace (`make trace`) | 158/158 acceptance IDs have a test |
+| Unit + property tests (`make test`) | 1,377 passed; 10 strict `xfail` for criteria not built, each naming why |
+| Postgres concurrency (`make test-pg`) | 7 tests on a real Postgres: one refund per approval, no lost update, a duplicate webhook processed once, the daily cap holds under a race, no model call while a row is locked, one receipt per double tap, rule order without the index |
+| Acceptance trace (`make trace`) | 174/174 acceptance IDs have a test |
 | Branch coverage | 100% on `app/policy` and `app/orders/state.py` |
-| Mutation testing (`make mutmut-gate`) | No surviving logic mutants in the money path (`docs/mutation-report.md`) |
+| Mutation testing (`make mutmut-gate`) | 2,402 mutants in `app/policy`: 2,341 killed, 0 logic survivors; the 61 survivors only change wording (`docs/mutation-report.md`) |
 | Failure-point eval (`make evals`) | 96.7% on 60 labelled cases (30 UK, 30 US), 95% on a 20-case hold-out; every miss is low confidence and goes to a person (`evals/report.md`) |
-| API fuzzing (`make fuzz`) | Schemathesis: no 500s, responses match the schema |
-| Browser E2E (`make e2e`) | 8 Playwright journeys: report → approve → receipts verify; seal scan; scan audit and carrier recovery; dispute evidence; packing check; agent stops at the limit |
+| API fuzzing (`make fuzz`) | Schemathesis over 44 operations: no 500s, responses match the schema |
+| Browser E2E (`make e2e`) | 18 Playwright tests in a real browser: report → approve → receipts verify; seal scan; scan audit and carrier recovery; dispute evidence; packing check; the agent stops at the limit; autopilot on and off; the case queue; Insights widgets and Ask Doorstep. 18/18 in two runs back to back; one earlier run timed out once under load (see limits) |
 | CI | `.github/workflows/ci.yml`: lint, types, import contracts, tests, fuzz, trace, gitleaks, web build |
 
 ## Business model (proposed, not yet validated with sellers)
@@ -108,8 +137,15 @@ import-linter, Playwright · Render.
   against a buyer.
 - The risk model is trained on synthetic data (`docs/MODEL_CARD_risk.md`). The policy reader uses
   BM25 retrieval, not embeddings (ADR-033).
-- Not built (strict `xfail` tests say so): AG Studio, the Bryntum deadline radar, the Promptfoo
-  red-team suite, the Ragas run and the labelled packing-photo set.
+- Not built (strict `xfail` tests say so): the Bryntum deadline radar, the Promptfoo red-team
+  suite, the Ragas run, the labelled packing-photo set and dispute make-offer. The AG Studio
+  Insights page and its Ask Doorstep agent are built; working beside Studio's own built-in agents
+  needs a Pro-with-AI licence.
+- A buyer's report waits for two model calls (the explanation and the claim-pack draft) before it
+  answers. Usually a few seconds; each attempt is capped at 20 s (`LLM_TIMEOUT_S`). The decision
+  and its template wording are saved first, so a slow model never blocks money or rows.
+- Shippo's test tracking numbers are shared by every demo shop, so a test carrier event goes to the
+  newest shipment with that number. Real tracking numbers belong to one parcel.
 - Rules are information, not legal advice; the seller decides. In production, acting on a seller's
   PayPal account needs their explicit permission.
 
