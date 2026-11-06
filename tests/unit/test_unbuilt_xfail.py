@@ -84,6 +84,4 @@ def test_SE_03_promptfoo_money_attacks_all_blocked():
     _unbuilt()
 
 
-@pytest.mark.xfail(strict=True, reason=NEEDS_HUMAN + "sandbox keys, Shippo test key and a run")
-def test_E2E_03_live_sandbox_smoke_full_loop():
-    _unbuilt()
+# E2E-03 is built: tests/integration/test_e2e03_sandbox_smoke.py (RUN_SANDBOX_SMOKE=1).
