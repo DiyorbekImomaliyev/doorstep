@@ -112,9 +112,7 @@ def reliability(y: np.ndarray, p: np.ndarray, bins: int = 10) -> list[Calibratio
     out = []
     for chunk in np.array_split(order, bins):
         if len(chunk):
-            out.append(
-                CalibrationBin(float(p[chunk].mean()), float(y[chunk].mean()), len(chunk))
-            )
+            out.append(CalibrationBin(float(p[chunk].mean()), float(y[chunk].mean()), len(chunk)))
     return out
 
 

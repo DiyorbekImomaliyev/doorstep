@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from typing import Literal
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.cases.dispute_evidence import build_submission
 from app.clock import Clock
 from app.orders.enums import ApproverKind
-from app.orders.models import Case, MoneyAction, Order
+from app.orders.models import Approval, Case, MoneyAction, Order
 from app.policy.evidence import existing_evidence, queue_dispute_evidence
 from app.policy.rules import RuleBook
 from app.policy.service import Approver, PolicyError, PolicyService, _latest_decision
@@ -36,7 +37,13 @@ class CaseActions:
         if action == "send-evidence":
             return self.send_evidence(case, approver, verify_url=verify_url)
         if action == "approve":
+            # Lock first, so a concurrent second tap reads the state the first one left
+            # (design review of R31); approve() takes the same lock again.
+            self.session.refresh(case, with_for_update=True)
+            before = (case.state, self._approvals(case.id))
             money = self.policy.approve(case, approver)
+            if (case.state, self._approvals(case.id)) == before:
+                return money  # R31 (review S13): a repeated tap changed nothing; sign nothing
         elif action == "decline":
             self.policy.decline(case, approver)
         else:
@@ -58,6 +65,14 @@ class CaseActions:
             at=self.clock.now(),
         )
         return money
+
+    def _approvals(self, case_id: str) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count()).select_from(Approval).where(Approval.case_id == case_id)
+            )
+            or 0
+        )
 
     def send_evidence(self, case: Case, approver: Approver, *, verify_url: str) -> MoneyAction:
         """DE-01..04: facts-only evidence to the open PayPal dispute, through app.policy. A second

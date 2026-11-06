@@ -95,7 +95,7 @@ export function DeliveryCell({ r }: { r: OrderRow }) {
 }
 
 export function RiskCell({ r }: { r: OrderRow }) {
-  if (r.delivery_risk == null) return <span className="faint">—</span>;
+  if (r.delivery_risk == null) return <span className="faint" title="Delivery risk is a forecast made before the parcel ships">—</span>;
   const tone = riskTone(r.delivery_risk);
   return (
     <span className={`pill ${tone === "neutral" ? "plain" : tone}`} title={r.risk_reasons.join("\n")}>

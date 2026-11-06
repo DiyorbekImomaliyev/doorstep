@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import json
 import logging
 import os
@@ -58,6 +59,15 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?<!\w)\+?\d[\d ()-]{8,}\d(?!\w)")
 _UK_POSTCODE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b", re.IGNORECASE)
 _US_ZIP4 = re.compile(r"\b(\d{5})-\d{4}\b")
+
+
+def data_block(tag: str, text: str, *, limit: int) -> str:
+    """Untrusted text (a buyer's note, a question, a policy) as data inside one tag pair.
+
+    CLAUDE.md hard rule 8, review S15: <, > and & are escaped, so the text can never close its
+    block or open another, whatever it says. The limit cuts the text before escaping.
+    """
+    return f"<{tag}>{html.escape(text[:limit], quote=False)}</{tag}>"
 
 
 def redact(text: str) -> str:

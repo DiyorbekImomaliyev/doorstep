@@ -15,6 +15,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
 
+from app.ai.llm import data_block
 from app.ai.schemas import ExplanationDraft
 from app.cases.engine import FailurePoint
 from app.money import Money
@@ -122,6 +123,22 @@ def _source_name(source: str) -> str:
     return re.split(r"\s+[—-]\s+https?://|\s+https?://", source, maxsplit=1)[0].strip()
 
 
+def _buyer_next(ctx: ExplainContext) -> str:
+    """What happens next, in the buyer's terms: who acts, and for how much (never an accusation)."""
+    amount = money_text(ctx.refund) if ctx.refund is not None else None
+    if ctx.route == CaseState.AUTO_REFUND and amount:
+        return f"Your refund of {amount} has been sent through PayPal."
+    if ctx.route == CaseState.AWAITING_SELLER:
+        if ctx.reship:
+            return "The seller has been asked to confirm a replacement, sent to you again."
+        if amount:
+            return f"The seller has been asked to approve a refund of {amount}."
+        return "The seller has been asked to decide the fix."
+    if ctx.route == CaseState.DISPUTE_EVIDENCE:
+        return "You have a PayPal dispute open, so PayPal decides it with the evidence it is sent."
+    return "A person is checking the evidence before anything is decided. Nothing has been refused."
+
+
 def _fix_text(ctx: ExplainContext) -> str:
     if ctx.reship:
         return "reship the order"
@@ -149,9 +166,8 @@ def template(ctx: ExplainContext, blocked_reason: str | None = None) -> Explanat
         f"{ctx.disclaimer}"
     )
     buyer = (
-        f"Thanks for telling us about order {ctx.order_ref}. We checked the delivery record "
-        f"and {_NEXT_STEP.get(ctx.route, 'are looking into it')}. "
-        "You do not need to do anything else right now; we will update this page."
+        f"Thanks for telling us about order {ctx.order_ref}. We checked the delivery record. "
+        f"{_buyer_next(ctx)} You do not need to do anything else; this page shows each step."
     )
     letter = None
     if ctx.failure_point in _CARRIER_FAULTS:
@@ -210,7 +226,7 @@ class Explainer:
             f"Liable party: {ctx.liable_party}. Fix: {_fix_text(ctx)}.\n"
             f"Evidence: {'; '.join(ctx.reasons)}.\n"
             f"Carrier: {ctx.carrier}; tracking: {ctx.tracking_number}.\n"
-            f"<buyer_note>{ctx.buyer_note[:500]}</buyer_note>\n"
+            f"{data_block('buyer_note', ctx.buyer_note, limit=500)}\n"
             f"End the summary with: {ctx.disclaimer}"
         )
         try:

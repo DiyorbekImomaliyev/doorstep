@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import math
 import re
@@ -23,6 +24,7 @@ from collections import Counter
 from pydantic import BaseModel
 
 from app.ai.explainer import StructuredLLM
+from app.ai.llm import data_block
 from app.ai.schemas import PolicyAnswer
 from app.policy.rules import RuleSet
 from tuning import engine_config as cfg
@@ -152,8 +154,10 @@ class PolicyReader:
         )
 
     def _ask(self, question: str, hits: list[Passage]) -> PolicyAnswer | None:
-        passages = "\n".join(f"<passage id='{p.id}'>{p.text}</passage>" for p in hits)
-        user = f"<question>{question[:500]}</question>\n{passages}"
+        passages = "\n".join(
+            f"<passage id='{p.id}'>{html.escape(p.text, quote=False)}</passage>" for p in hits
+        )
+        user = f"{data_block('question', question, limit=500)}\n{passages}"
         try:
             out = self.llm.complete_structured(  # type: ignore[union-attr]
                 schema=PolicyAnswer, system=_SYSTEM, user=user, temperature=0, purpose="rag"

@@ -22,7 +22,7 @@ export default function Verify({ caseId }: { caseId: string }) {
         {!r && !error && <Loading height={120} />}
         {r && (
           <section className="card col">
-            {r.status === "ok" && <div className="notice good"><CircleCheck aria-hidden /><span><strong>Verified.</strong>&nbsp;{r.checked} receipts recomputed; every hash and signature matches.</span></div>}
+            {r.status === "ok" && <div className="notice good"><CircleCheck aria-hidden /><span><strong>Verified.</strong>&nbsp;This case's {r.receipts.length} receipt{r.receipts.length === 1 ? "" : "s"} {r.receipts.length === 1 ? "is" : "are"} intact. To prove it, all {r.checked.toLocaleString()} receipts in the shared chain up to this case were recomputed: every hash, link and signature matches.</span></div>}
             {r.status === "broken" && <div className="notice bad"><CircleX aria-hidden /><span><strong>Tampered.</strong>&nbsp;Receipt #{r.first_broken_seq}: {r.reason}.</span></div>}
             {r.status === "not_run" && <div className="notice"><Info aria-hidden /><span><strong>Not checked.</strong>&nbsp;{r.reason}.</span></div>}
             {r.receipts.length > 0 && (

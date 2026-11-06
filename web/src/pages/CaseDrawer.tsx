@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react";
 import {
   Bot, Camera, CircleCheck, CircleHelp, CircleX, Copy, ExternalLink, FileText, Info, Landmark, Link2,
-  ListChecks, MessageSquare, QrCode, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
+  ListChecks, MessageSquare, QrCode, RefreshCw, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
 } from "lucide-react";
-import { api, type AgentRun, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
+import { api, type AgentRun, type CaseAction, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
 import { Badge, Bar, ErrorBox, Loading, SectionHead, Timeline, useAsync } from "../components/ui";
 import { FAILURE_POINT, METHOD, ROUTE, money, pct, riskTone, stateTone, when, type Tone } from "../format";
 
@@ -47,12 +47,13 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function act(action: "approve" | "decline" | "send-evidence") {
+  async function act(action: CaseAction) {
     setBusy(true); setErr(null);
     try {
       await api.act(token, caseId, action);
       onChanged(action === "approve" ? "Approved. The refund is on its way through PayPal."
         : action === "send-evidence" ? "Evidence is on its way to the PayPal dispute."
+        : action === "re-check" ? "Decided again with the latest evidence."
         : "Declined. The buyer will be told.");
       reload();
     } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
@@ -179,6 +180,11 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
           {err && <ErrorBox message={err} />}
           <div className="row">
             {c.actions.includes("decline") && <button className="btn ghost danger" disabled={busy} onClick={() => act("decline")}>Decline</button>}
+            {c.actions.includes("re-check") && (
+              <button className="btn ghost" disabled={busy} onClick={() => act("re-check")} title="Run the decision again on the evidence as it is now">
+                <RefreshCw size={15} />Decide again
+              </button>
+            )}
             <div className="grow" />
             {c.actions.includes("send-evidence") && (
               <button className="btn primary lg" disabled={busy} onClick={() => act("send-evidence")}><Send size={16} />Send evidence to PayPal</button>

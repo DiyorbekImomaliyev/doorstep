@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.explainer import ExplainContext, Explainer
+from app.ai.explainer import ExplainContext, Explainer, Explanation, template
 from app.cases.counterfactual import counterfactual
 from app.cases.engine import ClaimReason, Confidence, FailurePoint, assess
 from app.cases.recovery import prepare_recovery
@@ -25,11 +25,11 @@ from app.cases.signals import EvidenceKind, assemble_signals
 from app.clock import Clock
 from app.config import Settings
 from app.money import Currency, Money
-from app.orders.enums import CaseState, Fix, OrderState
-from app.orders.models import Decision, Evidence, Order, Shipment
+from app.orders.enums import CaseState, Fix, MoneyActionStatus, OrderState
+from app.orders.models import Case, Decision, Evidence, MoneyAction, Order, Shipment
 from app.orders.state import CaseAlreadyOpen, open_case, transition_case, transition_order
 from app.policy.rules import RuleBook
-from app.policy.service import CaseFacts, PolicyService
+from app.policy.service import CaseFacts, PolicyService, PolicyStateError
 from app.proof.receipts import ReceiptSigner, issue_receipt
 
 # Orders a buyer can report on: the parcel has left the seller.
@@ -119,6 +119,14 @@ class CasePipeline:
 
     # ---- BC-03 ---------------------------------------------------------------
 
+    def _store_explanation(self, decision: Decision, explanation: Explanation) -> None:
+        decision.explanation = explanation.summary
+        decision.model_outputs = {
+            **(decision.model_outputs or {}),
+            "explainer": explanation.model_dump(mode="json"),
+        }
+        self.session.flush()
+
     def report(
         self, order: Order, reason: ClaimReason, *, reported_by: str, note: str = ""
     ) -> CaseReport:
@@ -134,6 +142,39 @@ class CasePipeline:
         transition_case(
             s, case, CaseState.GATHERING_EVIDENCE, actor="pipeline", reason="gathering evidence"
         )
+        return self._decide(order, case, reason, note)
+
+    def redecide(self, case: Case, *, actor: str) -> CaseReport:
+        """R23 (review S2): a person asks for a fresh decision on a held case.
+
+        HOLD_FOR_REVIEW -> GATHERING_EVIDENCE (SPEC section 8), then the same steps as a report,
+        on the evidence as it is now. A refund the pre-refund re-check blocked, or one that
+        failed, otherwise has no way forward. The new decision gets its own money action, and that
+        action meets the same live PayPal re-check, so a refund that did land is never repeated.
+        """
+        if CaseState(case.state) != CaseState.HOLD_FOR_REVIEW:
+            raise PolicyStateError(f"case {case.id} in {case.state} cannot be decided again")
+        queued = self.session.scalar(
+            select(MoneyAction.id).where(
+                MoneyAction.case_id == case.id,
+                MoneyAction.status == MoneyActionStatus.QUEUED.value,
+            )
+        )
+        if queued is not None:  # it would land under a newer decision (design review of R23)
+            raise PolicyStateError(f"case {case.id}: a refund is on its way; wait for it to land")
+        order = self.session.get(Order, case.order_id)
+        assert order is not None
+        transition_case(
+            self.session,
+            case,
+            CaseState.GATHERING_EVIDENCE,
+            actor=actor,
+            reason="a person asked for a fresh decision",
+        )
+        return self._decide(order, case, ClaimReason(case.reason), "")
+
+    def _decide(self, order: Order, case: Case, reason: ClaimReason, note: str) -> CaseReport:
+        s = self.session
         now = self.clock.now()
         signals, proofs = assemble_signals(s, order, reason, now, self.settings)
         scan_audit = audit_order(s, order, proofs, now)  # SA-01: the carrier's own data
@@ -171,34 +212,30 @@ class CasePipeline:
         shipment = s.scalars(select(Shipment).where(Shipment.order_id == order.id)).first()
         rule = self.rulebook.select(order.buyer_country)
         liability = decision.signals.get("liability") or {}
-        explanation = self.explainer.explain(
-            ExplainContext(
-                order_ref=order.id[:8].upper(),
-                item=order.item_description or "",
-                failure_point=result.failure_point,
-                confidence=result.confidence.value,
-                route=policy.route,
-                rule_id=policy.rule_id,
-                rule_version=policy.rule_version,
-                rule_source=rule.source if rule is not None else "",
-                liable_party=liability.get("liable_party"),
-                refund=policy.refund_amount,
-                reship=policy.fix == Fix.RESHIP,
-                reasons=policy.reasons,
-                carrier=shipment.carrier if shipment else "",
-                tracking_number=shipment.tracking_number if shipment else "",
-                buyer_note=note,
-                disclaimer=rule.disclaimer
-                if rule is not None and rule.disclaimer
-                else "Information, not legal advice. The seller decides.",
-            )
+        ctx = ExplainContext(
+            order_ref=order.id[:8].upper(),
+            item=order.item_description or "",
+            failure_point=result.failure_point,
+            confidence=result.confidence.value,
+            route=policy.route,
+            rule_id=policy.rule_id,
+            rule_version=policy.rule_version,
+            rule_source=rule.source if rule is not None else "",
+            liable_party=liability.get("liable_party"),
+            refund=policy.refund_amount,
+            reship=policy.fix == Fix.RESHIP,
+            reasons=policy.reasons,
+            carrier=shipment.carrier if shipment else "",
+            tracking_number=shipment.tracking_number if shipment else "",
+            buyer_note=note,
+            disclaimer=rule.disclaimer
+            if rule is not None and rule.disclaimer
+            else "Information, not legal advice. The seller decides.",
         )
-        decision.explanation = explanation.summary
-        decision.model_outputs = {
-            **(decision.model_outputs or {}),
-            "explainer": explanation.model_dump(mode="json"),
-        }
-        s.flush()
+        # R27 (review S7): the decision commits with the template wording, so no model call runs
+        # while the order, case and seller rows are locked; the model's words replace it after.
+        explanation = template(ctx)
+        self._store_explanation(decision, explanation)
         if self.rulebook.carriers is not None:  # RC-01: claim back from a carrier at fault
             prepare_recovery(
                 s, case, decision, self.rulebook.carriers, self.clock, draft=self.ai_claims
@@ -224,6 +261,10 @@ class CasePipeline:
             },
             at=now,
         )
+        if self.explainer.llm is not None:
+            s.commit()
+            explanation = self.explainer.explain(ctx)
+            self._store_explanation(decision, explanation)
         return CaseReport(
             case_id=case.id,
             decision_id=decision.id,

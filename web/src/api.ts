@@ -289,6 +289,8 @@ export type PolicyAnswer = {
   disclaimer: string;
 };
 
+export type CaseAction = "approve" | "decline" | "send-evidence" | "re-check";
+
 export const api = {
   health: () => call<Health>("GET", "/healthz"),
   seed: (scratch: boolean) => call<SeedOut>("POST", `/demo/seed?scratch=${scratch ? 1 : 0}`),
@@ -338,7 +340,7 @@ export const api = {
     call<SellerRule>("POST", `/api/seller/${t}/autopilot/${encodeURIComponent(ruleId)}/off`),
   orders: (t: string) => call<OrderRow[]>("GET", `/api/seller/${t}/orders`),
   casePage: (t: string, caseId: string) => call<CaseView>("GET", `/api/seller/${t}/cases/${caseId}`),
-  act: (t: string, caseId: string, action: "approve" | "decline" | "send-evidence") =>
+  act: (t: string, caseId: string, action: CaseAction) =>
     call<{ case_id: string; state: string; money_action_id: string | null }>(
       "POST", `/api/seller/${t}/cases/${caseId}/${action}`,
     ),

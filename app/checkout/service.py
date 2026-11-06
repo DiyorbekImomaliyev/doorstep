@@ -152,7 +152,7 @@ class CheckoutService:
         self._require_created(order)
         approved = self.reader.get_approved(self._paypal_id(order))
         order.payer_id = approved.payer_id
-        order.shipping_address = approved.address.model_dump()
+        self._ship_to(order, approved.address)
         result = self.checker.check(approved.address)
         self._record(order, result)
         if result.valid:
@@ -172,10 +172,23 @@ class CheckoutService:
             address,
             request_id=request_id_for("order", order.id, "patch_address", digest),
         )
-        order.shipping_address = address.model_dump()
+        self._ship_to(order, address)
         self._record(order, result)
         self.request_capture(order)
         return result
+
+    def _ship_to(self, order: Order, address: Address) -> None:
+        """Store where the parcel goes. Its country picks the legal rule (review S3, R24), so the
+        country PayPal returns replaces the one the checkout request declared."""
+        order.shipping_address = address.model_dump()
+        country = address.country.strip().upper()
+        if len(country) == 2 and country.isalpha() and country != order.buyer_country:
+            self._audit(
+                order,
+                "checkout.country_from_paypal",
+                {"declared": order.buyer_country, "paypal": country},
+            )
+            order.buyer_country = country
 
     def keep_address(self, order: Order) -> None:
         """The buyer keeps the original address: stored as a signal, capture proceeds (CK-02)."""

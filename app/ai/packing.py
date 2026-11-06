@@ -15,7 +15,7 @@ from enum import StrEnum
 from pydantic import BaseModel
 
 from app.ai.explainer import StructuredLLM
-from app.ai.llm import Image
+from app.ai.llm import Image, data_block
 from app.ai.schemas import PackingCheckResult
 from tuning import engine_config
 
@@ -78,7 +78,8 @@ class PackingChecker:
         if self.llm is None:
             return PackingVerdict(verdict=Verdict.CHECK, message=_FALLBACK)
         user = (
-            f"<order_line>{order_line[:200]}</order_line>\nCompare the photo with the order line."
+            f"{data_block('order_line', order_line, limit=200)}\n"
+            "Compare the photo with the order line."
         )
         try:
             result = self.llm.complete_structured(

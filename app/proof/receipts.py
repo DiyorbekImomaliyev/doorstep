@@ -9,6 +9,7 @@ personal data, because `GET /cases/{id}/verify` is public.
 from __future__ import annotations
 
 import base64
+import functools
 import hashlib
 import json
 from datetime import datetime
@@ -77,6 +78,14 @@ def _verify(public: Ed25519PublicKey, digest_hex: str, signature_b64: str) -> bo
     except (InvalidSignature, ValueError):
         return False
     return True
+
+
+@functools.lru_cache(maxsize=20_000)  # about 6 MB; a chain longer than this re-checks the rest
+def _signature_ok(public_key_b64: str, digest_hex: str, signature_b64: str) -> bool:
+    """R29 (review S10): an Ed25519 check is a pure function of its three inputs, so its answer is
+    remembered. A changed byte in any of them is a new key, checked afresh (PR-03 still holds)."""
+    public = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64))
+    return _verify(public, digest_hex, signature_b64)
 
 
 def _digest(
@@ -152,7 +161,6 @@ def verify_chain(session: Session, public_key_b64: str, *, case_id: str) -> Veri
     last_seq = session.scalar(select(func.max(Receipt.seq)).where(Receipt.case_id == case_id))
     if last_seq is None:
         return VerifyReport(status="not_run", checked=0, reason="no receipts for this case")
-    public = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64))
     rows = session.scalars(
         select(Receipt).where(Receipt.seq <= last_seq).order_by(Receipt.seq)
     ).all()
@@ -175,7 +183,7 @@ def verify_chain(session: Session, public_key_b64: str, *, case_id: str) -> Veri
             problem = "previous-hash link does not match"
         elif digest != r.hash:
             problem = "content does not match its hash"
-        elif not _verify(public, r.hash, r.signature):
+        elif not _signature_ok(public_key_b64, r.hash, r.signature):
             problem = "signature does not verify"
         if problem and broken is None:
             broken = (r.seq, problem)

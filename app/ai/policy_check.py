@@ -171,7 +171,7 @@ def verify(
         seen.add(quote)
         kept.append(
             PolicyIssue(
-                quote=d.quote.strip().strip("\"\u201c\u201d").strip(),
+                quote=d.quote.strip().strip('"\u201c\u201d').strip(),
                 problem=d.problem.strip(),
                 suggestion=d.suggestion.strip(),
                 facts=[by_id[i] for i in ids],
