@@ -247,7 +247,7 @@ export function widgetFor(plan: Plan, question: string): { widget: Widget; heigh
         format: {
           ...head,
           caption: { enabled: true, text: PERIODS[plan.period].label, wrapping: true },
-          style: { label: { enabled: false }, sparkline: { lineWidth: 2, areaFill: true } },
+          style: { label: { enabled: false }, sparkline: { lineWidth: 2, areaFill: false } },
         },
       } as Widget,
     };

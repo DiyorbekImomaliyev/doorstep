@@ -59,9 +59,10 @@ export const CARRIER: Record<string, string> = {
 };
 const METHOD: Record<string, string> = { home: "Home", locker: "Locker", signature: "Signature" };
 export const FAILURE: Record<string, string> = {
-  CARRIER_LOST: "Lost or misdelivered", DAMAGED_IN_TRANSIT: "Damaged in transit", BAD_ADDRESS: "Bad address",
-  STOLEN_AFTER_DELIVERY: "Taken after safe delivery", WRONG_ITEM: "Wrong item packed",
-  CLAIM_CONTRADICTS_EVIDENCE: "Evidence disagrees",
+  // Short, so chart legends show them whole; the case drawer keeps the long names.
+  CARRIER_LOST: "Lost", DAMAGED_IN_TRANSIT: "Damaged", BAD_ADDRESS: "Bad address",
+  STOLEN_AFTER_DELIVERY: "Post-delivery", WRONG_ITEM: "Wrong item",
+  CLAIM_CONTRADICTS_EVIDENCE: "Contradicted",
 };
 const ROUTE: Record<string, string> = {
   auto_refund: "Auto-refund", awaiting_seller: "Seller decides", hold_for_review: "Human review",

@@ -37,12 +37,13 @@ export const kpi = (id: string, what: string): Widget => ({
   dataMapping: { value: [{ id }], sparklineX: [{ id: "calendar::week" }] },
   format: {
     caption: caption(what),
-    style: { label: { enabled: true }, sparkline: { lineWidth: 2, areaFill: true } },
+    style: { label: { enabled: true }, sparkline: { lineWidth: 2, areaFill: false } },
   },
 });
 
 const legendBottom = { common: { legend: { enabled: true, position: "bottom" } } } as const;
-const legendRight = { common: { legend: { enabled: true, position: "right" } } } as const;
+/** Many series: a legend on the right, wide enough for whole labels. */
+const legendWrap = { common: { legend: { enabled: true, position: "right", item: { maxWidth: 170 } } } } as const;
 /** The value on each bar (used where bars are wide enough to hold it). */
 const barLabels = { bar: { series: { label: { enabled: true } } } } as const;
 const noLegend = { common: { legend: { enabled: false } } } as const;
@@ -128,7 +129,7 @@ export const W = {
     sort: [{ field: { id: "case_count" }, direction: "desc" }],
     format: {
       ...head("What goes wrong, by carrier", "Cases by likely cause"),
-      style: { theme: legendRight },
+      style: { theme: legendWrap },
     },
   },
   carrierScorecard: {
@@ -170,7 +171,7 @@ export const W = {
     type: "column-chart-stacked",
     dataMapping: { categoryKey: [{ id: "calendar::month" }], valueKey: [{ id: "case_count" }], legendKey: [{ id: "cases.failure_point" }] },
     sort: [{ field: { id: "calendar::month" }, direction: "asc" }],
-    format: { ...head("Cases by month", "By likely cause"), style: { theme: legendRight } },
+    format: { ...head("Cases by month", "By likely cause"), style: { theme: legendWrap } },
   },
   decisions: {
     type: "bar-chart-grouped",
@@ -196,22 +197,22 @@ export const W = {
   filterQuarter: {
     type: "button-filter",
     dataMapping: { value: [{ id: "calendar::quarter" }] },
-    format: { title: { enabled: true, text: "Quarter" } },
+    format: { title: { enabled: true, text: "Quarter" }, subtitle: { enabled: false } },
   },
   filterSource: {
     type: "button-filter",
     dataMapping: { value: [{ id: "orders.source" }] },
-    format: { title: { enabled: true, text: "Data" } },
+    format: { title: { enabled: true, text: "Data" }, subtitle: { enabled: false } },
   },
   filterLiable: {
     type: "list-filter",
     dataMapping: { value: [{ id: "cases.liable" }] },
-    format: { title: { enabled: true, text: "Who pays" } },
+    format: { title: { enabled: true, text: "Who pays" }, subtitle: { enabled: false } },
   },
   filterFailure: {
     type: "list-filter",
     dataMapping: { value: [{ id: "cases.failure_point" }] },
-    format: { title: { enabled: true, text: "Failure point" } },
+    format: { title: { enabled: true, text: "Failure point" }, subtitle: { enabled: false } },
   },
 } satisfies Record<string, Widget>;
 
@@ -234,13 +235,13 @@ export const overviewPage: Page = {
     mix: W.methodMix, byMethod: W.caseRateByMethod,
   },
   widgetLayout: {
-    t: { xTrack: 0, yTrack: 0, xSpan: 7, ySpan: 8 }, period: { xTrack: 7, yTrack: 0, xSpan: 10, ySpan: 8 },
-    src: { xTrack: 17, yTrack: 0, xSpan: 7, ySpan: 8 },
-    k1: { xTrack: 0, yTrack: 8, xSpan: 6, ySpan: KPI_H }, k2: { xTrack: 6, yTrack: 8, xSpan: 6, ySpan: KPI_H },
-    k3: { xTrack: 12, yTrack: 8, xSpan: 6, ySpan: KPI_H }, k4: { xTrack: 18, yTrack: 8, xSpan: 6, ySpan: KPI_H },
-    trend: { xTrack: 0, yTrack: 19, xSpan: 16, ySpan: 19 }, flow: { xTrack: 16, yTrack: 19, xSpan: 8, ySpan: 19 },
-    fp: { xTrack: 0, yTrack: 38, xSpan: 13, ySpan: 21 }, ev: { xTrack: 13, yTrack: 38, xSpan: 11, ySpan: 21 },
-    mix: { xTrack: 0, yTrack: 59, xSpan: 10, ySpan: 18 }, byMethod: { xTrack: 10, yTrack: 59, xSpan: 14, ySpan: 18 },
+    t: { xTrack: 0, yTrack: 0, xSpan: 7, ySpan: 6 }, period: { xTrack: 7, yTrack: 0, xSpan: 10, ySpan: 6 },
+    src: { xTrack: 17, yTrack: 0, xSpan: 7, ySpan: 6 },
+    k1: { xTrack: 0, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k2: { xTrack: 6, yTrack: 6, xSpan: 6, ySpan: KPI_H },
+    k3: { xTrack: 12, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k4: { xTrack: 18, yTrack: 6, xSpan: 6, ySpan: KPI_H },
+    trend: { xTrack: 0, yTrack: 17, xSpan: 16, ySpan: 19 }, flow: { xTrack: 16, yTrack: 17, xSpan: 8, ySpan: 19 },
+    fp: { xTrack: 0, yTrack: 36, xSpan: 13, ySpan: 21 }, ev: { xTrack: 13, yTrack: 36, xSpan: 11, ySpan: 21 },
+    mix: { xTrack: 0, yTrack: 57, xSpan: 10, ySpan: 18 }, byMethod: { xTrack: 10, yTrack: 57, xSpan: 14, ySpan: 18 },
   },
   filter: {},
 };

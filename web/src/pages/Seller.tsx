@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { BarChart3, BookOpen, Columns3, Download, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
+import { ArrowRight, BarChart3, BookOpen, Columns3, Download, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
 import { api, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import { money } from "../format";
@@ -88,6 +88,16 @@ export default function Seller({ token }: { token: string }) {
     return { action: filterRows(r, "action").length, flight: filterRows(r, "flight").length, cases: filterRows(r, "cases").length, all: r.length };
   }, [rows]);
   const active: Filter = filter ?? (counts.action > 0 ? "action" : "all");
+  const [updated, setUpdated] = useState<Date | null>(null);
+  useEffect(() => { if (rows) setUpdated(new Date()); }, [rows]);
+  // The one thing to do first: a PayPal dispute (it has a deadline), then a refund to approve, then a review.
+  const next = useMemo(() => {
+    const rank: Record<string, number> = { DISPUTE_EVIDENCE: 0, AWAITING_SELLER: 1, HOLD_FOR_REVIEW: 2 };
+    return filterRows(rows ?? [], "action")
+      .filter((r) => r.case_state && r.case_state in rank)
+      .sort((a, b) => rank[a.case_state!] - rank[b.case_state!] || b.money_at_stake_minor - a.money_at_stake_minor)[0] ?? null;
+  }, [rows]);
+  const pick = (f: Filter) => { setFilter(f); go("orders"); };
   const shown = useMemo(() => filterRows(rows ?? [], active), [rows, active]);
   const activeMeta = FILTERS.find((f) => f.key === active)!;
 
@@ -134,10 +144,17 @@ export default function Seller({ token }: { token: string }) {
           ) : (<>
           <div className="page-head">
             <div>
-              <p className="greet">{greeting(me.data?.name)}{rows ? <> · <b>{counts.action ? `${counts.action} need${counts.action === 1 ? "s" : ""} you` : "nothing needs you"}</b></> : null}</p>
+              <p className="greet">
+                {greeting(me.data?.name)}
+                {rows ? <> · <b>{counts.action ? `${counts.action} need${counts.action === 1 ? "s" : ""} you` : "nothing needs you"}</b></> : null}
+                {next && <> · <button className="next-link" onClick={() => setOpen(next)}>Next: {NEXT_TEXT[next.case_state!]}{next.money_at_stake_minor ? ` (${money(next.money_at_stake_minor, next.currency)})` : ""}<ArrowRight aria-hidden /></button></>}
+              </p>
               <h1>Delivery Control Room</h1>
             </div>
-            <button className="btn" onClick={reload}><RefreshCw size={15} aria-hidden />Refresh</button>
+            <div className="row" style={{ gap: 10 }}>
+              <span className="live" title="Refreshes every 10 seconds while this tab is open"><span className="live-dot" aria-hidden />Live{updated ? ` · ${updated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
+              <button className="btn icon-btn" onClick={reload} aria-label="Refresh" title="Refresh now"><RefreshCw size={15} aria-hidden /></button>
+            </div>
           </div>
 
           {error && <ErrorBox message="This seller link isn't valid. Open a fresh demo from the home page." />}
@@ -146,22 +163,22 @@ export default function Seller({ token }: { token: string }) {
           {rows && (
             <>
               <section className="kpis" aria-label="Summary">
-                <div className={`kpi ${counts.action ? "attention" : ""}`}>
+                <button className={`kpi ${counts.action ? "attention" : ""}`} aria-pressed={page === "orders" && active === "action"} onClick={() => pick("action")}>
                   <span className="label"><Inbox aria-hidden />Needs you<Hint text="Cases to approve or review, and orders waiting for a packing check." /></span>
                   <span className="value">{counts.action}</span>
                   <span className="sub">to approve or review</span>
-                </div>
-                <div className="kpi">
+                </button>
+                <button className="kpi" aria-pressed={page === "orders" && active === "flight"} onClick={() => pick("flight")}>
                   <span className="label"><Truck aria-hidden />In transit<Hint text="Shipped parcels the buyer has not received yet." /></span>
                   <span className="value">{counts.flight}</span>
                   <span className="sub">on the way</span>
-                </div>
-                <div className="kpi">
+                </button>
+                <button className="kpi" aria-pressed={page === "orders" && active === "all"} onClick={() => pick("all")}>
                   <span className="label"><Wallet aria-hidden />Money at stake<Hint text="The value of open cases plus parcels still on the way: what a delivery failure could cost you today." /></span>
                   <span className="value" style={{ fontSize: 22 }}>{sumStake(rows)}</span>
                   <span className="sub">open cases and parcels in transit</span>
-                </div>
-                <RecoveredKpi s={recovered.data ?? null} />
+                </button>
+                <RecoveredKpi s={recovered.data ?? null} onClick={() => go("insights")} />
               </section>
 
               {tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />}
@@ -171,7 +188,6 @@ export default function Seller({ token }: { token: string }) {
                   <div className="row" style={{ gap: 10 }}>
                     <h2 style={{ fontSize: 15 }}>{activeMeta.label}</h2>
                     <span className="count-chip num">{shown.length}</span>
-                    <span className="live" title="Refreshes every 10 seconds while this tab is open"><span className="live-dot" aria-hidden />Live</span>
                   </div>
                   <div className="row" style={{ gap: 8 }}>
                     <label className="grid-search">
@@ -227,17 +243,23 @@ function greeting(shop: string | undefined): string {
 
 /** A small (i) with the longer explanation, on hover or keyboard focus. */
 function Hint({ text }: { text: string }) {
-  return <span className="hint" tabIndex={0} role="note" aria-label={text} data-tip={text}><Info aria-hidden /></span>;
+  return <span className="hint" aria-hidden data-tip={text}><Info /></span>;
 }
 
+const NEXT_TEXT: Record<string, string> = {
+  DISPUTE_EVIDENCE: "answer a PayPal dispute",
+  AWAITING_SELLER: "approve or decline a refund",
+  HOLD_FOR_REVIEW: "review a held case",
+};
+
 /** RC-05: what carriers paid back, and what is still claimable. */
-function RecoveredKpi({ s }: { s: RecoverySummary | null }) {
+function RecoveredKpi({ s, onClick }: { s: RecoverySummary | null; onClick: () => void }) {
   const open = s ? sumBy(s.open_claim_minor) : "";
   return (
-    <div className="kpi">
+    <button className="kpi" onClick={onClick} title="Open Insights">
       <span className="label"><Landmark aria-hidden />Recovered from carriers<Hint text="What carriers paid back on claims Doorstep prepared and you submitted." /></span>
       <span className="value" style={{ fontSize: 22 }}>{s ? sumBy(s.recovered_minor) : "—"}</span>
       <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "from claims you filed"}</span>
-    </div>
+    </button>
   );
 }
