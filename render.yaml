@@ -16,6 +16,11 @@ envVarGroups:
         generateValue: true
       - key: PAYPAL_CLIENT_ID
         sync: false
+      # AG Grid Enterprise and AG Studio trial keys: read by the web build (vite.config.ts), never committed.
+      - key: AG_GRID_LICENSE_KEY
+        sync: false
+      - key: AG_STUDIO_LICENSE_KEY
+        sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
       - key: PAYPAL_WEBHOOK_ID

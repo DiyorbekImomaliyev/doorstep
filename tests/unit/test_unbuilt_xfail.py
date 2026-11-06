@@ -25,41 +25,17 @@ def test_RG_03_ragas_faithfulness():
     _unbuilt()
 
 
-_AS = NEEDS_HUMAN + "AG Studio licence; Control Room runs on AG Grid Community today"
+# AS-01..05 are built: tests/unit/test_as01_insights_sources.py (the tables) and
+# tests/e2e/test_as_insights_browser.py (the reports, in a browser).
 
 
-@pytest.mark.xfail(strict=True, reason=_AS)
-def test_AS_01_studio_loads_doorstep_sources():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_AS)
-def test_AS_02_studio_expressions_and_calendar():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_AS)
-def test_AS_03_doorstep_studio_theme():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_AS)
-def test_AS_04_two_custom_studio_widgets():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_AS)
-def test_AS_05_prebuilt_studio_reports():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_AS)
+@pytest.mark.xfail(strict=True, reason="next: a Doorstep agent beside Studio's built-in agents")
 def test_AS_06_doorstep_agent_in_studio():
     _unbuilt()
 
 
 @pytest.mark.xfail(
-    strict=True, reason="AG Grid case queue exists; Studio-hosted queue waits on AS-01"
+    strict=True, reason="the case queue runs on AG Grid in the Control Room, not inside Studio yet"
 )
 def test_AS_07_studio_case_queue_approve_calls_policy():
     _unbuilt()

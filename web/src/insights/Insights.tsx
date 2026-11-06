@@ -1,0 +1,239 @@
+/**
+ * Control Room Insights on AG Studio (AS-01..05).
+ *
+ * One page that takes the best of AG's own Studio demos:
+ *  - Report Builder (the base): Studio is the app. A reports list, view or edit, and a blank
+ *    report the seller builds from Studio's widgets and Doorstep's own.
+ *  - In-App Reporting: right-click a carrier anywhere to open that carrier's full report over the
+ *    page, every widget filtered to it (drill-through).
+ *  - Real-time Dashboard: the shop's changes are applied to Studio's data engine as they happen,
+ *    only the rows that moved, so numbers update in place. Pause any time.
+ *
+ * Data model: data.ts. Theme: theme.ts. Custom widgets: widgets.tsx. Reports: reports.ts.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  AgConditionDefinition, AgContextMenuItem, AgFilterDefinition, AgGetContextMenuParams, AgStudioApi, AgStudioProperties,
+} from "ag-studio";
+import { AgStudioLicenseManager, enableStudioDevValidations } from "ag-studio";
+import { AgStudio, createWidgets } from "ag-studio-react";
+import { BarChart3, Eye, FilePlus2, Pause, Pencil, Play, X } from "lucide-react";
+import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
+import { REPORTS, carrierDrillPage, reportState } from "./reports";
+import { paperTheme } from "./theme";
+import { doorstepWidgetTypes, type DoorstepRegistry } from "./widgets";
+import "./insights.css";
+
+if (__AG_STUDIO_LICENSE_KEY__) AgStudioLicenseManager.setLicenseKey(__AG_STUDIO_LICENSE_KEY__);
+if (import.meta.env.DEV) enableStudioDevValidations();
+
+type Props = AgStudioProperties<DoorstepRegistry>;
+
+/** Studio's own widgets plus Doorstep's three, filed under "Doorstep" in the widget menu. */
+const widgets = createWidgets<DoorstepRegistry>({ additionalTypes: doorstepWidgetTypes });
+const LOCALE = { widgetPanelWidgetCategoryUncategorized: "Doorstep" };
+const LIVE_MS = 10_000;
+
+export default function Insights({ token }: { token: string }) {
+  const [prepared, setPrepared] = useState<Prepared | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetchInsights(token)
+      .then((d) => live && setPrepared(buildSources(d, { history: d.orders.some((o) => o.simulated) })))
+      .catch(() => live && setError(true));
+    return () => { live = false; };
+  }, [token]);
+
+  if (error) return <><Head /><div className="ins-empty">Insights could not load. Refresh to try again.</div></>;
+  if (!prepared) return <><Head /><div className="ins-empty"><span className="ins-spinner" aria-hidden />Building your reports…</div></>;
+  return <Board prepared={prepared} token={token} />;
+}
+
+function Head({ children }: { children?: React.ReactNode }) {
+  return (
+    <div className="page-head">
+      <div>
+        <h1>Insights</h1>
+        <p>What failed, who paid, and what you won back.</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** A carrier the seller right-clicked, as a condition on the root table so it reaches every table. */
+function carrierCondition(filter: AgFilterDefinition | undefined): AgConditionDefinition | undefined {
+  if (!filter) return undefined;
+  if ("conditions" in filter) {
+    for (const c of filter.conditions) { const hit = carrierCondition(c); if (hit) return hit; }
+  } else if (/\.carrier$/.test(filter.field.id) && filter.value != null) {
+    return { ...filter, field: { ...filter.field, id: "orders.carrier" } };
+  }
+  return undefined;
+}
+
+function Board({ prepared, token }: { prepared: Prepared; token: string }) {
+  const [api, setApi] = useState<AgStudioApi<DoorstepRegistry>>();
+  const [reports, setReports] = useState(REPORTS);
+  const [selected, setSelected] = useState(REPORTS[0].id);
+  const [editing, setEditing] = useState(false);
+  const [live, setLive] = useState(true);
+  const [synced, setSynced] = useState(() => new Date());
+  const [moved, setMoved] = useState(0);
+  const [drill, setDrill] = useState<AgConditionDefinition | null>(null);
+  const current = useRef(prepared);
+  const seq = useRef(0);
+  const canvas = useRef<HTMLDivElement>(null);
+
+  const menu = useCallback(({ filter }: AgGetContextMenuParams): AgContextMenuItem[] => {
+    const c = carrierCondition(filter);
+    return c ? [{ name: `Open the ${String(c.value)} report`, action: () => setDrill(c) }] : [];
+  }, []);
+
+  // Built once: Studio reads its initial properties once and owns its state from then on.
+  const props = useMemo((): Props => ({
+    data: prepared.sources as Props["data"],
+    theme: paperTheme,
+    mode: "view",
+    layout: { widgetBorderEnabled: true },
+    initialState: reportState,
+    widgets,
+    localeText: LOCALE,
+    panels: { edit: { right: ["filters", "edit", "data"] }, view: { right: ["filters"] } },
+    getContextMenuItems: menu,
+    onApiReady: ({ api: a }) => setApi(a as AgStudioApi<DoorstepRegistry>),
+    onStudioPreDestroyed: () => setApi(undefined),
+  }), [prepared, menu]);
+
+  useEffect(() => {
+    if (!api) return;
+    const s = api.getState();
+    if (s.selectedPageId !== selected) api.setState({ ...s, selectedPageId: selected });
+    // A new report opens at its top, not at the last report's scroll position.
+    canvas.current?.querySelector(".ag-studio-layout")?.scrollTo({ top: 0 });
+  }, [api, selected]);
+  useEffect(() => { api?.setProperty("mode", editing ? "edit" : "view"); }, [api, editing]);
+
+  // Live: fetch, rebuild the same tables, apply only what changed (add, update, remove).
+  useEffect(() => {
+    if (!live || !api) return;
+    const tick = async () => {
+      const engine = api.getDataEngine();
+      if (document.visibilityState !== "visible" || !engine?.applyTransaction) return;
+      try {
+        const next = buildSources(await fetchInsights(token), { history: current.current.history });
+        const tx = diffTables(current.current.sources, next.sources);
+        current.current = next;
+        if (tx.length) await engine.applyTransaction(tx);
+        setMoved(tx.reduce((a, t) => a + count(t.add) + count(t.update) + count(t.remove), 0));
+        setSynced(new Date());
+      } catch { /* keep the last good numbers on screen */ }
+    };
+    const t = window.setInterval(tick, LIVE_MS);
+    return () => window.clearInterval(t);
+  }, [live, api, token]);
+
+  const addReport = () => {
+    if (!api) return;
+    const id = `mine-${++seq.current}`;
+    const s = api.getState();
+    api.setState({ ...s, pages: [...s.pages, { id, widgets: {}, widgetLayout: {}, filter: {} }], selectedPageId: id });
+    setReports((r) => [...r, { id, name: `My report ${seq.current}`, hint: "Your own report: add widgets from the panel" }]);
+    setSelected(id);
+    setEditing(true);
+  };
+
+  const active = reports.find((r) => r.id === selected);
+  return (
+    <>
+      <Head>
+        <div className="ins-bar">
+          <span className="ins-live" data-live={live} role="status" title={`Checks for changes every ${LIVE_MS / 1000} seconds while this tab is open`}>
+            {live ? "Live" : "Paused"}
+            <span className="ins-sync">· updated {synced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}{moved ? `, ${moved} row${moved === 1 ? "" : "s"} changed` : ""}</span>
+          </span>
+          <button className="btn icon-btn" onClick={() => setLive((v) => !v)} aria-label={live ? "Pause live updates" : "Resume live updates"} title={live ? "Pause live updates" : "Resume live updates"}>
+            {live ? <Pause size={15} aria-hidden /> : <Play size={15} aria-hidden />}
+          </button>
+          <button className={`btn ${editing ? "primary" : ""}`} onClick={() => setEditing((e) => !e)} aria-pressed={editing}>
+            {editing ? <><Eye size={15} aria-hidden />Done editing</> : <><Pencil size={15} aria-hidden />Edit report</>}
+          </button>
+        </div>
+      </Head>
+
+      <div className="ins">
+        <div className="rb">
+          <nav className="rb-side" aria-label="Reports">
+            <div className="rb-label">Reports</div>
+            {reports.map((r) => (
+              <button key={r.id} className="rb-item" aria-current={selected === r.id || undefined} onClick={() => setSelected(r.id)}>
+                <BarChart3 size={15} aria-hidden /><span>{r.name}</span>
+              </button>
+            ))}
+            <button className="rb-new" onClick={addReport}><FilePlus2 size={15} aria-hidden />New report</button>
+            <div className="rb-foot">
+              {active && <p className="rb-question">{active.hint}</p>}
+              <ul className="rb-tips">
+                <li><strong>Click</strong> a chart to filter the page</li>
+                <li><strong>Right-click</strong> a carrier for its report</li>
+                <li><strong>Edit</strong> to move, resize or add widgets</li>
+              </ul>
+            </div>
+          </nav>
+          <div className="rb-canvas" ref={canvas}><AgStudio<DoorstepRegistry> studioProperties={props} className="studio-fill" /></div>
+        </div>
+        <p className="ins-note">
+          {prepared.history
+            ? <>Your <strong>{prepared.live} demo orders</strong> plus 26 weeks of <strong>simulated history</strong>, so trends have something to show. Use the <em>Data</em> filter to see only yours.</>
+            : <>Your PayPal sandbox orders.</>}
+          {" "}Money is in {prepared.home}: an order in another currency counts as an order but never adds to a money total.
+        </p>
+      </div>
+      {drill && <CarrierReport prepared={current.current} filter={drill} onClose={() => setDrill(null)} />}
+    </>
+  );
+}
+
+const count = (x: unknown) => (Array.isArray(x) ? x.length : 0);
+
+/** In-App Reporting's drill-through: the full Carriers report, filtered to one carrier. */
+function CarrierReport({ prepared, filter, onClose }: { prepared: Prepared; filter: AgConditionDefinition; onClose: () => void }) {
+  const ref = useRef<AgStudio<DoorstepRegistry>>(null);
+  const [props] = useState((): Props => ({
+    mode: "view",
+    theme: paperTheme,
+    widgets,
+    localeText: LOCALE,
+    panels: { view: { right: [] }, edit: { right: ["filters", "edit", "data"] } },
+    data: prepared.sources as Props["data"],
+    initialState: { pages: [carrierDrillPage], selectedPageId: carrierDrillPage.id },
+    drillThrough: { filter },
+  }));
+  // Point the open report at another carrier without remounting it. Skipped on mount: Studio
+  // reads the first filter from its initial properties, before its schema exists.
+  const shown = useRef(filter);
+  useEffect(() => {
+    const api = ref.current?.api;
+    if (!api || shown.current === filter) return;
+    shown.current = filter;
+    api.setProperty("drillThrough", { filter });
+    api.setState({ pages: [carrierDrillPage], selectedPageId: carrierDrillPage.id });
+  }, [filter]);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [onClose]);
+  return (
+    <div className="ia-pop" role="dialog" aria-modal aria-label={`${String(filter.value)} report`} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="ia-pop-card">
+        <div className="ia-pop-head">
+          <div><div className="ia-eyebrow">Carrier report</div><h3>{String(filter.value)}</h3></div>
+          <button className="btn icon-btn" aria-label="Close" onClick={onClose}><X size={16} aria-hidden /></button>
+        </div>
+        <div className="ia-pop-body"><AgStudio<DoorstepRegistry> ref={ref} studioProperties={props} className="studio-fill" /></div>
+      </div>
+    </div>
+  );
+}

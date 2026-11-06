@@ -1,39 +1,14 @@
-import { useMemo, useState } from "react";
-import { AgGridReact } from "ag-grid-react";
-import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type ICellRendererParams } from "ag-grid-community";
-import { BookOpen, FolderOpen, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { GridApi } from "ag-grid-community";
+import { BarChart3, BookOpen, Columns3, Download, FolderOpen, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
 import { api, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
-import { Badge, Bar, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
-import { DeliveryCell, ItemCell, JourneyCell, RiskCell, StakeCell } from "../components/gridCells";
-import { FAILURE_POINT, METHOD, ROUTE, ago, money } from "../format";
+import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
+import { money } from "../format";
 import CaseDrawer from "./CaseDrawer";
+import OrdersGrid, { exportExcel, sumStake, toggleColumnsPanel } from "./OrdersGrid";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-const theme = themeQuartz.withParams({
-  fontFamily: "inherit",
-  fontSize: 13.5,
-  foregroundColor: "#1f1a18",
-  backgroundColor: "#ffffff",
-  headerFontWeight: 600,
-  headerFontSize: 12.5,
-  headerBackgroundColor: "#faf8f6",
-  headerTextColor: "#5a524e",
-  headerColumnResizeHandleColor: "#e8e2dc",
-  headerColumnBorder: false,
-  borderColor: "#ede8e3",
-  rowBorder: { color: "#f1ece7" },
-  rowHoverColor: "#fbf6f7",
-  selectedRowBackgroundColor: "#f6ecee",
-  accentColor: "#7b2d3d",
-  iconColor: "#8b827d",
-  wrapperBorder: false,
-  wrapperBorderRadius: 0,
-  rowHeight: 62,
-  headerHeight: 44,
-  spacing: 7,
-  cellHorizontalPadding: 18,
-});
+// AG Studio is large: it loads only when the seller opens Insights.
+const Insights = lazy(() => import("../insights/Insights"));
 
 type Filter = "action" | "flight" | "cases" | "all";
 
@@ -58,11 +33,7 @@ function sumBy(by: Record<string, number>): string {
   return parts.length ? parts.join(" + ") : money(0, "GBP");
 }
 
-function sumStake(rows: OrderRow[]): string {
-  const by: Record<string, number> = {};
-  rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
-  return sumBy(by);
-}
+const LIVE_MS = 10_000;
 
 const METHOD_TEXT: Record<string, string> = { home: "home delivery", locker: "locker pickup", signature: "signature" };
 
@@ -83,30 +54,6 @@ function Tip({ t }: { t: PreventionTip }) {
   );
 }
 
-const JOURNEY_RANK: Record<string, number> = {
-  CREATED: 0, PAID: 1, PACKED: 2, SHIPPED: 3, IN_TRANSIT: 4, EXCEPTION: 5,
-  DELIVERED: 6, PICKED_UP: 6, CONFIRMED: 7, CASE_OPEN: 8, RESOLVED: 9,
-};
-function journeyRank(r: OrderRow | undefined): number {
-  return r ? JOURNEY_RANK[r.state] ?? 0 : 0;
-}
-
-function NextStep({ r }: { r: OrderRow }) {
-  const key = r.case_state && ROUTE[r.case_state] ? r.case_state : r.route;
-  if (!key || !ROUTE[key]) {
-    if (r.state === "PAID") return r.packing_verdict && r.packing_verdict !== "match"
-      ? <Badge tone="accent">Check packing</Badge> : <Badge tone="accent">Pack it</Badge>;
-    if (r.state === "PACKED") return <Badge tone="accent">Ship it</Badge>;
-    return <span className="faint">—</span>;
-  }
-  return (
-    <div className="cell-two">
-      <span><Badge tone={ROUTE[key].tone}>{ROUTE[key].label}</Badge></span>
-      {r.failure_point && <span className="sub" style={{ marginTop: 3 }}>{FAILURE_POINT[r.failure_point] ?? r.failure_point}</span>}
-    </div>
-  );
-}
-
 export default function Seller({ token }: { token: string }) {
   const me = useAsync(() => api.me(token), [token]);
   const { data: rows, error, reload: reloadOrders } = useAsync(() => api.orders(token), [token]);
@@ -117,7 +64,25 @@ export default function Seller({ token }: { token: string }) {
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [visible, setVisible] = useState<number | null>(null);
+  const gridApi = useRef<GridApi | null>(null);
+  const [inView, setInView] = useState<OrderRow[] | null>(null);
+  const [page, setPage] = useState<"orders" | "insights">(() => (location.hash === "#insights" ? "insights" : "orders"));
+  const go = (p: "orders" | "insights") => { setPage(p); history.replaceState(null, "", p === "insights" ? "#insights" : location.pathname + location.search); };
+
+  // Live: the worker moves orders on (tracking, refunds); pull the table quietly while the tab is open.
+  useEffect(() => {
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") reloadOrders(); }, LIVE_MS);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const onOpen = useCallback((r: OrderRow) => setOpen(r), []);
+  const onReady = useCallback((a: GridApi) => { gridApi.current = a; }, []);
+  // Footer numbers follow the grid's own filters; only update when the set of rows really changed.
+  const onShown = useCallback((list: OrderRow[]) => setInView((prev) => {
+    const same = prev && prev.length === list.length && prev.every((r, i) => r === list[i]);
+    return same ? prev : list;
+  }), []);
 
   const counts = useMemo(() => {
     const r = rows ?? [];
@@ -126,50 +91,6 @@ export default function Seller({ token }: { token: string }) {
   const active: Filter = filter ?? (counts.action > 0 ? "action" : "all");
   const shown = useMemo(() => filterRows(rows ?? [], active), [rows, active]);
   const activeMeta = FILTERS.find((f) => f.key === active)!;
-
-  const columns = useMemo<ColDef<OrderRow>[]>(() => [
-    {
-      headerName: "Order", field: "item", flex: 2.2, minWidth: 250,
-      filter: "agTextColumnFilter",
-      getQuickFilterText: (p) => `${p.data.item} ${p.data.order_ref} ${p.data.buyer_area} ${p.data.status}`,
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => <ItemCell r={p.data!} />,
-    },
-    {
-      headerName: "Journey", field: "status", width: 190,
-      comparator: (_a, _b, x, y) => journeyRank(x.data) - journeyRank(y.data),
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => <JourneyCell r={p.data!} />,
-    },
-    {
-      headerName: "Next step", field: "route", flex: 1.4, minWidth: 200,
-      valueGetter: (p) => p.data?.case_state ?? p.data?.route ?? "",
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => <div className="cell-center"><NextStep r={p.data!} /></div>,
-    },
-    {
-      headerName: "Delivery", field: "method", width: 136,
-      valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => <DeliveryCell r={p.data!} />,
-    },
-    {
-      headerName: "Evidence", width: 140,
-      valueGetter: (p) => p.data?.evidence.score ?? 0,
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => (
-        <div className="cell-center" title={`Missing: ${p.data!.evidence.missing.join(", ") || "nothing"}`}><Bar value={p.data!.evidence.score} /></div>
-      ),
-    },
-    {
-      headerName: "Risk", field: "delivery_risk", width: 96, type: "rightAligned",
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => <RiskCell r={p.data!} />,
-    },
-    {
-      headerName: "At stake", field: "money_at_stake_minor", width: 118, type: "rightAligned",
-      cellRenderer: (p: ICellRendererParams<OrderRow>) => <StakeCell r={p.data!} />,
-    },
-    {
-      headerName: "Updated", field: "last_update", width: 112, sort: "desc", type: "rightAligned",
-      valueFormatter: (p) => (p.value ? ago(String(p.value)) : ""),
-      cellClass: "faint-cell",
-    },
-  ], []);
 
   return (
     <div className="shell">
@@ -186,10 +107,16 @@ export default function Seller({ token }: { token: string }) {
           <div className="nav-label">Orders</div>
           <div className="nav" role="group" aria-label="Filter orders">
             {FILTERS.map((f) => (
-              <button key={f.key} aria-pressed={active === f.key} onClick={() => setFilter(f.key)}>
+              <button key={f.key} aria-pressed={page === "orders" && active === f.key} onClick={() => { setFilter(f.key); go("orders"); }}>
                 {f.icon}{f.label}<span className="count">{rows ? counts[f.key] : ""}</span>
               </button>
             ))}
+          </div>
+        </div>
+        <div>
+          <div className="nav-label">Analytics</div>
+          <div className="nav">
+            <button aria-pressed={page === "insights"} onClick={() => go("insights")}><BarChart3 />Insights</button>
           </div>
         </div>
         <div className="bottom">
@@ -201,6 +128,11 @@ export default function Seller({ token }: { token: string }) {
 
       <main className="main">
         <div className="page stack-lg">
+          {page === "insights" ? (
+            <Suspense fallback={<Loading height={480} />}>
+              <Insights token={token} />
+            </Suspense>
+          ) : (<>
           <div className="page-head">
             <div>
               <h1>Delivery Control Room</h1>
@@ -240,38 +172,36 @@ export default function Seller({ token }: { token: string }) {
                   <div className="row" style={{ gap: 10 }}>
                     <h2 style={{ fontSize: 15 }}>{activeMeta.label}</h2>
                     <span className="count-chip num">{shown.length}</span>
+                    <span className="live" title="Refreshes every 10 seconds while this tab is open"><span className="live-dot" aria-hidden />Live</span>
                   </div>
-                  <label className="grid-search">
-                    <Search aria-hidden />
-                    <input type="search" placeholder="Search orders, areas, status" aria-label="Search orders"
-                      value={search} onChange={(e) => setSearch(e.target.value)} />
-                  </label>
+                  <div className="row" style={{ gap: 8 }}>
+                    <label className="grid-search">
+                      <Search aria-hidden />
+                      <input type="search" placeholder="Search orders, areas, status" aria-label="Search orders"
+                        value={search} onChange={(e) => setSearch(e.target.value)} />
+                    </label>
+                    <button className="btn icon-btn" title="Columns and filters" aria-label="Columns and filters"
+                      onClick={() => gridApi.current && toggleColumnsPanel(gridApi.current)}>
+                      <Columns3 size={15} aria-hidden />
+                    </button>
+                    <button className="btn icon-btn" title="Export what you see to Excel" aria-label="Export to Excel"
+                      onClick={() => gridApi.current && exportExcel(gridApi.current)}>
+                      <Download size={15} aria-hidden />
+                    </button>
+                  </div>
                 </div>
-                <AgGridReact<OrderRow>
-                  theme={theme}
-                  rowData={shown}
-                  columnDefs={columns}
-                  getRowId={(p) => p.data.order_id}
-                  onRowClicked={(e) => e.data && setOpen(e.data)}
-                  rowStyle={{ cursor: "pointer" }}
-                  overlayNoRowsTemplate={`<span style='color:#8b827d'>${search ? "No orders match your search." : activeMeta.empty}</span>`}
-                  quickFilterText={search}
-                  defaultColDef={{ sortable: true, resizable: true, suppressHeaderMenuButton: true }}
-                  onModelUpdated={(e) => setVisible(e.api.getDisplayedRowCount())}
-                  animateRows
-                  suppressCellFocus
-                  domLayout="autoHeight"
-                />
+                <OrdersGrid rows={shown} search={search} empty={activeMeta.empty} onOpen={onOpen} onReady={onReady} onShown={onShown} />
                 <div className="grid-foot">
                   <span className="faint">{rows.some((r) => r.simulated) ? "Demo orders: refunds on them are simulated" : "Live PayPal sandbox orders"}</span>
                   <span className="foot-stats num">
-                    <span>Rows <strong>{visible ?? shown.length}</strong> of {shown.length}</span>
-                    <span>At stake <strong>{sumStake(shown)}</strong></span>
+                    <span>Rows <strong>{inView?.length ?? shown.length}</strong> of {shown.length}</span>
+                    <span>At stake <strong>{sumStake(inView ?? shown)}</strong></span>
                   </span>
                 </div>
               </div>
             </>
           )}
+          </>)}
         </div>
       </main>
 

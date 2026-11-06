@@ -1,0 +1,103 @@
+// AS-02..05 in a real browser: the seller's Insights reports on AG Studio, on a scratch demo shop.
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+const shots = process.env.E2E_SHOTS;
+
+/** A Studio KPI (value widget), found by its label. */
+const kpi = (page: Page, label: string): Locator =>
+  page.locator(".ag-studio-value-widget").filter({ has: page.getByText(label, { exact: true }) }).first();
+
+/** The headline number of a KPI, e.g. "33.8%" or "£1,100" (the label sits beside it). */
+const kpiValue = (page: Page, label: string): Locator => kpi(page, label).locator(".ag-studio-value-widget-content");
+const kpiNumber = async (page: Page, label: string) => Number((await kpiValue(page, label).innerText()).replace(/[^0-9.]/g, ""));
+
+async function openInsights(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open my demo shop" }).click();
+  const sellerHref = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
+  await page.goto(`${sellerHref!}#insights`);
+  await expect(page.getByRole("navigation", { name: "Reports" })).toBeVisible();
+  await expect(kpiValue(page, "Orders")).toHaveText(/\d/);
+}
+
+const report = (page: Page, name: string) =>
+  page.getByRole("navigation", { name: "Reports" }).getByRole("button", { name, exact: true });
+
+test("AS-02 measures compute the rates and the calendar filters by quarter", async ({ page }) => {
+  await openInsights(page);
+  // Expressions: prevention rate and case rate are percentages computed by the model.
+  await expect(kpiValue(page, "Prevention rate")).toHaveText(/^\s*\d{1,3}(\.\d)?%\s*$/);
+  await expect(kpiValue(page, "Case rate")).toHaveText(/^\s*\d{1,3}(\.\d)?%\s*$/);
+
+  // Calendar: one tap on a quarter narrows every widget on the page to it.
+  const all = await kpiNumber(page, "Orders");
+  await page.getByRole("button", { name: /^Q\d 20\d\d$/ }).last().click();
+  await expect.poll(() => kpiNumber(page, "Orders")).toBeLessThan(all);
+  expect(await kpiNumber(page, "Orders")).toBeGreaterThan(0);
+
+  // Carrier recovery rate: recovered ÷ claimed.
+  await report(page, "Carriers").click();
+  await expect(kpiValue(page, "Carrier recovery rate")).toHaveText(/^\s*\d{1,3}(\.\d)?%\s*$/);
+});
+
+test("AS-03 Insights uses the Doorstep theme, not Studio's default", async ({ page }) => {
+  await openInsights(page);
+  const value = kpi(page, "Orders");
+  expect(await value.evaluate((e) => getComputedStyle(e).fontFamily)).toContain("Inter");
+  // The maroon accent and the warm paper canvas come from theme.ts.
+  const accent = await value.evaluate((e) => getComputedStyle(e).getPropertyValue("--ag-accent-color").trim().toLowerCase());
+  expect(accent).toBe("#7b2d3d");
+});
+
+test("AS-04 Doorstep's custom widgets show evidence, failure points and the money flow", async ({ page }) => {
+  await openInsights(page);
+  const meter = page.locator(".ds-meter").first();
+  await expect(meter.locator(".ds-meter-row").first()).toContainText(/\d+%/);
+  await expect(meter).toContainText("strong proof");
+
+  const failures = page.locator(".ds-fp").first();
+  await expect(failures.locator("li").first()).toContainText(/\d+%/);
+
+  const flow = page.locator(".ds-flow").first();
+  await expect(flow).toContainText("Refunded to buyers");
+  await expect(flow).toContainText("Recovered from carriers");
+  await expect(flow).toContainText("Net delivery loss");
+  if (shots) await page.screenshot({ path: `${shots}/12-insights.png` });
+});
+
+test("AS-05 the Overview, Carriers and Cases reports load from state; a seller can add one", async ({ page }) => {
+  await openInsights(page);
+  await expect(kpiValue(page, "Net delivery loss")).toHaveText(/^\s*[£$][\d,]+\s*$/);
+
+  await report(page, "Carriers").click();
+  await expect(kpi(page, "Claimed from carriers")).toBeVisible();
+  await expect(page.getByText("Money by carrier", { exact: true })).toBeVisible();
+
+  await report(page, "Cases").click();
+  await expect(kpi(page, "Open cases")).toBeVisible();
+  await expect(page.getByText("Every case", { exact: true })).toBeVisible();
+
+  // Live updates can be paused, and a new report opens in edit mode.
+  await page.getByRole("button", { name: "Pause live updates" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Paused" })).toBeVisible();
+  await page.getByRole("button", { name: "New report" }).click();
+  await expect(report(page, "My report 1")).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("button", { name: "Done editing" })).toBeVisible();
+});
+
+test("AS-05 right-clicking a carrier opens that carrier's report", async ({ page }) => {
+  await openInsights(page);
+  await report(page, "Carriers").click();
+  const table = page.locator(".ag-studio-layout-widget").filter({ hasText: "Money by carrier" });
+  const firstCarrier = table.locator('[role="gridcell"]').first();
+  await expect(firstCarrier).toBeVisible();
+  const carrier = (await firstCarrier.innerText()).trim();
+  await firstCarrier.click({ button: "right" });
+  await page.getByText(`Open the ${carrier} report`).click();
+
+  const dialog = page.getByRole("dialog", { name: `${carrier} report` });
+  await expect(dialog.getByRole("heading", { name: carrier })).toBeVisible();
+  await expect(dialog.locator(".ag-studio-value-widget").filter({ hasText: "Claimed from carriers" })).toContainText(/[£$]/);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});

@@ -1,0 +1,531 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps,
+  type CustomTooltipProps,
+} from "ag-grid-react";
+import {
+  AllCommunityModule, ModuleRegistry, themeQuartz,
+  type ColDef, type DefaultMenuItem, type ExcelStyle, type GetContextMenuItemsParams, type GridApi, type IRowNode,
+  type MenuItemDef, type RowClickedEvent, type SideBarDef,
+} from "ag-grid-community";
+import {
+  ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
+  MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
+} from "ag-grid-enterprise";
+import { ArrowUpRight, Check, ChevronDown, ChevronRight, Circle } from "lucide-react";
+import type { OrderRow } from "../api";
+import { DeliveryCell, JourneyCell, RiskCell, itemKind } from "../components/gridCells";
+import { FAILURE_POINT, METHOD, ROUTE, ago, money, pct, riskTone, stateTone, type Tone } from "../format";
+
+/**
+ * The Control Room order grid, on AG Grid Enterprise. Patterns from AG Grid's own demos
+ * (github.com/ag-grid/ag-grid-demos), each used for a seller's job, not for show:
+ *  - HR demo: calm uppercase headers, light column lines; rows grouped by who acts next.
+ *  - Inventory demo: product cell with a category tag, a verb per row, master/detail.
+ *  - Finance demo: tooltips, cell flash on live updates, right-aligned money.
+ * Plus: Set filters, Columns/Filters side bar, right-click menu, Excel export.
+ */
+
+if (__AG_GRID_LICENSE_KEY__) LicenseManager.setLicenseKey(__AG_GRID_LICENSE_KEY__);
+
+ModuleRegistry.registerModules([
+  AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
+  ColumnsToolPanelModule, FiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
+]);
+
+const theme = themeQuartz.withParams({
+  fontFamily: "inherit",
+  fontSize: 13.5,
+  foregroundColor: "#1f1a18",
+  backgroundColor: "#ffffff",
+  headerFontWeight: 600,
+  headerFontSize: 11,
+  headerBackgroundColor: "#ffffff",
+  headerTextColor: "#8b827d",
+  headerColumnResizeHandleColor: "#e8e2dc",
+  headerColumnBorder: false,
+  borderColor: "#ede8e3",
+  rowBorder: { color: "#f3eee9" },
+  columnBorder: { color: "#f3eee9" },
+  rowHoverColor: "#fbf7f6",
+  selectedRowBackgroundColor: "#f6ecee",
+  accentColor: "#7b2d3d",
+  iconColor: "#8b827d",
+  wrapperBorder: false,
+  wrapperBorderRadius: 0,
+  rowHeight: 62,
+  headerHeight: 42,
+  spacing: 7,
+  cellHorizontalPadding: 16,
+  valueChangeValueHighlightBackgroundColor: "#f3e3e7",
+  tooltipBackgroundColor: "transparent",
+  tooltipBorder: false,
+  sideBarBackgroundColor: "#fcfbfa",
+  menuBackgroundColor: "#ffffff",
+  menuBorder: { color: "#e8e2dc" },
+  menuShadow: "0 12px 32px rgba(31, 26, 24, .14)",
+});
+
+// ---------- vocabulary ----------
+
+type Lane = "you" | "case" | "way" | "done";
+const LANES: Record<Lane, { rank: number; label: string; hint: string }> = {
+  you: { rank: 0, label: "Needs you", hint: "approvals, reviews and parcels to pack" },
+  case: { rank: 1, label: "Cases in progress", hint: "Doorstep is handling these" },
+  way: { rank: 2, label: "On the way", hint: "shipped, not yet in the buyer's hands" },
+  done: { rank: 3, label: "Done", hint: "in the buyer's hands, or settled" },
+};
+
+export function laneOf(r: OrderRow): Lane {
+  if (r.needs_action) return "you";
+  if (r.case_id && r.case_state && !["SETTLED", "CLOSED"].includes(r.case_state)) return "case";
+  if (["CONFIRMED", "RESOLVED"].includes(r.state)) return "done";
+  return "way";
+}
+
+export function sumStake(rows: OrderRow[]): string {
+  const by: Record<string, number> = {};
+  rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
+  const parts = Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => money(v, c));
+  return parts.length ? parts.join(" + ") : money(0, "GBP");
+}
+
+/** The one thing the seller would do next on this order, as a verb. */
+function nextAction(r: OrderRow): { label: string; urgent: boolean } {
+  if (r.case_state === "DISPUTE_EVIDENCE") return { label: "Send evidence", urgent: r.needs_action };
+  if (r.case_state === "AWAITING_SELLER") return { label: "Review refund", urgent: true };
+  if (r.case_state === "HOLD_FOR_REVIEW") return { label: "Review case", urgent: true };
+  if (r.state === "PAID") return { label: r.packing_verdict && r.packing_verdict !== "match" ? "Check packing" : "Pack it", urgent: true };
+  if (r.state === "PACKED") return { label: "Ship it", urgent: true };
+  return { label: "Open", urgent: false };
+}
+
+function routeLabel(r: OrderRow): string {
+  const key = r.case_state && ROUTE[r.case_state] ? r.case_state : r.route;
+  return key && ROUTE[key] ? ROUTE[key].label : "";
+}
+
+function haystack(r: OrderRow): string {
+  return `${r.item} ${r.order_ref} ${r.buyer_area} ${r.buyer_country} ${r.status} ${r.method ?? ""} ${routeLabel(r)} ${nextAction(r).label} ${itemKind(r.item).label}`;
+}
+
+const PROOFS = ["address checked", "packing photo", "tracking", "delivered scan", "possession proof"];
+function proofList(r: OrderRow): { name: string; ok: boolean }[] {
+  const all = [...r.evidence.present.map((n) => ({ name: n, ok: true })), ...r.evidence.missing.map((n) => ({ name: n, ok: false }))];
+  const rank = (n: string) => { const i = PROOFS.indexOf(n); return i < 0 ? 99 : i; };
+  return all.sort((a, b) => rank(a.name) - rank(b.name));
+}
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function rowTone(r: OrderRow): Tone {
+  if (r.case_state) return ROUTE[r.case_state]?.tone ?? "accent";
+  return stateTone(r.state);
+}
+
+const STEPS = ["Paid", "Packed", "Shipped", "Delivered", "Received"];
+const STEP_OF: Record<string, number> = {
+  CREATED: 0, PAID: 1, PACKED: 2, SHIPPED: 3, IN_TRANSIT: 3, EXCEPTION: 3,
+  DELIVERED: 4, PICKED_UP: 4, CONFIRMED: 5, CASE_OPEN: 4, RESOLVED: 4,
+};
+const STATE_RANK: Record<string, number> = {
+  CREATED: 0, PAID: 1, PACKED: 2, SHIPPED: 3, IN_TRANSIT: 4, EXCEPTION: 5,
+  DELIVERED: 6, PICKED_UP: 6, CONFIRMED: 7, CASE_OPEN: 8, RESOLVED: 9,
+};
+const COUNTRY: Record<string, string> = { GB: "United Kingdom", US: "United States" };
+
+/** Re-render when the grid opens or closes this row (detail panel or lane). */
+function useExpanded(node: IRowNode | undefined): boolean {
+  const [open, setOpen] = useState(!!node?.expanded);
+  useEffect(() => {
+    if (!node) return;
+    const f = () => setOpen(!!node.expanded);
+    f();
+    node.addEventListener("expandedChanged", f);
+    return () => node.removeEventListener("expandedChanged", f);
+  }, [node]);
+  return open;
+}
+
+// ---------- cells ----------
+
+function OrderCell(p: CustomCellRendererProps<OrderRow>) {
+  const open = useExpanded(p.node);
+  const r = p.data;
+  if (!r) return null;
+  const k = itemKind(r.item);
+  return (
+    <div className="order-cell">
+      <button data-own-click className="expander" aria-expanded={open}
+        aria-label={`${open ? "Hide" : "Show"} details for ${r.item}`} onClick={() => p.node.setExpanded(!open)}>
+        <ChevronRight aria-hidden />
+      </button>
+      <span className="item-tile" aria-hidden>{k.icon}</span>
+      <span className="cell-two" style={{ gap: 4 }}>
+        <span className="item-name">{r.item}</span>
+        <span className="order-meta">
+          <span className="tag">{k.label}</span>
+          <span className="sub num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/** Proof as five short segments, the same language as the journey track. */
+function ProofCell({ data: r }: CustomCellRendererProps<OrderRow>) {
+  if (!r) return null;
+  const list = proofList(r);
+  const have = list.filter((x) => x.ok).length;
+  return (
+    <div className="proof-cell">
+      <span className={`proof-track ${have === list.length ? "full" : ""}`} aria-hidden>
+        {list.map((x) => <span key={x.name} className={x.ok ? "on" : ""} />)}
+      </span>
+      <span className="proof-label num">{have} of {list.length}</span>
+    </div>
+  );
+}
+
+function MoneyCell({ data: r }: CustomCellRendererProps<OrderRow>) {
+  if (!r) return null;
+  return (
+    <div className="money-cell">
+      <span className="amt">{money(r.amount_minor, r.currency)}</span>
+      {r.money_at_stake_minor > 0
+        ? <span className="stake">{money(r.money_at_stake_minor, r.currency)} at stake</span>
+        : <span className="sub">nothing at stake</span>}
+    </div>
+  );
+}
+
+function ActionCell(p: CustomCellRendererProps<OrderRow> & { onOpen: (r: OrderRow) => void }) {
+  const r = p.data;
+  if (!r) return null;
+  const a = nextAction(r);
+  return (
+    <button data-own-click className={`row-action ${a.urgent ? "urgent" : ""}`} onClick={() => p.onOpen(r)}>
+      {a.label}{!a.urgent && <ArrowUpRight aria-hidden />}
+    </button>
+  );
+}
+
+// ---------- tooltips and headers ----------
+
+function EvidenceTip({ data: r }: CustomTooltipProps<OrderRow>) {
+  if (!r) return null;
+  const list = proofList(r);
+  return (
+    <div className="grid-tip">
+      <div className="grid-tip-head">Proof on file <span>{list.filter((x) => x.ok).length} of {list.length}</span></div>
+      <ul className="grid-tip-list">
+        {list.map((x) => (
+          <li key={x.name} className={x.ok ? "ok" : "miss"}>{x.ok ? <Check aria-hidden /> : <Circle aria-hidden />}{cap(x.name)}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RiskTip({ data: r }: CustomTooltipProps<OrderRow>) {
+  if (!r || r.delivery_risk == null) return null;
+  return (
+    <div className="grid-tip">
+      <div className="grid-tip-head">Delivery risk <span>{pct(r.delivery_risk)}</span></div>
+      {r.risk_reasons.length > 0
+        ? <ul className="grid-tip-list plain">{r.risk_reasons.map((x) => <li key={x}>{x}</li>)}</ul>
+        : <p className="grid-tip-note">No strong signals either way.</p>}
+    </div>
+  );
+}
+
+// ---------- lanes, detail, status bar ----------
+
+/** A lane: who acts next. Count and money at stake per currency (never summed across currencies). */
+function LaneRow(p: CustomCellRendererProps<OrderRow>) {
+  const open = useExpanded(p.node);
+  const key = String(p.node.key) as Lane;
+  const meta = LANES[key];
+  const rows = (p.node.childrenAfterFilter ?? []).map((n) => n.data).filter((d): d is OrderRow => !!d);
+  if (!meta) return null;
+  return (
+    <div className={`lane-row lane-${key}`} aria-expanded={open} aria-label={`${meta.label}: ${rows.length} order${rows.length === 1 ? "" : "s"}`}>
+      <ChevronDown className="chev" aria-hidden />
+      <span className="lane-name">{meta.label}</span>
+      <span className="count-chip num">{rows.length}</span>
+      <span className="lane-hint">{meta.hint}</span>
+      <span className="lane-meta num">{sumStake(rows)} at stake</span>
+    </div>
+  );
+}
+
+/** Master/detail: the order's proof, journey, risk and case, without leaving the table. */
+function DetailPanel(p: CustomDetailCellRendererProps<OrderRow> & { onOpen: (r: OrderRow) => void }) {
+  const r = p.data;
+  if (!r) return null;
+  const list = proofList(r);
+  const done = STEP_OF[r.state] ?? 0;
+  const tone = rowTone(r);
+  return (
+    <div className="detail">
+      <div className="detail-inner">
+        <section className="detail-journey">
+          <h4>Journey</h4>
+          <ol className={`stepper tone-${tone}`}>
+            {STEPS.map((s, i) => (
+              <li key={s} className={i < done ? (i === done - 1 ? "on last" : "on") : ""}>
+                <span className="dot" aria-hidden>{i < done && <Check />}</span>{s}
+              </li>
+            ))}
+          </ol>
+          <p className="faint" style={{ marginTop: 10 }}>{r.status} · updated {ago(r.last_update)}</p>
+        </section>
+        <section>
+          <h4>Proof on file</h4>
+          <ul className="checklist">
+            {list.map((x) => <li key={x.name} className={x.ok ? "ok" : "miss"}>{x.ok ? <Check aria-hidden /> : <Circle aria-hidden />}{cap(x.name)}</li>)}
+          </ul>
+        </section>
+        <section>
+          <h4>Delivery risk</h4>
+          {r.delivery_risk == null ? <p className="faint">Not scored for this order.</p> : (
+            <>
+              <span className={`pill ${riskTone(r.delivery_risk) === "neutral" ? "plain" : riskTone(r.delivery_risk)}`}>{pct(r.delivery_risk)}</span>
+              <ul className="reasons">{r.risk_reasons.slice(0, 3).map((x) => <li key={x}>{x}</li>)}</ul>
+            </>
+          )}
+          <h4 style={{ marginTop: 14 }}>Buyer</h4>
+          <p style={{ margin: 0, fontSize: 13 }}>{r.buyer_area || "—"}, {COUNTRY[r.buyer_country] ?? r.buyer_country}</p>
+        </section>
+        <section>
+          <h4>Case</h4>
+          {r.case_id ? (
+            <dl className="mini-kv">
+              <dt>Likely cause</dt><dd>{r.failure_point ? FAILURE_POINT[r.failure_point] ?? r.failure_point : "Being worked out"}</dd>
+              <dt>Route</dt><dd>{routeLabel(r) || "—"}</dd>
+              <dt>Rule</dt><dd className="mono">{r.rule_id ?? "—"}</dd>
+              {r.confidence && <><dt>Confidence</dt><dd>{cap(r.confidence)}</dd></>}
+            </dl>
+          ) : <p className="faint">No problem reported.</p>}
+          <button className="btn" style={{ marginTop: 14 }} onClick={() => p.onOpen(r)}>Open order<ArrowUpRight size={15} aria-hidden /></button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ---------- export ----------
+
+const EXPORT_COLUMNS = ["item", "buyer", "status", "next", "risk", "proof", "money", "method", "updated"];
+
+const excelStyles: ExcelStyle[] = [
+  { id: "header", font: { bold: true, color: "#1F1A18" }, interior: { color: "#F6ECEE", pattern: "Solid" } },
+  { id: "laneRow", font: { bold: true, color: "#7B2D3D" } },
+];
+
+function exportValue(id: string, r: OrderRow, v: unknown): string {
+  switch (id) {
+    case "item": return `${r.item} (${r.order_ref})`;
+    case "status": return r.status;
+    case "next": return routeLabel(r) || (nextAction(r).urgent ? nextAction(r).label : "");
+    case "method": return r.method ? METHOD[r.method] ?? r.method : "";
+    case "risk": return r.delivery_risk == null ? "" : pct(r.delivery_risk);
+    case "proof": return `${r.evidence.present.length} of ${r.evidence.present.length + r.evidence.missing.length}`;
+    case "money": return money(r.amount_minor, r.currency) + (r.money_at_stake_minor ? ` (${money(r.money_at_stake_minor, r.currency)} at stake)` : "");
+    case "buyer": return `${r.buyer_area} ${r.buyer_country}`.trim();
+    case "updated": return r.last_update;
+    default: return v == null ? "" : String(v);
+  }
+}
+
+function exportParams() {
+  return {
+    fileName: `doorstep-orders-${new Date().toISOString().slice(0, 10)}`,
+    columnKeys: EXPORT_COLUMNS,
+    processCellCallback: (q: { column: { getColId(): string }; node?: IRowNode | null; value: unknown }) =>
+      (q.node?.data ? exportValue(q.column.getColId(), q.node.data as OrderRow, q.value) : ""),
+    processRowGroupCallback: (q: { node: IRowNode }) => LANES[q.node.key as Lane]?.label ?? String(q.node.key),
+  };
+}
+
+/** Excel (Enterprise): what the seller sees, same filters and sort, lanes kept as groups. */
+export function exportExcel(api: GridApi) {
+  const p = exportParams();
+  api.exportDataAsExcel({ ...p, fileName: `${p.fileName}.xlsx`, sheetName: "Orders", author: "Doorstep" });
+}
+function exportCsv(api: GridApi) {
+  const p = exportParams();
+  api.exportDataAsCsv({ ...p, fileName: `${p.fileName}.csv` });
+}
+
+export function toggleColumnsPanel(api: GridApi) {
+  if (api.isSideBarVisible()) api.setSideBarVisible(false);
+  else { api.setSideBarVisible(true); api.openToolPanel("columns"); }
+}
+
+// ---------- the grid ----------
+
+const sideBar: SideBarDef = {
+  toolPanels: [
+    {
+      id: "columns", labelDefault: "Columns", labelKey: "columns", iconKey: "columns", toolPanel: "agColumnsToolPanel",
+      toolPanelParams: { suppressRowGroups: true, suppressValues: true, suppressPivots: true, suppressPivotMode: true },
+    },
+    { id: "filters", labelDefault: "Filters", labelKey: "filters", iconKey: "filter", toolPanel: "agFiltersToolPanel" },
+  ],
+  hiddenByDefault: true,
+};
+
+const getRowId = (p: { data: OrderRow }) => p.data.order_id;
+const isRowMaster = (d: OrderRow | undefined) => !!d;
+const getRowHeight = (p: { node: IRowNode }) => (p.node.group ? 44 : undefined);
+const laneOrder = (p: { nodeA: IRowNode; nodeB: IRowNode }) =>
+  (LANES[p.nodeA.key as Lane]?.rank ?? 9) - (LANES[p.nodeB.key as Lane]?.rank ?? 9);
+const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true };
+const rowStyle = { cursor: "pointer" };
+
+export type OrdersGridProps = {
+  rows: OrderRow[];
+  search: string;
+  empty: string;
+  onOpen: (r: OrderRow) => void;
+  onReady: (api: GridApi) => void;
+  /** The orders left after search and filters, for the footer (count and money at stake). */
+  onShown: (rows: OrderRow[]) => void;
+};
+
+export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onShown }: OrdersGridProps) {
+  // Lanes only when they add something: a list with one lane (e.g. "Needs you") stays flat.
+  const grouped = useMemo(() => new Set(rows.map(laneOf)).size > 1, [rows]);
+
+  const columns = useMemo<ColDef<OrderRow>[]>(() => [
+    {
+      colId: "lane", headerName: "Lane", rowGroup: grouped, hide: true, suppressColumnsToolPanel: true,
+      valueGetter: (p) => (p.data ? laneOf(p.data) : null),
+      filterValueGetter: (p) => (p.data ? LANES[laneOf(p.data)].label : null),
+    },
+    {
+      colId: "item", headerName: "Order", field: "item", flex: 2.2, minWidth: 280, lockVisible: true,
+      filter: "agTextColumnFilter", getQuickFilterText: (p) => haystack(p.data),
+      cellRenderer: OrderCell,
+    },
+    {
+      colId: "status", headerName: "Journey", field: "status", width: 166, enableCellChangeFlash: true,
+      filter: "agSetColumnFilter",
+      comparator: (_a, _b, x, y) => (STATE_RANK[x.data?.state ?? ""] ?? 0) - (STATE_RANK[y.data?.state ?? ""] ?? 0),
+      cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <JourneyCell r={p.data} /> : null),
+    },
+    {
+      colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned",
+      filter: "agNumberColumnFilter", tooltipField: "delivery_risk", tooltipComponent: RiskTip,
+      cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <RiskCell r={p.data} /> : null),
+    },
+    {
+      colId: "proof", headerName: "Proof", width: 112, enableCellChangeFlash: true,
+      valueGetter: (p) => p.data?.evidence.score ?? 0,
+      tooltipValueGetter: () => "proof", tooltipComponent: EvidenceTip,
+      cellRenderer: ProofCell,
+    },
+    {
+      colId: "money", headerName: "Value", width: 128, type: "rightAligned", enableCellChangeFlash: true,
+      valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
+      comparator: (_a, _b, x, y) =>
+        ((x.data?.money_at_stake_minor ?? 0) - (y.data?.money_at_stake_minor ?? 0)) || ((x.data?.amount_minor ?? 0) - (y.data?.amount_minor ?? 0)),
+      cellRenderer: MoneyCell,
+    },
+    {
+      colId: "method", headerName: "Delivery", field: "method", width: 120,
+      filter: "agSetColumnFilter", filterParams: { valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
+      valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
+      cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <DeliveryCell r={p.data} /> : null),
+    },
+    {
+      colId: "next", headerName: "Next step", hide: true, width: 160,
+      valueGetter: (p) => (p.data ? routeLabel(p.data) || nextAction(p.data).label : ""), filter: "agSetColumnFilter",
+    },
+    {
+      colId: "buyer", headerName: "Buyer area", field: "buyer_area", hide: true, width: 120, filter: "agSetColumnFilter",
+    },
+    {
+      colId: "updated", headerName: "Updated", field: "last_update", hide: true, width: 110, initialSort: "desc", type: "rightAligned",
+      valueFormatter: (p) => (p.value ? ago(String(p.value)) : ""), cellClass: "faint-cell", filter: false,
+    },
+    {
+      colId: "action", headerName: "Next", width: 150, pinned: "right", lockPinned: true, sortable: false, resizable: false,
+      suppressMovable: true, suppressColumnsToolPanel: true, filter: false, cellClass: "cell-end",
+      cellRenderer: ActionCell, cellRendererParams: { onOpen },
+    },
+  ], [grouped, onOpen]);
+
+  const getContextMenuItems = useCallback((p: GetContextMenuItemsParams<OrderRow>): (DefaultMenuItem | MenuItemDef)[] => {
+    const r = p.node?.data;
+    const items: (DefaultMenuItem | MenuItemDef)[] = [];
+    if (r) {
+      items.push(
+        { name: `${nextAction(r).urgent ? nextAction(r).label : "Open order"}`, action: () => onOpen(r) },
+        { name: p.node!.expanded ? "Hide details" : "Show details", action: () => p.node!.setExpanded(!p.node!.expanded) },
+        { name: "Copy order reference", action: () => { void navigator.clipboard?.writeText(r.order_ref); } },
+        "separator",
+      );
+    }
+    items.push(
+      { name: "Export to Excel", action: () => exportExcel(p.api) },
+      { name: "Export to CSV", action: () => exportCsv(p.api) },
+      "separator",
+      { name: "Columns and filters", action: () => toggleColumnsPanel(p.api) },
+    );
+    return items;
+  }, [onOpen]);
+
+  const onRowClicked = useCallback((e: RowClickedEvent<OrderRow>) => {
+    if (e.node.group) { e.node.setExpanded(!e.node.expanded); return; }
+    if ((e.event?.target as HTMLElement | null)?.closest("[data-own-click]")) return;
+    if (e.data) onOpen(e.data);
+  }, [onOpen]);
+  const onModelUpdated = useCallback((e: { api: GridApi }) => {
+    const shown: OrderRow[] = [];
+    e.api.forEachNodeAfterFilter((n) => { if (n.data && !n.group) shown.push(n.data); });
+    onShown(shown);
+  }, [onShown]);
+  const detailParams = useMemo(() => ({ onOpen }), [onOpen]);
+
+  return (
+    <div className="orders-grid">
+      <AgGridReact<OrderRow>
+        theme={theme}
+        rowData={rows}
+        columnDefs={columns}
+        getRowId={getRowId}
+        defaultColDef={defaultColDef}
+        quickFilterText={search}
+        onGridReady={(e) => onReady(e.api)}
+        onModelUpdated={onModelUpdated}
+        onRowClicked={onRowClicked}
+        rowStyle={rowStyle}
+        // Row grouping: lanes in a fixed order, open by default, drawn as one full-width row.
+        groupDisplayType="groupRows"
+        groupRowRenderer={LaneRow}
+        // Lanes always open; detail panels stay closed until the seller asks (masterDefaultExpanded).
+        groupDefaultExpanded={-1}
+        masterDefaultExpanded={0}
+        initialGroupOrderComparator={laneOrder}
+        getRowHeight={getRowHeight}
+        // Master/detail: the chevron in the order cell opens the proof panel under the row.
+        masterDetail
+        isRowMaster={isRowMaster}
+        detailCellRenderer={DetailPanel}
+        detailCellRendererParams={detailParams}
+        detailRowAutoHeight
+        // Enterprise furniture: side bar (hidden until asked), right-click menu, Excel export.
+        sideBar={sideBar}
+        getContextMenuItems={getContextMenuItems}
+        excelStyles={excelStyles}
+        tooltipShowDelay={250}
+        tooltipHideDelay={8000}
+        overlayNoRowsTemplate={`<span style='color:#8b827d'>${search ? "No orders match your search." : empty}</span>`}
+        animateRows
+        suppressCellFocus
+        domLayout="autoHeight"
+      />
+    </div>
+  );
+}

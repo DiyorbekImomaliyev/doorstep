@@ -27,6 +27,7 @@ from app.ai.packing import PackingChecker
 from app.ai.policy_reader import PolicyReader, ReaderAnswer
 from app.api.agent import MCP_MOUNT, MCP_PATH
 from app.api.deps import SIMULATED_COMPONENTS, AppDeps, Services
+from app.api.insights import InsightsOut, insights
 from app.api.views import (
     BuyerView,
     CaseView,
@@ -701,6 +702,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return RecoverySummary(
             recovered_minor=recovered, open_claims=open_claims, open_claim_minor=open_minor
         )
+
+    @router.get("/api/seller/{token}/insights", response_model=InsightsOut)
+    def insight_tables(token: str, s: Db) -> InsightsOut:
+        """AS-01: orders, shipments, cases, money actions and carrier claims for AG Studio."""
+        return insights(s, _seller(s, token))
 
     @router.get("/api/seller/{token}/prevention", response_model=list[PreventionSuggestion])
     def prevention_tips(token: str, s: Db) -> list[PreventionSuggestion]:
