@@ -60,8 +60,15 @@ Disputes and Webhooks over REST; a bounded agent on PayPal's Agent Toolkit; Clau
 Gemini as fallback; XGBoost with TreeSHAP reasons; React and AG Grid for the Control Room.
 
 ### Challenges we ran into
-[TODO: a real one. Candidates from the logs: the Render worker's own env rows overriding the shared
-group (the live claim-pack model), and making a seller unable to fake a buyer's seal scan.]
+- **Live differed from local.** The Render worker had its own env rows with another PayPal app's
+  keys, so PayPal answered 404 on capture for orders the web service had created. We now check
+  service rows first, and a failed capture shows "Payment failed" instead of hanging.
+- **A seller could fake the strongest proof.** Opening the seal page from the seller's own browser
+  would have counted as the buyer's possession scan. That scan is now recorded but never counted
+  (ADR-042).
+- **Tests that run code are not tests that check it.** Mutation testing found 75 untested logic
+  paths in Autopilot: a bug that applied another seller's rule would have passed every test. New
+  tests close every one; the money path now has zero surviving logic mutants.
 
 ### Accomplishments that we're proud of
 Zero unsafe money actions: no code path outside the policy service can reach a PayPal write
@@ -69,7 +76,11 @@ Zero unsafe money actions: no code path outside the policy service can reach a P
 never exceed the capture.
 
 ### What we learned
-[TODO]
+- A "Delivered" scan is not possession. UK law turns on possession, so the product had to prove it.
+- Money rules need the database, not only code: the daily refund cap held in unit tests and broke
+  under two racing requests on real Postgres until a row lock fixed it.
+- The model should word decisions, never make them: every money outcome is code we can test and
+  replay.
 
 ### What's next
 The EU rule set (same possession law), real locker networks, carrier claim filing where carriers
@@ -100,9 +111,10 @@ fastmcp, react, vite, ag-grid, shippo, render, hypothesis, schemathesis, playwri
 | Render | Web service, worker and Postgres from one `render.yaml` |
 | Shippo (test mode) | Address validation and carrier tracking events |
 
-**APIMatic plug-in question:** [TODO: confirm in your own words, e.g. "Claude Code used the
-APIMatic Context Plugin to integrate Orders and Payments with the PayPal Server SDK, including
-error handling and retries."] Also send the free-subscription form.
+**APIMatic plug-in question:** Claude Code used the APIMatic Context Plugin to integrate PayPal
+Orders and Payments with the APIMatic-generated PayPal Python SDK: its models build and decode
+create, patch, capture, tracking and refund calls, while Doorstep's client keeps one token cache,
+one retry on 401 and a PayPal-Request-Id on every write (ADR-014, ADR-015). Also send the free-subscription form.
 
 ## Prize categories to select
 Grand prize; Most impactful; Best demo delivery; Best use of PayPal + AI; Best use of agentic
