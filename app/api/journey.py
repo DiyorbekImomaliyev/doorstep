@@ -17,7 +17,8 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.agent.runner import AgentRun, DoorstepAgent, simulated_tools
@@ -39,6 +40,7 @@ from app.api.views import (
     case_recovery,
     case_view,
     order_row,
+    order_rows,
     recovery_view,
 )
 from app.cases.actions import CaseActions, seller_approver
@@ -53,8 +55,9 @@ from app.db import Base
 from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
 from app.mcp.server import MCP_SCOPE
 from app.money import Currency, Money
+from app.ops.signals import PipelineSignals, pipeline_signals
 from app.orders.enums import OrderState, ShippingMethod
-from app.orders.models import AuditLog, Case, Order, Recovery, Seller
+from app.orders.models import AuditLog, Case, MoneyAction, Order, Recovery, Seller
 from app.orders.schemas import Address
 from app.orders.state import IllegalTransition
 from app.policy.rules import RuleBook
@@ -271,6 +274,7 @@ class Health(BaseModel):
     receipts_public_key: str
     model: str
     webhooks: dict[str, WebhookStat] = {}
+    pipeline: PipelineSignals | None = None  # R7: counts only
 
 
 def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) -> APIRouter:
@@ -368,6 +372,21 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
 
     # ------------------------------------------------------------ public
 
+    def _signals(s: Session) -> PipelineSignals | None:
+        """R7, design review R7-1: the signals can never fail the health check Render restarts on.
+
+        A savepoint keeps a failed query from poisoning the request's transaction, and a statement
+        timeout bounds a slow one. On failure the field is null, which a monitor can alert on.
+        """
+        try:
+            with s.begin_nested():
+                if s.get_bind().dialect.name == "postgresql":
+                    s.execute(text("SET LOCAL statement_timeout = 1000"))  # ms, this transaction
+                return pipeline_signals(s, deps.clock.now())
+        except SQLAlchemyError:
+            log.exception("pipeline signals unavailable")
+            return None
+
     @router.get("/healthz", response_model=Health)
     def healthz(s: Db) -> Health:
         webhooks = {}
@@ -388,6 +407,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
                 last_status=last.status if last else None,
             )
         return Health(
+            pipeline=_signals(s),
             webhooks=webhooks,
             ok=True,
             environment=services.environment,
@@ -633,9 +653,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     def orders(token: str, s: Db) -> list[OrderRow]:
         seller = _seller(s, token)
         rows = s.scalars(
-            select(Order).where(Order.seller_id == seller.id).order_by(Order.created_at.desc())
+            select(Order)
+            .where(Order.seller_id == seller.id)
+            .order_by(Order.created_at.desc(), Order.id)  # a tie never reorders the grid
         )
-        return [order_row(s, o) for o in rows]
+        return order_rows(s, list(rows))
 
     @router.get("/api/seller/{token}/me")
     def me(token: str, response: Response, s: Db) -> dict[str, Any]:
@@ -746,12 +768,24 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     def act(
         token: str,
         case_id: str,
-        action: Literal["approve", "decline", "send-evidence"],
+        action: Literal["approve", "decline", "send-evidence", "re-check"],
         s: Db,
     ) -> ActionOut:
-        """approve / decline, or (DE-01) send the facts-only evidence to the open PayPal dispute."""
+        """approve / decline, (DE-01) send the facts-only evidence to the open PayPal dispute, or
+        (R23) re-check: a held case is decided again on the evidence as it is now."""
         seller = _seller(s, token)
         case = _seller_case(s, seller, case_id)
+        if action == "re-check":
+            try:
+                report = _pipeline(s).redecide(case, actor=f"seller:{seller.id}")
+            except (PolicyError, IllegalTransition) as exc:
+                s.rollback()
+                raise HTTPException(409, str(exc)) from None
+            s.commit()
+            ma = s.scalar(
+                select(MoneyAction.id).where(MoneyAction.decision_id == report.decision_id)
+            )
+            return ActionOut(case_id=case.id, state=case.state, money_action_id=ma)
         actions = CaseActions(s, rulebook, deps.clock, services.receipts)
         verify_url = f"{services.app_base_url}/cases/{case.id}/verify"
         try:
@@ -777,6 +811,8 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         order = s.get(Order, case.order_id)
         assert order is not None
         now = deps.clock.monotonic()
+        for stale in [k for k, v in recent_runs.items() if now - v[0] > AGENT_REUSE_S]:
+            del recent_runs[stale]  # review S15: past the reuse window an entry is never read
         last = recent_runs.get(case.id)
         if last is not None and last[1] == case.state and now - last[0] <= AGENT_REUSE_S:
             return last[2]

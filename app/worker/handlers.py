@@ -15,6 +15,7 @@ from app.proof.seller_protection import record_seller_protection
 from app.worker.gateway import OrdersGateway
 from app.worker.models import Job
 from app.worker.runner import PermanentError
+from app.worker.simulated import is_simulated
 
 log = logging.getLogger("doorstep.worker")
 
@@ -109,6 +110,19 @@ class AddTrackingHandler:
             raise PermanentError(f"job {job.id}: shipment or order missing")
         if not order.paypal_order_id or not order.capture_id:
             raise PermanentError(f"job {job.id}: order {order.id} has no PayPal capture")
+        if is_simulated(order.capture_id):  # R19: PayPal has never seen this order
+            session.add(
+                AuditLog(
+                    actor="worker",
+                    action="tracking.simulated",
+                    entity_type="shipment",
+                    entity_id=shipment.id,
+                    before={},
+                    after={"tracking_number": shipment.tracking_number, "paypal": "not called"},
+                    at=self.clock.now(),
+                )
+            )
+            return
         self.gateway.add_tracking(
             paypal_order_id=order.paypal_order_id,
             capture_id=order.capture_id,

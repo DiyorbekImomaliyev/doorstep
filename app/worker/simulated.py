@@ -9,6 +9,7 @@ can present them as real PayPal refunds (PR-08). `/healthz` lists this component
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -16,8 +17,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.money import Currency, Money
 from app.orders.enums import MoneyActionStatus
 from app.orders.models import MoneyAction, Order
-from app.paypal_client.types import CaptureState, DisputeEvidence, RefundResult
-from app.policy.ports import RefundGateway
+from app.paypal_client.types import CaptureState, DisputeEvidence, DisputeSummary, RefundResult
+from app.policy.ports import DisputeLookup, RefundGateway
 
 SIM_PREFIX = "SIM-"
 SIMULATED_STATUS = "SIMULATED_COMPLETED"
@@ -30,6 +31,10 @@ def is_simulated(capture_id: str | None) -> bool:
 class SimulatedRefundGateway:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self.session_factory = session_factory
+
+    def open_disputes_since(self, since: datetime, *, capture_id: str) -> list[DisputeSummary]:
+        del since, capture_id  # a scratch order was never paid at PayPal, so it has no disputes
+        return []
 
     def get_capture_state(self, paypal_order_id: str, capture_id: str) -> CaptureState:
         with self.session_factory() as s:
@@ -75,6 +80,12 @@ class RoutingRefundGateway:
 
     def get_capture_state(self, paypal_order_id: str, capture_id: str) -> CaptureState:
         return self._for(capture_id).get_capture_state(paypal_order_id, capture_id)
+
+    def open_disputes_since(self, since: datetime, *, capture_id: str) -> list[DisputeSummary]:
+        target = self._for(capture_id)
+        if not isinstance(target, DisputeLookup):  # fail closed: the refund job retries, then holds
+            raise TypeError(f"{type(target).__name__} cannot read PayPal disputes")
+        return target.open_disputes_since(since, capture_id=capture_id)
 
     def refund_capture(
         self,
