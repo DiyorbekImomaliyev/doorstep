@@ -1,0 +1,96 @@
+{
+ "tracking_number": "SHIPPO_DELIVERED",
+ "carrier": "shippo",
+ "servicelevel": {
+  "name": "Priority Mail",
+  "token": "shippo_priority"
+ },
+ "address_from": {
+  "city": "San Francisco",
+  "state": "CA",
+  "zip": "94103",
+  "country": "US"
+ },
+ "address_to": {
+  "city": "Chicago",
+  "state": "IL",
+  "zip": "60611",
+  "country": "US"
+ },
+ "eta": "2026-11-06T07:26:36.909Z",
+ "original_eta": "2026-11-06T07:26:36.909Z",
+ "test": true,
+ "tracking_status": {
+  "status_date": "2026-11-04T23:56:36.92Z",
+  "status_details": "Your shipment has been delivered.",
+  "location": {
+   "city": "Chicago",
+   "state": "IL",
+   "zip": "60611",
+   "country": "US"
+  },
+  "substatus": null,
+  "object_created": "2026-11-04T23:56:36.92Z",
+  "object_updated": "2026-11-04T23:56:36.92Z",
+  "object_id": "999399f6a2854a939611416ed4a2c87d",
+  "status": "DELIVERED"
+ },
+ "tracking_history": [
+  {
+   "status_date": "2026-11-02T19:56:36.92Z",
+   "status_details": "The carrier has received the electronic shipment information.",
+   "location": null,
+   "substatus": null,
+   "object_created": "2026-11-02T19:56:36.92Z",
+   "object_updated": "2026-11-02T19:56:36.92Z",
+   "object_id": "0135a55d4937493286345495f15467b7",
+   "status": "UNKNOWN"
+  },
+  {
+   "status_date": "2026-11-03T23:56:36.92Z",
+   "status_details": "Your shipment has departed from the origin.",
+   "location": {
+    "city": "San Francisco",
+    "state": "CA",
+    "zip": "94103",
+    "country": "US"
+   },
+   "substatus": null,
+   "object_created": "2026-11-03T23:56:36.92Z",
+   "object_updated": "2026-11-03T23:56:36.92Z",
+   "object_id": "57b7b0442c2c4273a5515c54aa866476",
+   "status": "TRANSIT"
+  },
+  {
+   "status_date": "2026-11-05T11:56:36.92Z",
+   "status_details": "The Postal Service has identified a problem with the processing of this item and you should contact support to get further information.",
+   "location": {
+    "city": "Memphis",
+    "state": "TN",
+    "zip": "37501",
+    "country": "US"
+   },
+   "substatus": null,
+   "object_created": "2026-11-05T11:56:36.92Z",
+   "object_updated": "2026-11-05T11:56:36.92Z",
+   "object_id": "88e7907252824273b9037759c1ef15d3",
+   "status": "FAILURE"
+  },
+  {
+   "status_date": "2026-11-04T23:56:36.92Z",
+   "status_details": "Your shipment has been delivered.",
+   "location": {
+    "city": "Chicago",
+    "state": "IL",
+    "zip": "60611",
+    "country": "US"
+   },
+   "substatus": null,
+   "object_created": "2026-11-04T23:56:36.92Z",
+   "object_updated": "2026-11-04T23:56:36.92Z",
+   "object_id": "999399f6a2854a939611416ed4a2c87d",
+   "status": "DELIVERED"
+  }
+ ],
+ "messages": []
+}

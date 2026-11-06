@@ -269,8 +269,10 @@ def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]
                 TimelineItem(at=row.at, kind="carrier", title=row.action.replace(".", " "))
             )
     for ev in s.scalars(select(TrackingEvent).where(TrackingEvent.shipment_id.in_(shipment_ids))):
-        sub = ev.raw.get("tracking_status", {}) if isinstance(ev.raw, dict) else {}
-        code = sub.get("substatus", {}).get("code", "") if isinstance(sub, dict) else ""
+        # Real Shippo events carry "substatus": null (and may omit tracking_status): read safely.
+        status = ev.raw.get("tracking_status") if isinstance(ev.raw, dict) else None
+        sub = status.get("substatus") if isinstance(status, dict) else None
+        code = sub.get("code", "") if isinstance(sub, dict) else ""
         items.append(
             TimelineItem(
                 at=ev.occurred_at,

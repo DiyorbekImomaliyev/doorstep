@@ -82,14 +82,18 @@ export function Toast({ message, onDone }: { message: string | null; onDone: () 
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The HTTP status of the failed call, when there was one (4xx: the request; 5xx: the server). */
+  const [status, setStatus] = useState<number | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let live = true;
-    fn().then((d) => live && (setData(d), setError(null))).catch((e) => live && setError(String(e.message ?? e)));
+    fn()
+      .then((d) => live && (setData(d), setError(null), setStatus(null)))
+      .catch((e) => live && (setError(String(e.message ?? e)), setStatus(typeof e?.status === "number" ? e.status : null)));
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
-  return { data, error, reload: () => setTick((t) => t + 1), setData };
+  return { data, error, status, reload: () => setTick((t) => t + 1), setData };
 }
 
 export function ErrorBox({ message }: { message: string }) {

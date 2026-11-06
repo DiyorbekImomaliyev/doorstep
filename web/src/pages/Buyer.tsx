@@ -35,7 +35,7 @@ function heroFor(v: BuyerView): Hero {
 }
 
 export default function Buyer({ token }: { token: string }) {
-  const { data: v, error, setData } = useAsync(() => api.buyer(token), [token]);
+  const { data: v, error, status, reload, setData } = useAsync(() => api.buyer(token), [token]);
   const [busy, setBusy] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -55,7 +55,18 @@ export default function Buyer({ token }: { token: string }) {
     }
   }
 
-  if (error) return (<><Brand /><div className="narrow"><ErrorBox message="This link isn't valid or has expired. Ask the shop for a new one." /></div></>);
+  if (error && status !== null && status < 500) {
+    return (<><Brand /><div className="narrow"><ErrorBox message="This link isn't valid or has expired. Ask the shop for a new one." /></div></>);
+  }
+  if (error) {
+    // A server or network error is ours, not the buyer's: say so, and let them retry.
+    return (
+      <><Brand /><div className="narrow col">
+        <ErrorBox message="We couldn't load your order just now. Your order and payment are safe." />
+        <button className="btn" style={{ alignSelf: "flex-start" }} onClick={reload}>Try again</button>
+      </div></>
+    );
+  }
   if (!v) return (<><Brand /><div className="narrow col"><Loading height={160} /><Loading height={80} /></div></>);
 
   const hero = heroFor(v);
