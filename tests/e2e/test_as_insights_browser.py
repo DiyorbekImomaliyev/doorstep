@@ -50,3 +50,7 @@ def test_AS_04_custom_widgets_in_the_browser():
 
 def test_AS_05_reports_from_state_and_drill_through_in_the_browser():
     _playwright("AS-05")
+
+
+def test_AS_06_13_ask_doorstep_builds_a_matching_studio_widget_in_the_browser():
+    _playwright("AS-06")

@@ -29,8 +29,12 @@ def test_RG_03_ragas_faithfulness():
 # tests/e2e/test_as_insights_browser.py (the reports, in a browser).
 
 
-@pytest.mark.xfail(strict=True, reason="next: a Doorstep agent beside Studio's built-in agents")
-def test_AS_06_doorstep_agent_in_studio():
+# AS-06 Ask Doorstep is built (tests/unit/test_as06_insights_agent.py and the browser test).
+# Studio's own AI panel and built-in agents need the "Pro with AI" licence; the key is Pro.
+@pytest.mark.xfail(
+    strict=True, reason=NEEDS_HUMAN + "an AG Studio Pro-with-AI licence for the built-in agents"
+)
+def test_AS_06_09_works_beside_studio_built_in_agents():
     _unbuilt()
 
 

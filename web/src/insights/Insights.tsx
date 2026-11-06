@@ -8,6 +8,7 @@
  *    page, every widget filtered to it (drill-through).
  *  - Real-time Dashboard: the shop's changes are applied to Studio's data engine as they happen,
  *    only the rows that moved, so numbers update in place. Pause any time.
+ *  - Ask Doorstep (AS-06): a question becomes a chart on the Answers report (ask.ts, AskPanel).
  *
  * Data model: data.ts. Theme: theme.ts. Custom widgets: widgets.tsx. Reports: reports.ts.
  */
@@ -17,7 +18,9 @@ import type {
 } from "ag-studio";
 import { AgStudioLicenseManager, enableStudioDevValidations } from "ag-studio";
 import { AgStudio, createWidgets } from "ag-studio-react";
-import { BarChart3, Eye, FilePlus2, Pause, Pencil, Play, X } from "lucide-react";
+import { BarChart3, Eye, FilePlus2, Pause, Pencil, Play, Sparkles, X } from "lucide-react";
+import { ANSWERS_PAGE, withAnswer, withoutAnswer, type Asked } from "./ask";
+import { AskPanel } from "./AskPanel";
 import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
 import { REPORTS, carrierDrillPage, reportState } from "./reports";
 import { paperTheme } from "./theme";
@@ -78,6 +81,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const [reports, setReports] = useState(REPORTS);
   const [selected, setSelected] = useState(REPORTS[0].id);
   const [editing, setEditing] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [live, setLive] = useState(true);
   const [synced, setSynced] = useState(() => new Date());
   const [moved, setMoved] = useState(0);
@@ -144,6 +148,27 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     setEditing(true);
   };
 
+  // AS-06: each answer is a widget at the top of the Answers report, which appears on the first.
+  const answers = useRef(0);
+  const addAnswer = useCallback((asked: Asked) => {
+    const id = `answer-${++answers.current}`;
+    if (!api) return id;
+    const s = api.getState();
+    api.setState({ ...s, pages: withAnswer(s.pages, id, asked.plan, asked.question), selectedPageId: ANSWERS_PAGE });
+    setReports((r) => (r.some((x) => x.id === ANSWERS_PAGE)
+      ? r : [...r, { id: ANSWERS_PAGE, name: "Answers", hint: "Charts from your questions to Ask Doorstep, newest first" }]));
+    setSelected(ANSWERS_PAGE);
+    canvas.current?.querySelector(".ag-studio-layout")?.scrollTo({ top: 0 });
+    return id;
+  }, [api]);
+  const removeAnswer = useCallback((id: string) => {
+    if (!api) return;
+    const s = api.getState();
+    api.setState({ ...s, pages: withoutAnswer(s.pages, id) });
+  }, [api]);
+  const showAnswers = useCallback(() => setSelected(ANSWERS_PAGE), []);
+  const latest = useCallback(() => current.current, []);
+
   const active = reports.find((r) => r.id === selected);
   return (
     <>
@@ -156,6 +181,9 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
           <button className="btn icon-btn" onClick={() => setLive((v) => !v)} aria-label={live ? "Pause live updates" : "Resume live updates"} title={live ? "Pause live updates" : "Resume live updates"}>
             {live ? <Pause size={15} aria-hidden /> : <Play size={15} aria-hidden />}
           </button>
+          <button className={`btn ask-toggle ${asking ? "on" : ""}`} onClick={() => setAsking((a) => !a)} aria-pressed={asking}>
+            <Sparkles size={15} aria-hidden />Ask Doorstep
+          </button>
           <button className={`btn ${editing ? "primary" : ""}`} onClick={() => setEditing((e) => !e)} aria-pressed={editing}>
             {editing ? <><Eye size={15} aria-hidden />Done editing</> : <><Pencil size={15} aria-hidden />Edit report</>}
           </button>
@@ -163,7 +191,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
       </Head>
 
       <div className="ins">
-        <div className="rb">
+        <div className="rb" data-ask={asking || undefined}>
           <nav className="rb-side" aria-label="Reports">
             <div className="rb-label">Reports</div>
             {reports.map((r) => (
@@ -182,6 +210,9 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
             </div>
           </nav>
           <div className="rb-canvas" ref={canvas}><AgStudio<DoorstepRegistry> studioProperties={props} className="studio-fill" /></div>
+          {asking && (
+            <AskPanel token={token} prepared={latest} onAnswer={addAnswer} onShow={showAnswers} onRemove={removeAnswer} onClose={() => setAsking(false)} />
+          )}
         </div>
         <p className="ins-note">
           {prepared.history

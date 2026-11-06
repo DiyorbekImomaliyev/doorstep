@@ -67,6 +67,51 @@
 .ds-fp-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ag-chart-palette-fills-1-color, #7b2d3d); }
 .ds-fp li[data-rank="0"] .ds-fp-bar i { background: var(--ag-accent-color, #7b2d3d); }
 
+/* ---------- AS-06 Ask Doorstep ---------- */
+/* Studio's canvas needs 720px. Wide: rail, canvas, panel. Laptop: the rail steps aside while
+   asking (answers land on Answers). Small: the panel floats over the canvas. */
+.rb[data-ask] { grid-template-columns: 216px minmax(0, 1fr) 340px; }
+@media (max-width: 1759px) {
+  .rb[data-ask] { grid-template-columns: minmax(0, 1fr) 340px; }
+  .rb[data-ask] .rb-side { display: none; }
+}
+.ask-toggle { color: var(--accent); border-color: var(--accent-line); }
+.ask-toggle.on { background: var(--accent-soft); }
+.ask { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: #fcfbfa; }
+.ask-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 16px 16px 12px; border-bottom: 1px solid var(--line); }
+.ask-head h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+.ask-head h2 svg { color: var(--accent); }
+.ask-head p { margin: 4px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.4; }
+.ask-log { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; }
+.ask-start { display: flex; flex-direction: column; gap: 8px; }
+.ask-start-title { margin: 0 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.ask-starter { text-align: left; font: inherit; font-size: 13px; line-height: 1.35; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; }
+.ask-starter:hover:not(:disabled) { border-color: var(--accent-3); color: var(--accent); }
+.ask-starter.small { font-size: 12px; padding: 6px 10px; }
+.ask-turn { display: flex; flex-direction: column; gap: 8px; }
+.ask-q { align-self: flex-end; max-width: 88%; margin: 0; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--accent); color: #fff; font-size: 13px; line-height: 1.4; }
+.ask-a { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 4px 12px 12px 12px; background: var(--surface); font-size: 13px; line-height: 1.45; }
+.ask-a p { margin: 0; }
+.ask-headline { font-size: 14px; color: var(--text); }
+.ask-headline strong { color: var(--accent); font-weight: 650; font-variant-numeric: tabular-nums; }
+.ask-detail { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ask-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.ask-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--line); }
+.ask-actions { display: flex; gap: 6px; margin-top: 4px; }
+.ask-actions .btn { font-size: 12.5px; padding: 5px 10px; }
+.ask-source, .ask-muted { font-size: 11.5px; color: var(--text-3); }
+.ask-thinking { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; color: var(--text-3); }
+.ask-form { display: flex; gap: 8px; align-items: flex-end; padding: 12px 16px 6px; border-top: 1px solid var(--line); }
+.ask-form textarea { flex: 1; resize: none; font: inherit; font-size: 13px; line-height: 1.4; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); color: var(--text); }
+.ask-form textarea:focus { outline: 2px solid var(--accent-line); border-color: var(--accent-3); }
+.ask-foot { margin: 0; padding: 0 16px 12px; font-size: 11px; color: var(--text-3); line-height: 1.4; }
+
+@media (max-width: 1399px) {
+  .rb[data-ask] { grid-template-columns: 216px minmax(0, 1fr); }
+  .rb[data-ask] .rb-side { display: flex; }
+  .ask { position: fixed; right: 16px; top: 88px; bottom: 16px; width: min(360px, calc(100vw - 32px)); z-index: 40; border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); }
+}
+
 @media (max-width: 900px) {
   .rb { grid-template-columns: 1fr; height: auto; }
   .rb-side { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); }

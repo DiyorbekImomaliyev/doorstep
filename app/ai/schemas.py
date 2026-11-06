@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, get_args
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ExplanationDraft(BaseModel):
@@ -71,3 +71,80 @@ class RecoveryDraft(BaseModel):
     """What the claim-pack model must return: sentences that each cite facts (RC-03)."""
 
     sentences: list[DraftSentence] = Field(min_length=1, max_length=14)
+
+
+# ---------------------------------------------------------------- AS-06 Ask Doorstep
+
+InsightMetric = Literal[
+    "net_loss",
+    "paid_out",
+    "recovered",
+    "claimed",
+    "recovery_rate",
+    "case_count",
+    "open_cases",
+    "order_count",
+    "sales",
+    "case_rate",
+    "prevention_rate",
+    "evidence_avg",
+    "transit_days",
+]
+InsightGroup = Literal[
+    "none",
+    "carrier",
+    "delivery_method",
+    "failure_point",
+    "liable_party",
+    "decision",
+    "category",
+    "month",
+    "week",
+]
+InsightPeriod = Literal["all_time", "this_month", "last_30_days", "last_90_days", "this_year"]
+
+# Which table each measure is counted on, and the groupings that table can be split by. The
+# browser's Studio model (web/src/insights/data.ts) has the same tables and fields.
+CASE_METRICS: frozenset[str] = frozenset(
+    ("net_loss", "paid_out", "recovered", "claimed", "recovery_rate", "case_count", "open_cases")
+)
+ORDER_METRICS: frozenset[str] = frozenset(get_args(InsightMetric)) - CASE_METRICS
+CASE_GROUPS: frozenset[str] = frozenset(
+    (
+        "none",
+        "carrier",
+        "delivery_method",
+        "failure_point",
+        "liable_party",
+        "decision",
+        "month",
+        "week",
+    )
+)
+ORDER_GROUPS: frozenset[str] = frozenset(
+    ("none", "carrier", "delivery_method", "category", "month", "week")
+)
+
+
+def groups_for(metric: str) -> frozenset[str]:
+    return CASE_GROUPS if metric in CASE_METRICS else ORDER_GROUPS
+
+
+class InsightPlan(BaseModel):
+    """AS-06: how Ask Doorstep reads a question: one measure, split one way, over one period.
+
+    Only names from fixed lists; never a number. The browser builds the widget and computes every
+    figure from the seller's own rows."""
+
+    answerable: bool
+    metric: InsightMetric = "net_loss"
+    group_by: InsightGroup = "none"
+    period: InsightPeriod = "all_time"
+    rank: Literal["highest", "lowest"] = "highest"
+    note: str = Field(default="", max_length=240)
+
+    @model_validator(mode="after")
+    def _grouping_fits_the_measure(self) -> InsightPlan:
+        if self.answerable and self.group_by not in groups_for(self.metric):
+            raise ValueError(f"{self.metric} cannot be split by {self.group_by}")
+        return self

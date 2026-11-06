@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.runner import AgentRun, DoorstepAgent, simulated_tools
 from app.ai.explainer import Explainer
+from app.ai.insights_agent import InsightAnswer, InsightsAgent
 from app.ai.llm import Image
 from app.ai.packing import PackingChecker
 from app.ai.policy_reader import PolicyReader, ReaderAnswer
@@ -194,6 +195,10 @@ class PolicyQuestionIn(BaseModel):
     question: str | None = Field(default=None, max_length=500)
 
 
+class InsightQuestionIn(BaseModel):
+    question: str = Field(min_length=2, max_length=300)
+
+
 _REASON_QUESTION = {
     ClaimReason.NOT_RECEIVED.value: "What happens if a parcel did not arrive or was not received?",
     ClaimReason.DAMAGED.value: "What happens if the item arrived damaged?",
@@ -268,6 +273,8 @@ class Health(BaseModel):
 def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) -> APIRouter:
     router = APIRouter()
     explainer: Explainer = services.explainer or Explainer()
+    # AS-06: one per app, so its model budget and answer cache are shared by every seller.
+    ask_doorstep = InsightsAgent(services.agent_llm)
 
     def _subject(token: str, scope: str) -> str:
         try:
@@ -707,6 +714,13 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     def insight_tables(token: str, s: Db) -> InsightsOut:
         """AS-01: orders, shipments, cases, money actions and carrier claims for AG Studio."""
         return insights(s, _seller(s, token))
+
+    @router.post("/api/seller/{token}/insights/ask", response_model=InsightAnswer)
+    def ask_insights(token: str, body: InsightQuestionIn, s: Db) -> InsightAnswer:
+        """AS-06: Ask Doorstep reads one question into a chart plan. Reads nothing else; moves
+        nothing. The browser builds the Studio widget and computes the figures from its rows."""
+        _seller(s, token)
+        return ask_doorstep.ask(body.question)
 
     @router.get("/api/seller/{token}/prevention", response_model=list[PreventionSuggestion])
     def prevention_tips(token: str, s: Db) -> list[PreventionSuggestion]:
