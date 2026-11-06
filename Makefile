@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration trace locked evals web-build dev demo e2e fuzz smoke risk-model
+.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration test-pg cov locked-untouched gate trace locked evals web-build dev demo e2e fuzz smoke risk-model
 
 setup:
 	uv sync
@@ -29,21 +29,53 @@ test-explore:
 
 # Mutation testing on app/policy (config in pyproject [tool.mutmut]).
 # OBJC_DISABLE_INITIALIZE_FORK_SAFETY: macOS aborts forked workers that touch the ObjC runtime.
+# MUTMUT_JOBS and nice keep a laptop usable: an uncapped run pushed the load average past 120 on
+# 8 cores and made the local app crawl (Nov 6). CI sets MUTMUT_JOBS to the runner's cores.
+MUTMUT_JOBS ?= 2
+MUTMUT_RUN = OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES nice -n 19 uv run mutmut run --max-children $(MUTMUT_JOBS)
 mutmut:
-	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run mutmut run
+	$(MUTMUT_RUN)
 	uv run mutmut results
 
 # Gate (ADR-023): zero surviving logic mutants in the money path; text-only survivors allowed.
 # Starts clean: mutmut's cached test map misses tests added since the last run.
 mutmut-gate:
 	rm -rf mutants
-	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES uv run mutmut run
+	$(MUTMUT_RUN)
 	uv run python scripts/mutmut_gate.py
 
 # Recorded sandbox replays + Postgres-only tests. Postgres tests skip unless DATABASE_URL points
 # at Postgres; CI sets REQUIRE_PG=1 so they cannot be skipped there.
 test-integration:
 	uv run pytest tests/integration -q
+
+# Unit + property tests with 100% branch coverage on the money path and the order state machine
+# (CLAUDE.md): the same run as `make test`, plus the coverage floor.
+cov:
+	uv run pytest tests/unit tests/property -q --hypothesis-seed=$(HYPOTHESIS_SEED) \
+		--cov=app/policy --cov=app/orders/state --cov-branch --cov-fail-under=100 \
+		--cov-report=term-missing:skip-covered
+
+# Locked tests are never edited or deleted (CLAUDE.md); new test files are fine. The one sanctioned
+# edit: an entry leaves test_unbuilt_xfail.py when its criterion is built.
+locked-untouched:
+	@tag=$$(git tag --list 'tests-locked-*' --sort=-creatordate | head -n1); \
+	test -n "$$tag" || { echo "no tests-locked-* tag"; exit 1; }; \
+	changed=$$(git diff --name-only --diff-filter=MDRT "$$tag" -- tests/ \
+		| grep -v '^tests/unit/test_unbuilt_xfail.py$$' || true); \
+	if [ -n "$$changed" ]; then echo "locked tests edited since $$tag:"; echo "$$changed"; exit 1; fi; \
+	echo "locked tests untouched since $$tag (new test files allowed)"
+
+# Every check a design task must pass before it counts as done (.claude/commands/design-loop.md).
+gate: lint cov trace locked-untouched
+	@if [ -n "$$TEST_DATABASE_URL" ]; then $(MAKE) --no-print-directory test-pg \
+		&& echo "gate: all checks passed"; \
+	else echo "gate: all checks passed except Postgres (set TEST_DATABASE_URL; CI runs it)"; fi
+
+# Row locks and SKIP LOCKED only mean something on Postgres (SQLite ignores FOR UPDATE), so these
+# run against a real server. REQUIRE_PG=1: no reachable database is a failure, never a skip (R2).
+test-pg:
+	REQUIRE_PG=1 uv run pytest tests/integration -m pg -q
 
 trace:
 	uv run python scripts/trace.py

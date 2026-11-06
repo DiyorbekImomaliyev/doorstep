@@ -36,7 +36,7 @@ jobs:
           uv python install 3.12
           uv sync --frozen
       - name: Mutation gate
-        run: make mutmut-gate
+        run: make mutmut-gate MUTMUT_JOBS=$(nproc)  # a CI runner has nothing else to serve
       - name: Upload mutation results
         if: always()
         uses: actions/upload-artifact@v4
