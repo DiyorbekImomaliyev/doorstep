@@ -10,12 +10,12 @@ import {
 type Step = { title: string; text: string; icon: ReactNode };
 
 const STEPS: Step[] = [
-  { title: "Pays with PayPal", text: "The address is checked before the buyer is charged. They choose home, locker or signature.", icon: <CreditCard /> },
-  { title: "Packed with a seal", text: "A QR code goes inside the box. Scanning it later proves the buyer opened it.", icon: <QrCode /> },
-  { title: "Shipped and tracked", text: "Tracking is added to the PayPal payment automatically.", icon: <Truck /> },
-  { title: "“Delivered”, but not here", text: "The courier scans it as delivered. Sam taps “Not here”.", icon: <ScanLine /> },
-  { title: "Doorstep checks the facts", text: "The courier's own data, the seal, and the law decide who carries the loss.", icon: <Scale /> },
-  { title: "Settled through PayPal", text: "Sam is refunded in minutes. The seller claims the loss back from the courier.", icon: <Banknote /> },
+  { title: "Pays with PayPal", text: "Address checked before he's charged.", icon: <CreditCard /> },
+  { title: "Packed with a seal", text: "A QR inside the box proves who opened it.", icon: <QrCode /> },
+  { title: "Shipped and tracked", text: "Tracking goes on the PayPal payment.", icon: <Truck /> },
+  { title: "“Delivered”, but not here", text: "Wrong street. Sam taps Not here.", icon: <ScanLine /> },
+  { title: "Doorstep checks the facts", text: "Courier data, the seal and the law.", icon: <Scale /> },
+  { title: "Settled through PayPal", text: "Sam is refunded. The courier pays it back.", icon: <Banknote /> },
 ];
 
 const DURATION = 4200;
@@ -24,30 +24,28 @@ type Row = { kind: "ok" | "no" | "law" | "seal"; text: ReactNode };
 const READOUT: { title: string; icon: ReactNode; rows: Row[] }[] = [
   { title: "PayPal checkout", icon: <CreditCard />, rows: [
     { kind: "ok", text: <>Flat number added <b>before</b> payment</> },
-    { kind: "ok", text: "Delivery choice is part of the PayPal order" },
     { kind: "ok", text: <>Paid <b>£60.00</b></> },
   ] },
   { title: "Packing", icon: <QrCode />, rows: [
-    { kind: "ok", text: "Packing photo matches the order" },
-    { kind: "seal", text: <>Seal inside: <b>Opened it? Scan to confirm</b></> },
+    { kind: "ok", text: "Photo matches the order" },
+    { kind: "seal", text: <>Seal inside the box</> },
   ] },
   { title: "Shipping", icon: <Truck />, rows: [
-    { kind: "ok", text: "Tracking added to the PayPal payment" },
-    { kind: "ok", text: "Sam gets a live tracking page" },
+    { kind: "ok", text: "Tracking on the PayPal payment" },
   ] },
   { title: "Courier: “Delivered”", icon: <ScanLine />, rows: [
-    { kind: "no", text: <>Scanned at 14:02 in <b>E8</b></> },
+    { kind: "no", text: <>Scanned in <b>E8</b>, not N1</> },
     { kind: "no", text: <>Sam taps <b>Not here</b></> },
   ] },
-  { title: "Doorstep checks the facts", icon: <Scale />, rows: [
-    { kind: "no", text: <>Scan was in E8; the parcel was going to <b>N1</b></> },
-    { kind: "no", text: "No seal scan: Sam never held it" },
-    { kind: "law", text: <>UK law: seller's risk until the buyer holds it <span className="faint">(CRA 2015 s.29)</span></> },
+  { title: "The facts", icon: <Scale />, rows: [
+    { kind: "no", text: "Scan from the wrong area" },
+    { kind: "no", text: "Seal never scanned" },
+    { kind: "law", text: <>Seller's risk <span className="faint">(CRA 2015 s.29)</span></> },
   ] },
   { title: "Settled", icon: <Banknote />, rows: [
-    { kind: "ok", text: <>PayPal refunds Sam <b>£60.00</b></> },
-    { kind: "ok", text: <>Claim pack for Royal Mail, every sentence <b>checked</b></> },
-    { kind: "ok", text: "A signed receipt for every money step" },
+    { kind: "ok", text: <>Sam refunded <b>£60.00</b></> },
+    { kind: "ok", text: "Claim pack for Royal Mail" },
+    { kind: "ok", text: "Signed receipt" },
   ] },
 ];
 
@@ -81,6 +79,18 @@ function Tag({ x, y, z, children, tone = "", show = true, style }: { x: number; 
     <div className="billboard fade-obj" style={{ left: x, top: y, transform: `translateZ(${z}px)`, opacity: show ? 1 : 0, ...style }}>
       <div className="bb-inner"><span className={`tag3d ${tone}`}>{children}</span></div>
     </div>
+  );
+}
+
+/* A person: head and shoulders, standing on the floor and always facing the viewer. */
+function Person({ x, y, color, label }: { x: number; y: number; color: string; label: string }) {
+  return (
+    <>
+      <div className="fig-shadow" style={{ left: x - 13, top: y - 7 }} />
+      <div className="billboard" style={{ left: x, top: y }} aria-label={label}>
+        <div className="bb-inner"><span className="fig" style={{ ["--c" as string]: color } as CSSProperties}><i className="head" /><i className="body" /></span></div>
+      </div>
+    </>
   );
 }
 
@@ -127,6 +137,7 @@ function Scene({ step }: { step: number }) {
       </Box>
       <Box x={-304} y={12} w={112} d={10} h={9} top="#a24c5e" front="#7b2d3d" side="#64222f" style={{ transform: "translateZ(50px)" }} />
       <Tag x={-248} y={-30} z={96}><Store />Maria's shop</Tag>
+      <Person x={-206} y={34} color="#4a403c" label="Maria" />
 
       {/* courier van (moves) */}
       <div className="obj parcel" style={{ left: 0, top: 0, transform: `translate3d(${vanX}px, 0px, 0px)`, opacity: step >= 3 ? 0 : 1 }}>
@@ -142,7 +153,9 @@ function Scene({ step }: { step: number }) {
         frontChildren={<><Door left={38} /><Windows count={2} left={10} bottom={44} gap={60} /></>} />
       <Tag x={104} y={-54} z={98}><House />Sam <span className="sub">N1</span></Tag>
       <div className="ghost-box" style={{ left: 92, top: 18, width: 30, height: 30, opacity: step >= 3 ? 1 : 0 }} />
-      {(step === 3 || step === 4) && <Tag x={107} y={33} z={34} tone="accent"><Smartphone />Not here</Tag>}
+      <Person x={150} y={14} color="#7b2d3d" label="Sam" />
+      <Tag x={150} y={14} z={64} show={step === 0}><CreditCard />Pays £60</Tag>
+      <Tag x={150} y={14} z={64} tone="accent" show={step === 3 || step === 4}><Smartphone />Not here</Tag>
 
       {/* another street, E8 */}
       <Box x={206} y={-96} w={92} d={84} h={58} top="#f8f5f2" front="#e8e0d8" side="#d8cdc2"
@@ -160,7 +173,7 @@ function Scene({ step }: { step: number }) {
       <Tag x={-170} y={44} z={34} show={step === 1}><QrCode />Seal inside</Tag>
 
       {/* settlement */}
-      <Tag x={107} y={33} z={step === 5 ? 40 : 20} tone="accent" show={step === 5}><Banknote />PayPal refunds Sam £60</Tag>
+      <Tag x={150} y={14} z={step === 5 ? 64 : 44} tone="accent" show={step === 5}><Banknote />Refunded £60</Tag>
       <div className="billboard coin" style={{
         left: 0, top: 0, opacity: step === 5 ? 1 : 0,
         transform: step === 5 ? "translate3d(-130px, 64px, 26px)" : "translate3d(250px, 52px, 40px)",
@@ -178,6 +191,16 @@ export default function Journey3D() {
   const [cycle, setCycle] = useState(0);
   const wrap = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const [seen, setSeen] = useState(reduced);
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (seen || !el || typeof IntersectionObserver === "undefined") { setSeen(true); return; }
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setSeen(true); io.disconnect(); } }, { threshold: 0.35 });
+    io.observe(el);
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!playing) return;
@@ -223,7 +246,7 @@ export default function Journey3D() {
           </button>
         </div>
       </div>
-      <div className="stage-wrap" ref={wrap} aria-hidden>
+      <div className={`stage-wrap ${seen ? "" : "pre"}`} ref={wrap} aria-hidden>
         <div className="stage-scale" style={{ ["--s" as string]: scale } as CSSProperties}>
           <Scene step={step} />
         </div>

@@ -23,12 +23,12 @@ function heroFor(v: BuyerView): Hero {
   if (v.state === "RESOLVED") return { icon: <CircleCheck />, tone: "good", title: "Resolved", text: v.case_message ?? "This order is settled." };
   if (v.state === "EXCEPTION") return { icon: <TriangleAlert />, tone: "warn", title: "The courier couldn't deliver", text: "Choose what happens next." };
   if (v.state === "CONFIRMED") return { icon: <CircleCheck />, tone: "good", title: "Received", text: "Thanks for confirming." };
-  if (v.state === "DELIVERED" || v.state === "PICKED_UP") return { icon: <House />, tone: "accent", title: v.status, text: "Do you have it? One tap tells the seller." };
+  if (v.state === "DELIVERED" || v.state === "PICKED_UP") return { icon: <House />, tone: "accent", title: v.status, text: "Do you have it?" };
   if (v.state === "CREATED" && (v.capture_status === "FAILED" || v.capture_status === "DECLINED")) {
     return { icon: <TriangleAlert />, tone: "warn", title: "Payment didn't go through", text: "Nothing was charged. You can order again from the shop." };
   }
   if (v.state === "CREATED" && v.capture_status === "PENDING") {
-    return { icon: <MapPin />, tone: "", title: "Payment processing", text: "PayPal is still processing your payment. This page updates when it completes." };
+    return { icon: <MapPin />, tone: "", title: "Payment processing", text: "This page updates when PayPal finishes." };
   }
   if (v.state === "CREATED") return { icon: <MapPin />, tone: "", title: "Checking your address", text: "We check the address before you're charged." };
   return { icon: <Truck />, tone: "", title: v.status, text: v.tracking_number ? `Tracking ${v.tracking_number}` : "This page updates as it moves." };
@@ -162,7 +162,7 @@ export default function Buyer({ token }: { token: string }) {
           <Timeline items={v.timeline} />
         </section>
         {v.can_report && <AgentLink token={token} />}
-        <p className="footnote"><ShieldCheck aria-hidden />Doorstep never asks for card details. Money is handled by PayPal.</p>
+        <p className="footnote"><ShieldCheck aria-hidden />Doorstep never asks for card details. PayPal handles the money.</p>
       </main>
       <Toast message={toast} onDone={() => setToast(null)} />
     </>
@@ -254,8 +254,7 @@ function AgentLink({ token }: { token: string }) {
       <summary><Bot aria-hidden />Using an AI assistant?</summary>
       <div className="col">
         <p className="muted" style={{ fontSize: 13 }}>
-          Your assistant can check this order and report a problem through Doorstep's MCP tool.
-          The link works for this order only and cannot move money.
+          Let your assistant report a problem (MCP). This order only; it can't move money.
         </p>
         {!link && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={get}>Create an assistant link</button>}
         {err && <ErrorBox message={err} />}

@@ -60,8 +60,8 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
       {[...items].reverse().map((it, i) => (
         <li key={i} className={`k-${it.kind}`}>
           <span>
-            <span className="t-title">{it.title}</span>
-            {it.detail ? <span className="t-detail"> · {it.detail}</span> : null}
+            <span className="t-title">{it.title.charAt(0).toUpperCase() + it.title.slice(1)}</span>
+            {it.detail && !/^(transition:|open$)/.test(it.detail) ? <span className="t-detail"> · {it.detail}</span> : null}
           </span>
           <span className="t-when">{when(it.at)}</span>
         </li>

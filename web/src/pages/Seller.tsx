@@ -43,10 +43,9 @@ function Tip({ t }: { t: PreventionTip }) {
     <div className="tip">
       <span className="tip-icon" aria-hidden><Lightbulb size={16} /></span>
       <div className="col grow" style={{ gap: 2 }}>
-        <span style={{ fontWeight: 600 }}>Offer {METHOD_TEXT[t.suggested_method] ?? t.suggested_method} on orders {t.band}</span>
-        <span className="muted" style={{ fontSize: 13 }}>
-          {t.cases} of {t.orders} {METHOD_TEXT[t.method] ?? t.method} orders in this range became cases you paid for ({money(t.money_minor, t.currency)}).
-          {t.suggested_method === "locker" ? " A locker pickup code proves the buyer has it." : " A signature proves who received it."}
+        <span style={{ fontWeight: 600 }}>Offer {METHOD_TEXT[t.suggested_method] ?? t.suggested_method} on {t.band} orders</span>
+        <span className="muted" style={{ fontSize: 13 }} title={t.suggested_method === "locker" ? "A locker pickup code proves the buyer has it." : "A signature proves who received it."}>
+          {t.cases} of {t.orders} {METHOD_TEXT[t.method] ?? t.method} orders here became cases you paid for ({money(t.money_minor, t.currency)}).
         </span>
       </div>
       <Badge>Suggestion</Badge>
@@ -136,7 +135,6 @@ export default function Seller({ token }: { token: string }) {
           <div className="page-head">
             <div>
               <h1>Delivery Control Room</h1>
-              <p>Every order, its proof, and anything that needs you.</p>
             </div>
             <button className="btn" onClick={reload}><RefreshCw size={15} aria-hidden />Refresh</button>
           </div>
@@ -150,17 +148,17 @@ export default function Seller({ token }: { token: string }) {
                 <div className={`kpi ${counts.action ? "attention" : ""}`}>
                   <span className="label"><Inbox aria-hidden />Needs you</span>
                   <span className="value">{counts.action}</span>
-                  <span className="sub">approvals and reviews</span>
+                  <span className="sub">to approve or review</span>
                 </div>
                 <div className="kpi">
                   <span className="label"><Truck aria-hidden />In transit</span>
                   <span className="value">{counts.flight}</span>
-                  <span className="sub">shipped, not yet received</span>
+                  <span className="sub">on the way</span>
                 </div>
                 <div className="kpi">
                   <span className="label"><Wallet aria-hidden />Money at stake</span>
                   <span className="value" style={{ fontSize: 22 }}>{sumStake(rows)}</span>
-                  <span className="sub">open cases and parcels on the way</span>
+                  <span className="sub">open cases and parcels in transit</span>
                 </div>
                 <RecoveredKpi s={recovered.data ?? null} />
               </section>
@@ -192,7 +190,7 @@ export default function Seller({ token }: { token: string }) {
                 </div>
                 <OrdersGrid rows={shown} search={search} empty={activeMeta.empty} onOpen={onOpen} onReady={onReady} onShown={onShown} />
                 <div className="grid-foot">
-                  <span className="faint">{rows.some((r) => r.simulated) ? "Demo orders: refunds on them are simulated" : "Live PayPal sandbox orders"}</span>
+                  <span className="faint">{rows.some((r) => r.simulated) ? "Demo orders · refunds simulated" : "PayPal sandbox orders"}</span>
                   <span className="foot-stats num">
                     <span>Rows <strong>{inView?.length ?? shown.length}</strong> of {shown.length}</span>
                     <span>At stake <strong>{sumStake(inView ?? shown)}</strong></span>
@@ -225,7 +223,7 @@ function RecoveredKpi({ s }: { s: RecoverySummary | null }) {
     <div className="kpi">
       <span className="label"><Landmark aria-hidden />Recovered from carriers</span>
       <span className="value" style={{ fontSize: 22 }}>{s ? sumBy(s.recovered_minor) : "—"}</span>
-      <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "claims you filed and won"}</span>
+      <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "from claims you filed"}</span>
     </div>
   );
 }

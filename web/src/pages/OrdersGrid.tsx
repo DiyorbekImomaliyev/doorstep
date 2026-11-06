@@ -70,10 +70,10 @@ const theme = themeQuartz.withParams({
 
 type Lane = "you" | "case" | "way" | "done";
 const LANES: Record<Lane, { rank: number; label: string; hint: string }> = {
-  you: { rank: 0, label: "Needs you", hint: "approvals, reviews and parcels to pack" },
+  you: { rank: 0, label: "Needs you", hint: "to approve, review or pack" },
   case: { rank: 1, label: "Cases in progress", hint: "Doorstep is handling these" },
-  way: { rank: 2, label: "On the way", hint: "shipped, not yet in the buyer's hands" },
-  done: { rank: 3, label: "Done", hint: "in the buyer's hands, or settled" },
+  way: { rank: 2, label: "On the way", hint: "shipped, not yet received" },
+  done: { rank: 3, label: "Done", hint: "received or settled" },
 };
 
 export function laneOf(r: OrderRow): Lane {
@@ -287,7 +287,7 @@ function DetailPanel(p: CustomDetailCellRendererProps<OrderRow> & { onOpen: (r: 
         </section>
         <section>
           <h4>Delivery risk</h4>
-          {r.delivery_risk == null ? <p className="faint">Not scored for this order.</p> : (
+          {r.delivery_risk == null ? <p className="faint">Not scored.</p> : (
             <>
               <span className={`pill ${riskTone(r.delivery_risk) === "neutral" ? "plain" : riskTone(r.delivery_risk)}`}>{pct(r.delivery_risk)}</span>
               <ul className="reasons">{r.risk_reasons.slice(0, 3).map((x) => <li key={x}>{x}</li>)}</ul>

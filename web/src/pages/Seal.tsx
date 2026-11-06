@@ -44,7 +44,7 @@ export default function Seal({ token }: { token: string }) {
             <Eye aria-hidden />
             <div className="col" style={{ gap: 2 }}>
               <strong>Seller preview</strong>
-              <span className="muted">This is what your buyer sees. Taps from your own browser are recorded, never count as proof and don't change the order. Scan the code with the buyer's phone to try it for real.</span>
+              <span className="muted">What your buyer sees. Your own taps never count as proof.</span>
             </div>
           </div>
         )}
@@ -52,8 +52,8 @@ export default function Seal({ token }: { token: string }) {
         {preview ? (
           <Status icon={<Eye />} tone="accent" title="Preview only"
             text={preview === "confirm"
-              ? "Nothing changed on the order. When the buyer taps this on their phone, it confirms they have the parcel."
-              : "Nothing changed. When the buyer reports a problem here, a case opens with you and they see their rights."} />
+              ? "Nothing changed. On the buyer's phone, this confirms they have it."
+              : "Nothing changed. On the buyer's phone, this opens a case."} />
         ) : report ? (
           <>
             <Status icon={<LifeBuoy />} tone="accent" title="Thanks, the seller has it" text={report.message || "We'll sort it out with the seller."} />
@@ -64,7 +64,7 @@ export default function Seal({ token }: { token: string }) {
         ) : v.status === "case_open" ? (
           <Status icon={<LifeBuoy />} tone="accent" title="All set" text={v.scanned ? "Your scan is recorded. Your report is with the seller." : "Your report is with the seller."} />
         ) : v.status === "not_shipped" ? (
-          <Status icon={<Truck />} tone="" title="Not shipped yet" text="This seal works once the parcel is on its way. Scan it again when it arrives." live={false} />
+          <Status icon={<Truck />} tone="" title="Not shipped yet" text="This seal works once the parcel ships." live={false} />
         ) : problem ? (
           <section className="col" aria-label="What's wrong?" style={{ gap: 10 }}>
             <h2>What's wrong?</h2>

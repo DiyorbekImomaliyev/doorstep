@@ -57,21 +57,21 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "calendar::week" }], valueKey: [{ id: "order_count" }], secondaryValueKey: [{ id: "case_rate" }] },
     sort: [{ field: { id: "calendar::week" }, direction: "asc" }],
     format: {
-      ...head("Orders and case rate, week by week", "Columns: orders (left axis). Line: share of those orders that became a case (right axis)"),
+      ...head("Orders and case rate, week by week", "Bars: orders. Line: case rate"),
       style: { theme: { ...legendBottom, line: { series: { marker: { enabled: false }, interpolation: { type: "smooth" } } } } },
     },
   },
   moneyFlow: {
     type: "doorstep-money-flow",
     dataMapping: { refunded: [{ id: "paid_out" }], recovered: [{ id: "recovered" }] },
-    format: head("Where the money went", "Refunds, and what carriers paid back on claims"),
+    format: head("Where the money went", "Refunded, recovered, net loss"),
   },
   methodMix: {
     type: "donut-chart",
     dataMapping: { categoryKey: [{ id: "orders.method" }], valueKey: [{ id: "order_count" }] },
     sort: [{ field: { id: "order_count" }, direction: "desc" }],
     format: {
-      ...head("How buyers chose delivery", "Share of orders by delivery method"),
+      ...head("How buyers chose delivery", "Share of orders"),
       style: { theme: legendBottom, custom: sliceLabels },
     },
   },
@@ -80,31 +80,31 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "orders.method" }], valueKey: [{ id: "case_rate" }] },
     sort: [{ field: { id: "case_rate" }, direction: "desc" }],
     format: {
-      ...head("Case rate by delivery method", "Lockers and signatures prove who had the parcel, so fewer orders go wrong"),
+      ...head("Case rate by delivery method", "Proof of handover means fewer cases"),
       style: { theme: { ...noLegend, ...barLabels } },
     },
   },
   failurePoints: {
     type: "doorstep-failure-points",
     dataMapping: { category: [{ id: "cases.failure_point" }], value: [{ id: "case_count" }], money: [{ id: "paid_out" }] },
-    format: head("Where deliveries failed", "Cases by most likely failure point: count, share, and what you refunded"),
+    format: head("Where deliveries failed", "Cases by likely cause"),
   },
   evidenceByMethod: {
     type: "doorstep-evidence-meter",
     dataMapping: { category: [{ id: "orders.method" }], value: [{ id: "evidence_avg" }] },
-    format: head("Proof on file, by delivery method", "Seal scan, signature or locker code on file"),
+    format: head("Proof on file, by delivery method", "Seal, signature or locker code"),
   },
   evidenceByCarrier: {
     type: "doorstep-evidence-meter",
     dataMapping: { category: [{ id: "orders.carrier" }], value: [{ id: "evidence_avg" }] },
-    format: head("Proof on file, by carrier", "Average evidence completeness per order"),
+    format: head("Proof on file, by carrier", "Average proof per order"),
   },
   costByCarrier: {
     type: "bar-chart-grouped",
     dataMapping: { categoryKey: [{ id: "cases.carrier" }], valueKey: [{ id: "paid_out" }, { id: "recovered" }] },
     sort: [{ field: { id: "paid_out" }, direction: "desc" }],
     format: {
-      ...head("Which carrier cost you most", "Refunded to buyers, against what you recovered from that carrier. Right-click a carrier for its report"),
+      ...head("Which carrier cost you most", "Refunded vs recovered. Right-click for a report"),
       style: { theme: legendBottom },
     },
   },
@@ -118,7 +118,7 @@ export const W = {
     },
     sort: [{ field: { id: "net_loss" }, direction: "desc" }],
     format: {
-      ...head("Money by carrier", "Refunded to buyers, claimed from the carrier, recovered, and the loss left over. Worst first"),
+      ...head("Money by carrier", "Worst first"),
       style: { grandTotalRow: { enabled: true }, animateValueChanges: true },
     },
   },
@@ -127,7 +127,7 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "cases.carrier" }], valueKey: [{ id: "case_count" }], legendKey: [{ id: "cases.failure_point" }] },
     sort: [{ field: { id: "case_count" }, direction: "desc" }],
     format: {
-      ...head("What goes wrong, by carrier", "Cases per carrier, split by failure point. Case rates are in the service table below"),
+      ...head("What goes wrong, by carrier", "Cases by likely cause"),
       style: { theme: legendRight },
     },
   },
@@ -142,7 +142,7 @@ export const W = {
     },
     sort: [{ field: { id: "order_count" }, direction: "desc" }],
     format: {
-      ...head("Service by carrier", "Volume, share of orders with a problem, protection, proof and speed. Updates in place as parcels move"),
+      ...head("Service by carrier", "Volume, case rate, proof and speed"),
       style: { grandTotalRow: { enabled: true }, animateValueChanges: true },
     },
   },
@@ -151,7 +151,7 @@ export const W = {
     dataMapping: { rows: [{ id: "recoveries.status" }], columns: [], values: [{ id: "claim_count" }, { id: "claim_value" }, { id: "claim_paid" }] },
     sort: [{ field: { id: "claim_count" }, direction: "desc" }],
     format: {
-      ...head("Where your claims stand", "Doorstep prepares each claim; you file it on the carrier's site"),
+      ...head("Where your claims stand", "Doorstep prepares; you file"),
       style: { grandTotalRow: { enabled: true } },
     },
   },
@@ -164,20 +164,20 @@ export const W = {
       ],
     },
     // Rows arrive ordered (data.ts): open claims by soonest deadline, then closed ones.
-    format: head("Carrier claims", "Open claims first, soonest deadline first"),
+    format: head("Carrier claims", "Soonest deadline first"),
   },
   casesByMonth: {
     type: "column-chart-stacked",
     dataMapping: { categoryKey: [{ id: "calendar::month" }], valueKey: [{ id: "case_count" }], legendKey: [{ id: "cases.failure_point" }] },
     sort: [{ field: { id: "calendar::month" }, direction: "asc" }],
-    format: { ...head("Cases by month", "Coloured by failure point"), style: { theme: legendRight } },
+    format: { ...head("Cases by month", "By likely cause"), style: { theme: legendRight } },
   },
   decisions: {
     type: "bar-chart-grouped",
     dataMapping: { categoryKey: [{ id: "cases.route" }], valueKey: [{ id: "case_count" }] },
     sort: [{ field: { id: "case_count" }, direction: "desc" }],
     format: {
-      ...head("How cases were decided", "Coded rules decide money; anything contradictory goes to a person"),
+      ...head("How cases were decided", "Rules decide; conflicts go to a person"),
       style: { theme: { ...noLegend, ...barLabels } },
     },
   },
@@ -190,7 +190,7 @@ export const W = {
       ],
     },
     sort: [{ field: { id: "cases.opened_at" }, direction: "desc" }],
-    format: head("Every case", "Newest first. Click a row to filter the page to it"),
+    format: head("Every case", "Newest first. Click a row to filter"),
   },
   /** AS-02: the shared calendar gives every date a quarter; one tap filters the whole page. */
   filterQuarter: {

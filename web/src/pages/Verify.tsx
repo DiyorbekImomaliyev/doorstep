@@ -11,7 +11,7 @@ export default function Verify({ caseId }: { caseId: string }) {
         <div className="order-head">
           <span className="faint row" style={{ gap: 6 }}><FileCheck2 size={14} />Signed receipts</span>
           <h1>Is this case's record intact?</h1>
-          <p className="muted">Every money decision gets an Ed25519-signed receipt, chained to the one before it. Changing any stored receipt breaks the chain.</p>
+          <p className="muted">Each money decision has an Ed25519-signed receipt, chained to the last. Any change breaks the chain.</p>
         </div>
         {error && <ErrorBox message={error} />}
         {!r && !error && <Loading height={120} />}

@@ -58,7 +58,6 @@ function Head({ children }: { children?: React.ReactNode }) {
     <div className="page-head">
       <div>
         <h1>Insights</h1>
-        <p>What failed, who paid, and what you won back.</p>
       </div>
       {children}
     </div>
@@ -169,7 +168,6 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const showAnswers = useCallback(() => setSelected(ANSWERS_PAGE), []);
   const latest = useCallback(() => current.current, []);
 
-  const active = reports.find((r) => r.id === selected);
   return (
     <>
       <Head>
@@ -201,7 +199,6 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
             ))}
             <button className="rb-new" onClick={addReport}><FilePlus2 size={15} aria-hidden />New report</button>
             <div className="rb-foot">
-              {active && <p className="rb-question">{active.hint}</p>}
               <ul className="rb-tips">
                 <li><strong>Click</strong> a chart to filter the page</li>
                 <li><strong>Right-click</strong> a carrier for its report</li>
@@ -214,11 +211,10 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
             <AskPanel token={token} prepared={latest} onAnswer={addAnswer} onShow={showAnswers} onRemove={removeAnswer} onClose={() => setAsking(false)} />
           )}
         </div>
-        <p className="ins-note">
+        <p className="ins-note" title={`Money is in ${prepared.home}. An order in another currency counts as an order but never adds to a money total.${prepared.history ? " Use the Data filter to see only your orders." : ""}`}>
           {prepared.history
-            ? <>Your <strong>{prepared.live} demo orders</strong> plus 26 weeks of <strong>simulated history</strong>, so trends have something to show. Use the <em>Data</em> filter to see only yours.</>
-            : <>Your PayPal sandbox orders.</>}
-          {" "}Money is in {prepared.home}: an order in another currency counts as an order but never adds to a money total.
+            ? <><strong>{prepared.live} demo orders</strong> + 26 weeks of simulated history · {prepared.home}</>
+            : <>PayPal sandbox orders · {prepared.home}</>}
         </p>
       </div>
       {drill && <CarrierReport prepared={current.current} filter={drill} onClose={() => setDrill(null)} />}

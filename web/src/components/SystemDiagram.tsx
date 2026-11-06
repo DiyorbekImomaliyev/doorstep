@@ -10,24 +10,24 @@ type Column = { label: string; nodes: Node[] };
 const COLUMNS: Column[] = [
   { label: "Events", nodes: [
     { icon: <Webhook />, title: "PayPal webhooks", text: "Payments, refunds, disputes" },
-    { icon: <ScanLine />, title: "Courier tracking", text: "Every scan, via Shippo" },
-    { icon: <Smartphone />, title: "Buyer taps", text: "Got it, Not here, seal scan" },
+    { icon: <ScanLine />, title: "Courier scans", text: "Via Shippo" },
+    { icon: <Smartphone />, title: "Buyer taps", text: "Got it · Not here · seal" },
   ] },
   { label: "Inbox", nodes: [
-    { icon: <ShieldCheck />, title: "Verified first", text: "PayPal signatures checked; each event stored once" },
-    { icon: <Database />, title: "Worker queue", text: "Retries never repeat a payment" },
+    { icon: <ShieldCheck />, title: "Verified", text: "Signed, stored once" },
+    { icon: <Database />, title: "Job queue", text: "Retries never pay twice" },
   ] },
   { label: "Decide", nodes: [
-    { icon: <Workflow />, title: "Failure-point engine", text: "Finds what went wrong, from several signals. Code, not AI." },
-    { icon: <Scale />, title: "The law as rules", text: "Versioned files: UK, EU, US seller policy" },
+    { icon: <Workflow />, title: "Failure-point engine", text: "Code, not AI" },
+    { icon: <Scale />, title: "Rules as files", text: "UK · EU · US, versioned" },
   ] },
   { label: "Money", nodes: [
-    { icon: <Lock />, title: "Policy service", text: "The only path to money: limits, daily caps, re-checks", key: true },
+    { icon: <Lock />, title: "Policy service", text: "The only path to money", key: true },
   ] },
   { label: "Outcome", nodes: [
-    { icon: <Banknote />, title: "PayPal refund", text: "Or evidence to an open dispute" },
-    { icon: <FileText />, title: "Courier claim pack", text: "Facts the seller submits" },
-    { icon: <FileCheck2 />, title: "Signed receipt", text: "Anyone can verify it" },
+    { icon: <Banknote />, title: "PayPal refund", text: "Or dispute evidence" },
+    { icon: <FileText />, title: "Claim pack", text: "The seller submits it" },
+    { icon: <FileCheck2 />, title: "Signed receipt", text: "Anyone can verify" },
   ] },
 ];
 
@@ -61,17 +61,14 @@ export default function SystemDiagram() {
       </div>
       <div className="ai-band">
         <span className="ni" aria-hidden><Bot /></span>
-        <span className="col" style={{ gap: 2 }}>
-          <span className="nt" style={{ fontWeight: 600, fontSize: 13 }}>AI assists, it never moves money</span>
-          <span className="nd" style={{ fontSize: 12.5, color: "var(--text-2)" }}>
-            It explains decisions, writes the claim pack (every sentence is checked against the facts), checks packing photos,
-            and runs a read-only agent on PayPal's Agent Toolkit. Buyer text is treated as data, never as instructions.
-          </span>
+        <span className="nt" style={{ fontWeight: 600, fontSize: 13 }}>AI explains and drafts. It never moves money.</span>
+        <span className="ai-chips">
+          <span>Explanations</span><span>Claim drafts, fact-checked</span><span>Packing photos</span><span>Read-only PayPal agent</span>
         </span>
       </div>
       <div className="legend">
-        <span><Send aria-hidden />Every PayPal write carries an idempotency key</span>
-        <span><ShieldCheck aria-hidden />Contradictions go to a person, never to an automatic denial</span>
+        <span><Send aria-hidden />Idempotent PayPal writes</span>
+        <span><ShieldCheck aria-hidden />Contradictions go to a person</span>
       </div>
     </div>
   );

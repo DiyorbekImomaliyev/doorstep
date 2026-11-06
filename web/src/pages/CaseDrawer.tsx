@@ -39,7 +39,7 @@ function Header({ title, over, onClose, right }: { title: string; over: string; 
 }
 
 const REASON_TEXT: Record<string, string> = {
-  not_received: "not received", damaged: "damaged", wrong_item: "wrong item", missing_item: "something missing", empty_box: "empty box",
+  not_received: "Not received", damaged: "Damaged", wrong_item: "Wrong item", missing_item: "Something missing", empty_box: "Empty box",
 };
 
 function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: string; caseId: string; protection: string | null; onClose: () => void; onChanged: (m: string) => void }) {
@@ -63,7 +63,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
   const d = c.decision;
   const route = ROUTE[c.state];
   const refund = d?.refund_amount_minor != null ? money(d.refund_amount_minor, d.currency) : null;
-  const reported = `${c.order.order_ref} · reported ${REASON_TEXT[c.reason] ?? c.reason.replaceAll("_", " ")} by the ${c.reported_by}`;
+  const reported = `${c.order.order_ref} · ${REASON_TEXT[c.reason] ?? c.reason.replaceAll("_", " ")}${c.reported_by === "buyer" ? "" : ` · reported by ${c.reported_by}`}`;
 
   return (
     <>
@@ -76,15 +76,16 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
               <div><span className="k">Confidence</span><span className="v" style={{ textTransform: "capitalize" }}>{d.confidence ?? "—"}</span></div>
               <div><span className="k">Refund</span><span className="v num">{refund ?? "—"}</span></div>
             </div>
-            <span className="rule-line" title="The rule file and version this decision used">
-              <Scale aria-hidden /><span className="mono">{d.rule_id ?? "no matching rule set"}{d.rule_version ? ` · ${d.rule_version}` : ""}</span>
-            </span>
-            {protection && (
-              <span className="faint" title="PayPal's own verdict on this payment. Information only; it does not change Doorstep's decision.">
-                PayPal Seller Protection: {PROTECTION[protection] ?? protection}
+            <div className="row wrap" style={{ gap: 8 }}>
+              <span className="rule-line" title="The rule file and version this decision used">
+                <Scale aria-hidden /><span className="mono">{d.rule_id ?? "no matching rule set"}{d.rule_version ? ` · ${d.rule_version}` : ""}</span>
               </span>
-            )}
-            <p className="prose">{d.explanation}</p>
+              {protection && (
+                <span className="rule-line" title="PayPal's own verdict on this payment. Information only; it does not change Doorstep's decision.">
+                  Seller Protection: {PROTECTION[protection] ?? protection}
+                </span>
+              )}
+            </div>
             {c.counterfactual && (
               <div className="notice accent" aria-label="What would have changed this">
                 <Info aria-hidden />
@@ -116,8 +117,12 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
           </section>
         )}
 
-        {d && (d.reasons.length > 0 || d.claim_letter || d.buyer_message) && (
+        {d && (
           <section className="sec">
+            <details className="fold">
+              <summary><Info aria-hidden />Why{d.explainer_source === "model" ? " (AI explanation)" : ""}</summary>
+              <div><p className="prose small">{d.explanation}</p></div>
+            </details>
             {d.reasons.length > 0 && (
               <details className="fold">
                 <summary><ListChecks aria-hidden />Evidence used ({d.reasons.length})</summary>
@@ -131,7 +136,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
             )}
             {d.claim_letter && (
               <details className="fold">
-                <summary><FileText aria-hidden />Carrier claim letter (draft)</summary>
+                <summary><FileText aria-hidden />Claim letter (draft)</summary>
                 <div className="col" style={{ gap: 10 }}>
                   <p className="prose small">{d.claim_letter}</p>
                   <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => navigator.clipboard?.writeText(d.claim_letter ?? "")}><Copy size={14} />Copy letter</button>
@@ -176,7 +181,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
             )}
           </div>
           {c.actions.includes("approve") && (
-            <span className="faint" style={{ textAlign: "right" }}>Refunds go through PayPal. PayPal keeps its original fee on a refund.</span>
+            <span className="faint" style={{ textAlign: "right" }}>Paid through PayPal. PayPal keeps its fee.</span>
           )}
         </footer>
       )}
@@ -252,7 +257,7 @@ function OrderBody({ token, row, onClose, onChanged }: { token: string; row: Ord
           <section className="sec">
             <SectionHead icon={<Truck aria-hidden />} title="Ship this order" />
             {row.state === "PAID" && !row.packing_cleared && (
-              <p className="faint">Check the packing photo first: it is the proof of what you sent.</p>
+              <p className="faint">Check the packing photo first.</p>
             )}
             <label className="field">Tracking number (Shippo test)
               <select value={tracking} onChange={(e) => setTracking(e.target.value)}>
@@ -340,7 +345,7 @@ function PackingCheck({ token, row, onChanged }: { token: string; row: OrderRow;
   return (
     <section className="sec" aria-label="Packing check">
       <SectionHead icon={<Camera aria-hidden />} title="Packing check" right={<span className="faint">Ordered: {row.item}</span>} />
-      <p className="muted">Take one photo of the item before you seal the box. Doorstep compares it with the order.</p>
+      <p className="muted">One photo before you seal the box.</p>
       <label className="btn" style={{ alignSelf: "flex-start" }}>
         <Camera size={15} aria-hidden />{busy ? "Checking…" : preview ? "Retake photo" : "Take or choose a photo"}
         <input type="file" accept="image/*" capture="environment" hidden disabled={busy}
@@ -424,9 +429,8 @@ function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; 
   return (
     <section className="sec" aria-label="Doorstep agent">
       <SectionHead icon={<Bot aria-hidden />} title="Doorstep agent" right={outcome && <Badge tone={outcome.tone}>{outcome.label}</Badge>} />
-      <p className="muted" style={{ fontSize: 13 }}>
-        Reads the PayPal order, tracking and disputes with PayPal's Agent Toolkit (read-only), then checks with the
-        policy service. It can't approve anything for you or refund above your limit.
+      <p className="muted" style={{ fontSize: 13 }} title="PayPal Agent Toolkit, read-only. Money goes only through the policy service, within your limits.">
+        Reads PayPal (read-only), then asks the policy. It can't approve for you.
       </p>
       {!run && <button className="btn" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Working…" : "Run the agent"}</button>}
       {err && <ErrorBox message={err} />}
@@ -448,10 +452,10 @@ function AgentPanel({ token, caseId, onDone }: { token: string; caseId: string; 
 }
 
 const AUDIT_VERDICT: Record<ScanAudit["verdict"], { tone: Tone; label: string; text: string }> = {
-  contradicted: { tone: "bad", label: "Contradicted", text: "The courier's own data disagrees with its “Delivered” scan." },
-  consistent: { tone: "good", label: "Consistent", text: "Possession is proven, and the scan agrees." },
-  unverified: { tone: "neutral", label: "Unverified", text: "A “Delivered” scan, but nothing shows the buyer has the parcel." },
-  no_scan: { tone: "neutral", label: "No delivered scan", text: "The courier never marked it delivered." },
+  contradicted: { tone: "bad", label: "Contradicted", text: "The courier's own data disagrees." },
+  consistent: { tone: "good", label: "Consistent", text: "Possession proven; the scan agrees." },
+  unverified: { tone: "neutral", label: "Unverified", text: "Scanned, but no proof the buyer has it." },
+  no_scan: { tone: "neutral", label: "No delivered scan", text: "Never marked delivered." },
 };
 
 const CHECK_NAME: Record<string, string> = { location: "Location", sequence: "Sequence", batch: "Batch scan", reported_soon: "Reported" };
@@ -468,7 +472,7 @@ function ScanAuditPanel({ audit }: { audit: ScanAudit }) {
   const v = AUDIT_VERDICT[audit.verdict];
   return (
     <section className="sec" aria-label="Delivered-scan audit">
-      <SectionHead icon={<ScanLine aria-hidden />} title="The courier's “Delivered” scan" right={<Badge tone={v.tone}>{v.label}</Badge>} />
+      <SectionHead icon={<ScanLine aria-hidden />} title="Courier's “Delivered” scan" right={<Badge tone={v.tone}>{v.label}</Badge>} />
       <p className="muted" style={{ fontSize: 13 }}>{v.text}</p>
       <ul className="checks">
         {audit.checks.map((ch) => (
@@ -526,7 +530,7 @@ function RecoveryPanel({ token, recovery: r, onChanged }: { token: string; recov
         )}
         {r.recovered_minor != null && <><span className="k">Recovered</span><strong className="num">{money(r.recovered_minor, r.currency)}</strong></>}
       </div>
-      {r.cover_minor != null && <span className="faint">Capped at the carrier's standard cover of {money(r.cover_minor, r.currency)}.</span>}
+      {r.cover_minor != null && <span className="faint">Capped at the carrier's cover ({money(r.cover_minor, r.currency)}).</span>}
       {!r.carrier_known && <div className="notice warn"><Info aria-hidden /><span>{r.terms_note || "Check your carrier's claim terms; Doorstep has no verified terms for this carrier."}</span></div>}
       <details className="fold">
         <summary><FileText aria-hidden />Claim pack ({r.sentences.length} checked sentence{r.sentences.length === 1 ? "" : "s"})</summary>
@@ -540,7 +544,7 @@ function RecoveryPanel({ token, recovery: r, onChanged }: { token: string; recov
             ))}
           </ol>
           <p className="faint">
-            {r.pack_source === "model" ? "Drafted by AI; every sentence cites facts and was checked in code." : "Built from the facts only."} Terms: {r.terms_rule}.
+            {r.pack_source === "model" ? "AI draft; every sentence checked against the facts." : "Built from the facts only."} Terms: {r.terms_rule}.
           </p>
           <div className="row">
             <button className="btn" onClick={() => navigator.clipboard?.writeText(claimText)}><Copy size={14} />Copy claim</button>
@@ -581,10 +585,10 @@ function DisputeNote({ c }: { c: CaseView }) {
     : stuck ? "Evidence was not sent"
     : "Evidence queued for PayPal";
   const text = !sent
-    ? "PayPal decides this one. Send the facts: tracking, the seal scan, the scan check and the verify link. Nothing accuses the buyer."
+    ? "PayPal decides. Send the facts; nothing accuses the buyer."
     : stuck
-      ? "PayPal refused it, or the dispute closed first. Nothing was sent twice; see the timeline."
-      : "PayPal now decides. The evidence holds facts only: tracking, the seal scan, the scan check and the receipt link.";
+      ? "PayPal refused it or the dispute closed. Nothing was sent twice."
+      : "PayPal decides now. Facts only: tracking, seal scan, receipt.";
   return (
     <div className={`notice ${tone}`} role="status">
       {done ? <CircleCheck aria-hidden /> : <Scale aria-hidden />}
@@ -607,9 +611,8 @@ function SealPrint({ token, orderId }: { token: string; orderId: string }) {
     <section className="sec" aria-label="Possession seal">
       {/* Only the QR itself is an SVG in this section (SL-02 checks for one). */}
       <SectionHead title="Possession seal" />
-      <p className="muted" style={{ fontSize: 13 }}>
-        Print this and put it inside the parcel. When the buyer opens the box and scans it, that proves they hold it.
-        No app needed. Scans from your own browser never count as proof.
+      <p className="muted" style={{ fontSize: 13 }} title="No app needed. Scans from your own browser never count as proof.">
+        Put it inside the parcel. The buyer's scan proves they hold it.
       </p>
       {!card && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={get}><QrCode size={15} />Show seal</button>}
       {err && <ErrorBox message={err} />}
