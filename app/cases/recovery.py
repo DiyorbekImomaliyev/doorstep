@@ -214,8 +214,11 @@ def prepare_recovery(
     decision: Decision,
     carriers: CarrierTerms,
     clock: Clock,
+    *,
+    draft: bool = True,
 ) -> Recovery | None:
-    """RC-01: a recovery for a seller-liable carrier fault, at most one per case."""
+    """RC-01: a recovery for a seller-liable carrier fault, at most one per case. `draft=False`
+    keeps the fact-only pack and queues no model call (RC-08: cases the demo seed creates)."""
     liability = decision.signals.get("liability") or {}
     if liability.get("liable_party") != "seller":
         return None
@@ -273,7 +276,8 @@ def prepare_recovery(
         )
     )
     # The AI wording comes later from the worker, so the buyer's tap never waits on a model.
-    enqueue(session, DRAFT_RECOVERY, {"recovery_id": recovery.id}, clock=clock)
+    if draft:
+        enqueue(session, DRAFT_RECOVERY, {"recovery_id": recovery.id}, clock=clock)
     session.flush()
     return recovery
 

@@ -346,8 +346,9 @@ export const api = {
     call<OrderRow>("POST", `/api/seller/${t}/orders/${orderId}/ship`, {
       carrier: "shippo", tracking_number: trackingNumber, label_weight_g: weight,
     }),
-  runAgent: (t: string, caseId: string) =>
-    call<AgentRun>("POST", `/api/seller/${t}/agent/cases/${caseId}`),
+  /** auto: the pre-check when a case opens (AT-07: fixed plan, no model call). */
+  runAgent: (t: string, caseId: string, auto = false) =>
+    call<AgentRun>("POST", `/api/seller/${t}/agent/cases/${caseId}${auto ? "?auto=1" : ""}`),
   packingCheck: (t: string, orderId: string, imageB64: string, mediaType: string) =>
     call<PackingResult>("POST", `/api/seller/${t}/orders/${orderId}/packing-check`, {
       image_b64: imageB64, media_type: mediaType,

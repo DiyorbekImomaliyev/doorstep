@@ -334,6 +334,8 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   the seller's orders view reports money recovered per currency.
 - RC-06 The sweep expires PREPARED recoveries whose deadline has passed.
 - RC-07 `/healthz` describes claim filing as prepared by Doorstep and submitted by the seller.
+- RC-08 Model budget: cases the demo seed creates keep the claim pack built from the facts only (no
+  model call is queued); a case reported afterwards, during the demo, gets the AI draft as usual.
 
 ## DE — PayPal dispute evidence (SPEC section 7a.4)
 - DE-01 A case in DISPUTE_EVIDENCE accepts the seller action `send-evidence`. It creates one
@@ -379,6 +381,9 @@ Numbers marked (config) are targets kept in config, not hardcoded.
 - AT-06 The agent's PayPal pre-check runs on its own when the seller opens a case that needs them;
   opening it again within `AGENT_REUSE_S` (or before the case changes) reuses that run, so the
   timeline never repeats it.
+- AT-07 The automatic pre-check runs the fixed plan (read order, tracking, disputes, ask the policy)
+  with no model call. The model planner runs only when the seller presses the button and no run
+  is reused, so opening cases never spends model budget.
 
 ## PC — Policy check (the AI reads the seller's written policy against the rules)
 - PC-01 The check compares the seller's written delivery policy with facts built in code from the

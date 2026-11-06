@@ -754,11 +754,12 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     recent_runs: dict[str, tuple[float, str, AgentRun]] = {}  # case id -> (when, state, run)
 
     @router.post("/api/seller/{token}/agent/cases/{case_id}", response_model=AgentRun)
-    def run_agent(token: str, case_id: str, s: Db) -> AgentRun:
+    def run_agent(token: str, case_id: str, s: Db, auto: bool = False) -> AgentRun:
         """AT-01..05: the Doorstep agent reads the PayPal side and asks the policy; it stops
         at the seller's limit. Seeded demo orders use simulated reads. AT-06: a run on the same
         case in the same state within AGENT_REUSE_S is reused, so opening a case twice never
-        repeats the PayPal reads or the timeline rows."""
+        repeats the PayPal reads or the timeline rows. AT-07: the automatic pre-check (`auto`)
+        runs the fixed plan, so opening cases never spends model budget."""
         case = _seller_case(s, _seller(s, token), case_id)
         order = s.get(Order, case.order_id)
         assert order is not None
@@ -768,7 +769,9 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             return last[2]
         real = services.agent_tools
         tools = real if real is not None and not is_simulated(order.capture_id) else None
-        agent = DoorstepAgent(tools or simulated_tools(s, order), llm=services.agent_llm)
+        agent = DoorstepAgent(
+            tools or simulated_tools(s, order), llm=None if auto else services.agent_llm
+        )
         run = agent.run(s, case, clock=deps.clock)
         s.commit()
         recent_runs[case.id] = (now, case.state, run)

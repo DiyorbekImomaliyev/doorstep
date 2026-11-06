@@ -82,7 +82,10 @@ class CasePipeline:
         settings: Settings,
         explainer: Explainer,
         signer: ReceiptSigner,
+        *,
+        ai_claims: bool = True,  # RC-08: False for the demo seed (fact-only claim packs)
     ) -> None:
+        self.ai_claims = ai_claims
         self.session = session
         self.rulebook = rulebook
         self.clock = clock
@@ -197,7 +200,9 @@ class CasePipeline:
         }
         s.flush()
         if self.rulebook.carriers is not None:  # RC-01: claim back from a carrier at fault
-            prepare_recovery(s, case, decision, self.rulebook.carriers, self.clock)
+            prepare_recovery(
+                s, case, decision, self.rulebook.carriers, self.clock, draft=self.ai_claims
+            )
 
         receipt = issue_receipt(
             s,

@@ -437,7 +437,11 @@ def _build(
         )
     )
     session.flush()
-    pipeline = CasePipeline(session, rulebook, clock, settings, Explainer(), signer)
+    # RC-08: seeded cases keep the fact-only claim pack; every judge reset would otherwise ask the
+    # model to reword about nine packs nobody opened. Cases reported during the demo get the draft.
+    pipeline = CasePipeline(
+        session, rulebook, clock, settings, Explainer(), signer, ai_claims=False
+    )
     actions = CaseActions(session, rulebook, clock, signer)
     for spec in SCENARIO:
         oid = _id(tag, spec.key)

@@ -435,14 +435,14 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
   const [run, setRun] = useState<AgentRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  async function go() {
+  async function go(automatic = false) {
     setBusy(true); setErr(null);
-    try { setRun(await api.runAgent(token, caseId)); onDone(); }
+    try { setRun(await api.runAgent(token, caseId, automatic)); onDone(); }
     catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
   // The agent works before the seller looks: on a case that needs them, it checks PayPal on its own.
   useEffect(() => {
-    if (auto && !AUTO_RAN.has(caseId)) { AUTO_RAN.add(caseId); void go(); }
+    if (auto && !AUTO_RAN.has(caseId)) { AUTO_RAN.add(caseId); void go(true); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, caseId]);
   const outcome = run?.outcome ? AGENT_OUTCOME[run.outcome] : null;
@@ -469,7 +469,7 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
         </ol>
       )}
       <div className="row wrap" style={{ gap: 10 }}>
-        <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={go}>{busy ? "Checking PayPal…" : run ? "Run the agent again" : "Run the agent"}</button>
+        <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => go()}>{busy ? "Checking PayPal…" : run ? "Run the agent again" : "Run the agent"}</button>
         {run && <span className="faint">Planner: {run.planner}. Every step is in the timeline.</span>}
       </div>
     </section>
