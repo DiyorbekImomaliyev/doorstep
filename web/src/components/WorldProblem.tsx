@@ -25,8 +25,7 @@ const REGIONS: Region[] = [
   {
     key: "world", tab: "World",
     figures: [
-      { value: "161B", label: "parcels shipped in 2022, in 13 countries", source: "Pitney Bowes", href: "https://trans.info/en/pitney-bowes-parcel-357852" },
-      { value: "1 in 10", label: "shoppers lost a parcel to theft or loss in a year", source: "2022 survey", href: "https://www.parcelandpostaltechnologyinternational.com/?p=22687" },
+      { value: "€577bn", label: "spent on parcel and express delivery in 2025, up 5.8%", source: "Ti Insight, 2026", href: "https://www.parcelandpostaltechnologyinternational.com/news/parcels/global-express-and-parcels-market-grew-5-8-to-e577-3bn-in-2025-ti-insight-says.html" },
     ],
     law: "UK and EU: the seller's risk. US: the seller's policy.", lawSource: "Each one a versioned rule file in Doorstep",
     view: { cx: W / 2, cy: H / 2, k: 1 },
@@ -34,8 +33,8 @@ const REGIONS: Region[] = [
   {
     key: "uk", tab: "UK",
     figures: [
-      { value: "15M", label: "had a problem with their last delivery (37%)", source: "Citizens Advice, 2025", href: "https://www.hellorayo.co.uk/greatest-hits/south-coast/news/record-high-parcel-problems" },
-      { value: "43%", label: "then had another problem getting it fixed", source: "Internet Retailing", href: "https://internetretailing.net/?p=62890" },
+      { value: "15M", label: "had a problem with their latest delivery (37%)", source: "Citizens Advice, Nov 2025", href: "https://www.citizensadvice.org.uk/about-us/media-centre/press-releases/parcel-problems-reach-record-as-15-million-people-are-let-down-on-the/" },
+      { value: "29%", label: "said the courier left before they reached the door", source: "Citizens Advice, Nov 2025", href: "https://www.citizensadvice.org.uk/about-us/media-centre/press-releases/parcel-problems-reach-record-as-15-million-people-are-let-down-on-the/" },
     ],
     law: "The seller's risk until the buyer holds it.", lawSource: "Consumer Rights Act 2015, s.29",
     lawHref: "https://www.legislation.gov.uk/ukpga/2015/15/section/29", rule: "uk_possession_v1",
@@ -44,7 +43,8 @@ const REGIONS: Region[] = [
   {
     key: "eu", tab: "EU",
     figures: [
-      { value: "27", label: "countries, one possession rule", source: "Directive 2011/83/EU", href: "https://www.eccnet.eu/publication/parcel-delivery-challenges-addressed-ecc-net-e-commerce-sector" },
+      { value: "35%", label: "of online shoppers hit a problem buying online", source: "Eurostat, Mar 2026", href: "https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260311-1" },
+      { value: "1 in 5", label: "had a late delivery, the most common problem", source: "Eurostat, Mar 2026", href: "https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260311-1" },
     ],
     law: "Risk passes only when the buyer holds it.", lawSource: "Consumer Rights Directive, Art. 20",
     lawHref: "https://www.eccnet.eu/publication/parcel-delivery-challenges-addressed-ecc-net-e-commerce-sector", rule: "eu_possession_v1",
@@ -54,7 +54,7 @@ const REGIONS: Region[] = [
     key: "us", tab: "US",
     figures: [
       { value: "23.1B", label: "parcels shipped in 2025", source: "Pitney Bowes, 2026", href: "https://www.pitneybowes.com/content/dam/pitneybowes/us/en/shipping-index/dmr-5127-parcel-shipping-index-report-2026-ebook.pdf" },
-      { value: "29.7%", label: "of households had a parcel stolen", source: "Omnisend, 2025", href: "https://www.omnisend.com/porch-pirates/" },
+      { value: "80M", label: "Americans have had a package stolen (3 in 10)", source: "Security.org, 2026", href: "https://www.security.org/package-theft/annual-report/" },
     ],
     law: "No single rule. The seller's policy decides.", lawSource: "Doorstep applies the seller's written policy", rule: "us_seller_policy_v1",
     view: { cx: 44, cy: 23, k: 2.3 },
@@ -117,16 +117,8 @@ export default function WorldProblem() {
 
   return (
     <div className="wp" ref={ref}>
-      <div className="wp-map">
-        <div className="seg wp-tabs" role="tablist" aria-label="Region">
-          {REGIONS.map((g, n) => (
-            <button key={g.key} role="tab" aria-selected={n === i} onClick={() => { setI(n); setAuto(false); }}>
-              {g.tab}
-              {n === i && auto && seen && <i key={i} className="seg-time" style={{ animationDuration: `${CYCLE}ms` }} aria-hidden />}
-            </button>
-          ))}
-        </div>
-        <svg aria-hidden viewBox={`0 0 ${W} ${H}`} data-r={r.key} preserveAspectRatio="xMidYMid meet">
+      <div className="wp-map" aria-hidden>
+        <svg viewBox={`0 0 ${W} ${H}`} data-r={r.key} preserveAspectRatio="xMidYMid meet">
           <g className="wp-zoom" style={{ transform: zoom }}>
             <Dots />
             {pins.map((p) => (
@@ -142,9 +134,13 @@ export default function WorldProblem() {
       </div>
 
       <div className="wp-side">
-        <div className="wp-head">
-          <span className="kicker">The problem</span>
-          <h2>Parcels go missing everywhere.</h2>
+        <div className="seg" role="tablist" aria-label="Region">
+          {REGIONS.map((g, n) => (
+            <button key={g.key} role="tab" aria-selected={n === i} onClick={() => { setI(n); setAuto(false); }}>
+              {g.tab}
+              {n === i && auto && seen && <i key={i} className="seg-time" style={{ animationDuration: `${CYCLE}ms` }} aria-hidden />}
+            </button>
+          ))}
         </div>
         <div className="wp-body" role="tabpanel" aria-label={r.tab} key={r.key}>
           <div className="wp-figs">

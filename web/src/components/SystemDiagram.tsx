@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Banknote, Bot, Database, FileCheck2, FileText, Lock, Scale, ScanLine, ShieldCheck, Smartphone, Webhook, Workflow } from "lucide-react";
+import { Banknote, Bot, Database, FileCheck2, FileText, Lock, Scale, ScanLine, Send, ShieldCheck, Smartphone, Webhook, Workflow } from "lucide-react";
 
 /* Inside Doorstep: events in, a coded decision, one guarded path to money. The column that is
    "working" lights up in turn so the order of operations is easy to follow. */
@@ -18,7 +18,7 @@ const COLUMNS: Column[] = [
     { icon: <Database />, title: "Job queue", text: "Retries never pay twice" },
   ] },
   { label: "Decide", nodes: [
-    { icon: <Workflow />, title: "Failure-point engine", text: "Code, not AI. Doubts go to a person" },
+    { icon: <Workflow />, title: "Failure-point engine", text: "Code, not AI" },
     { icon: <Scale />, title: "Rules as files", text: "UK · EU · US, versioned" },
   ] },
   { label: "Money", nodes: [
@@ -79,6 +79,10 @@ export default function SystemDiagram() {
         <span className="ai-chips">
           <span>Explanations</span><span>Claim drafts, fact-checked</span><span>Packing photos</span><span>Read-only PayPal agent</span>
         </span>
+      </div>
+      <div className="legend">
+        <span><Send aria-hidden />Idempotent PayPal writes</span>
+        <span><ShieldCheck aria-hidden />Contradictions go to a person</span>
       </div>
     </div>
   );

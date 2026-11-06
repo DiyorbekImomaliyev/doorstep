@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Banknote, CircleCheck, CircleX, CreditCard, House, Landmark, Pause, Play, QrCode, Scale, ScanLine,
   Smartphone, Store, Truck,
@@ -7,9 +7,7 @@ import {
 /* How Doorstep works, as one parcel's journey in an isometric world (CSS 3D, no library).
    The step list is the accessible content; the stage is decoration (aria-hidden). */
 
-type Stage = "Prevent" | "Prove" | "Resolve" | "Recover";
-const STAGES: Stage[] = ["Prevent", "Prove", "Resolve", "Recover"];
-type Step = { stage: Stage; short: string; title: string; text: string; icon: ReactNode };
+type Step = { stage: "Prevent" | "Prove" | "Resolve" | "Recover"; short: string; title: string; text: string; icon: ReactNode };
 
 const STEPS: Step[] = [
   { stage: "Prevent", short: "Pay", title: "Pays with PayPal", text: "Address checked before he's charged.", icon: <CreditCard /> },
@@ -267,56 +265,53 @@ export default function Journey3D() {
     return () => ro.disconnect();
   }, []);
 
-  // On narrow screens the stepper scrolls sideways: keep the current step in view (never the page).
+  // On phones the steps become one sideways row: keep the current step in view (never the page).
   useEffect(() => {
     const t = track.current;
     const chip = t?.querySelector<HTMLElement>('[aria-current="step"]');
     if (!t || !chip || t.scrollWidth <= t.clientWidth) return;
     t.scrollTo({ left: chip.offsetLeft - t.clientWidth / 2 + chip.clientWidth / 2, behavior: "smooth" });
-  }, [step]);
+  }, [step, scale]);
 
   const pick = (i: number) => { setStep(i); setCycle((c) => c + 1); };
   const r = READOUT[step];
-  const cur = STEPS[step];
 
   return (
     <div className="journey">
-      <div className="jbar">
-        <div className="jtrack" ref={track} role="list" aria-label="How Doorstep works">
-          {STAGES.map((stage) => (
-            <div key={stage} className="jgroup">
-              <span className="jstage" aria-hidden>{stage}</span>
-              <div className="jchips">
-                {STEPS.map((s, i) => s.stage !== stage ? null : (
-                  <button key={s.title} role="listitem" className="jchip" aria-current={i === step ? "step" : undefined}
-                    aria-label={`${s.title}. ${s.text}`} onClick={() => pick(i)}>
-                    <span className="n" aria-hidden>{s.icon}</span>
-                    <span className="t">{s.short}</span>
-                    {i === step && (
-                      <span className={`progress-line ${playing ? "" : "paused"}`} aria-hidden>
-                        <i key={`${step}-${cycle}`} style={{ ["--dur" as string]: `${DURATION}ms` } as CSSProperties} />
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+      <div className="journey-steps" ref={track} role="list" aria-label="How Doorstep works">
+        {STEPS.map((s, i) => (
+          <Fragment key={s.title}>
+          {(i === 0 || STEPS[i - 1].stage !== s.stage) && <span className="jstage" aria-hidden>{s.stage}</span>}
+          <button role="listitem" className="jstep" aria-current={i === step ? "step" : undefined} onClick={() => pick(i)}>
+            <span className="n" aria-hidden>{s.icon}</span>
+            <span>
+              <span className="t">{s.title}</span>
+              <span className="ts" aria-hidden>{s.short}</span>
+              <span className="d" style={{ display: "block" }}>{s.text}</span>
+            </span>
+            {i === step && (
+              <span className={`progress-line ${playing ? "" : "paused"}`} aria-hidden>
+                <i key={`${step}-${cycle}`} style={{ ["--dur" as string]: `${DURATION}ms` } as CSSProperties} />
+              </span>
+            )}
+          </button>
+          </Fragment>
+        ))}
+        <div className="journey-controls">
+          <span className="faint num">Step {step + 1} of {STEPS.length}</span>
+          <button className="btn ghost" onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause the animation" : "Play the animation"}>
+            {playing ? <Pause size={15} /> : <Play size={15} />}{playing ? "Pause" : "Play"}
+          </button>
         </div>
-        <button className="btn ghost jplay" onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause the animation" : "Play the animation"}>
-          {playing ? <Pause size={15} /> : <Play size={15} />}
-        </button>
       </div>
-      <div className={`stage-wrap ${seen ? "" : "pre"}`} ref={wrap}>
-        <div className="stage-scale" style={{ ["--s" as string]: scale } as CSSProperties} aria-hidden>
+      <div className={`stage-wrap ${seen ? "" : "pre"}`} ref={wrap} aria-hidden>
+        <div className="stage-scale" style={{ ["--s" as string]: scale } as CSSProperties}>
           <Scene step={step} />
           {seen && <Flows step={step} />}
         </div>
-        <div className="readout" key={step} aria-live="polite">
-          <span className="r-step num">{step + 1} / {STEPS.length} · {cur.stage}</span>
-          <span className="r-head">{cur.title}</span>
-          <span className="r-text">{cur.text}</span>
-          <span className="r-sep" aria-hidden />
+        <div className="readout" key={step}>
+          <span className="r-title">{r.icon}{r.title}</span>
+          <span className="r-text">{STEPS[step].text}</span>
           {r.rows.map((row, i) => (
             <div key={i} className="r-row"><RowIcon kind={row.kind} /><span>{row.text}</span></div>
           ))}
