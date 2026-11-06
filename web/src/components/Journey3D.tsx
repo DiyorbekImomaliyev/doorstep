@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  Banknote, CircleCheck, CircleX, CreditCard, House, Pause, Play, QrCode, Scale, ScanLine,
+  Banknote, CircleCheck, CircleX, CreditCard, House, Landmark, Pause, Play, QrCode, Scale, ScanLine,
   Smartphone, Store, Truck,
 } from "lucide-react";
 
@@ -15,7 +15,8 @@ const STEPS: Step[] = [
   { title: "Shipped and tracked", text: "Tracking goes on the PayPal payment.", icon: <Truck /> },
   { title: "“Delivered”, but not here", text: "Wrong street. Sam taps Not here.", icon: <ScanLine /> },
   { title: "Doorstep checks the facts", text: "Courier data, the seal and the law.", icon: <Scale /> },
-  { title: "Settled through PayPal", text: "Sam is refunded. The courier pays it back.", icon: <Banknote /> },
+  { title: "Refunded through PayPal", text: "Sam gets £60 back. Maria taps once.", icon: <Banknote /> },
+  { title: "The courier pays it back", text: "A checked claim. Maria loses nothing.", icon: <Landmark /> },
 ];
 
 const DURATION = 4200;
@@ -42,10 +43,15 @@ const READOUT: { title: string; icon: ReactNode; rows: Row[] }[] = [
     { kind: "no", text: "Seal never scanned" },
     { kind: "law", text: <>Seller's risk <span className="faint">(CRA 2015 s.29)</span></> },
   ] },
-  { title: "Settled", icon: <Banknote />, rows: [
+  { title: "Refunded", icon: <Banknote />, rows: [
     { kind: "ok", text: <>Sam refunded <b>£60.00</b></> },
-    { kind: "ok", text: "Claim pack for Royal Mail" },
+    { kind: "ok", text: "Approved in one tap" },
     { kind: "ok", text: "Signed receipt" },
+  ] },
+  { title: "Carrier recovery", icon: <Landmark />, rows: [
+    { kind: "ok", text: <>Claim checked: <b>8 of 8</b> facts</> },
+    { kind: "ok", text: <>Royal Mail pays <b>£60.00</b></> },
+    { kind: "ok", text: <>Maria's loss: <b>£0</b></> },
   ] },
 ];
 
@@ -121,6 +127,7 @@ function Scene({ step }: { step: number }) {
     { x: 238, y: 16, z: 0, o: 1 },
     { x: 238, y: 16, z: 0, o: 1 },
     { x: 238, y: 16, z: 0, o: 1 },
+    { x: 238, y: 16, z: 0, o: 1 },
   ][step];
   const parcelStyle: CSSProperties = { transform: `translate3d(${parcel.x}px, ${parcel.y}px, ${parcel.z}px)`, opacity: parcel.o, left: 0, top: 0 };
   const sealed = step >= 1;
@@ -175,10 +182,10 @@ function Scene({ step }: { step: number }) {
       {/* settlement */}
       <Tag x={150} y={14} z={step === 5 ? 64 : 44} tone="accent" show={step === 5}><Banknote />Refunded £60</Tag>
       <div className="billboard coin" style={{
-        left: 0, top: 0, opacity: step === 5 ? 1 : 0,
-        transform: step === 5 ? "translate3d(-130px, 64px, 26px)" : "translate3d(250px, 52px, 40px)",
+        left: 0, top: 0, opacity: step === 6 ? 1 : 0,
+        transform: step === 6 ? "translate3d(-112px, 76px, 18px)" : "translate3d(250px, 52px, 40px)",
       }}>
-        <div className="bb-inner"><span className="tag3d"><Truck />Courier pays back £60</span></div>
+        <div className="bb-inner"><span className="tag3d accent"><Landmark />Royal Mail pays £60</span></div>
       </div>
     </div>
   );

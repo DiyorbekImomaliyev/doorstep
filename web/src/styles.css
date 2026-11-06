@@ -622,3 +622,17 @@ a.demo-item:hover .di-go svg { transform: translateX(3px); }
 .mini-kv dt { color: var(--text-3); }
 .mini-kv dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 960px) { .detail-inner { grid-template-columns: 1fr 1fr; } .detail-inner section:nth-child(2) { border-right: 0; } }
+
+/* Control Room greeting and (i) hints */
+.greet { color: var(--text-3); font-size: 13.5px; margin: 0 0 4px; }
+.greet b { color: var(--text-2); font-weight: 600; }
+.hint { position: relative; display: inline-flex; margin-left: 2px; color: var(--text-3); cursor: help; border-radius: 50%; outline-offset: 2px; }
+.kpi .label .hint svg { width: 13px; height: 13px; opacity: .7; }
+.hint:hover svg, .hint:focus-visible svg { opacity: 1; color: var(--text-2); }
+.hint::after {
+  content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translate(-50%, 4px);
+  width: max-content; max-width: 240px; padding: 8px 10px; border-radius: 8px; background: #2a2321; color: #fff;
+  font-size: 12px; font-weight: 400; line-height: 1.4; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; z-index: 30; white-space: normal;
+}
+.hint:hover::after, .hint:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }

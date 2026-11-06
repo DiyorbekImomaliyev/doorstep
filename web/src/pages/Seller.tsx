@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { BarChart3, BookOpen, Columns3, Download, FolderOpen, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
+import { BarChart3, BookOpen, Columns3, Download, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet } from "lucide-react";
 import { api, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import { money } from "../format";
@@ -134,6 +134,7 @@ export default function Seller({ token }: { token: string }) {
           ) : (<>
           <div className="page-head">
             <div>
+              <p className="greet">{greeting(me.data?.name)}{rows ? <> · <b>{counts.action ? `${counts.action} need${counts.action === 1 ? "s" : ""} you` : "nothing needs you"}</b></> : null}</p>
               <h1>Delivery Control Room</h1>
             </div>
             <button className="btn" onClick={reload}><RefreshCw size={15} aria-hidden />Refresh</button>
@@ -146,17 +147,17 @@ export default function Seller({ token }: { token: string }) {
             <>
               <section className="kpis" aria-label="Summary">
                 <div className={`kpi ${counts.action ? "attention" : ""}`}>
-                  <span className="label"><Inbox aria-hidden />Needs you</span>
+                  <span className="label"><Inbox aria-hidden />Needs you<Hint text="Cases to approve or review, and orders waiting for a packing check." /></span>
                   <span className="value">{counts.action}</span>
                   <span className="sub">to approve or review</span>
                 </div>
                 <div className="kpi">
-                  <span className="label"><Truck aria-hidden />In transit</span>
+                  <span className="label"><Truck aria-hidden />In transit<Hint text="Shipped parcels the buyer has not received yet." /></span>
                   <span className="value">{counts.flight}</span>
                   <span className="sub">on the way</span>
                 </div>
                 <div className="kpi">
-                  <span className="label"><Wallet aria-hidden />Money at stake</span>
+                  <span className="label"><Wallet aria-hidden />Money at stake<Hint text="The value of open cases plus parcels still on the way: what a delivery failure could cost you today." /></span>
                   <span className="value" style={{ fontSize: 22 }}>{sumStake(rows)}</span>
                   <span className="sub">open cases and parcels in transit</span>
                 </div>
@@ -216,12 +217,25 @@ export default function Seller({ token }: { token: string }) {
   );
 }
 
+/** "Good afternoon, Maria": the first name from the shop name ("Maria's Vintage"). */
+function greeting(shop: string | undefined): string {
+  const h = new Date().getHours();
+  const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
+  const who = shop?.split(/['’]s\b/)[0]?.trim();
+  return who ? `Good ${part}, ${who}` : `Good ${part}`;
+}
+
+/** A small (i) with the longer explanation, on hover or keyboard focus. */
+function Hint({ text }: { text: string }) {
+  return <span className="hint" tabIndex={0} role="note" aria-label={text} data-tip={text}><Info aria-hidden /></span>;
+}
+
 /** RC-05: what carriers paid back, and what is still claimable. */
 function RecoveredKpi({ s }: { s: RecoverySummary | null }) {
   const open = s ? sumBy(s.open_claim_minor) : "";
   return (
     <div className="kpi">
-      <span className="label"><Landmark aria-hidden />Recovered from carriers</span>
+      <span className="label"><Landmark aria-hidden />Recovered from carriers<Hint text="What carriers paid back on claims Doorstep prepared and you submitted." /></span>
       <span className="value" style={{ fontSize: 22 }}>{s ? sumBy(s.recovered_minor) : "—"}</span>
       <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "from claims you filed"}</span>
     </div>
