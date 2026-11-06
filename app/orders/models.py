@@ -48,7 +48,7 @@ class SellerRule(Base):
 class Order(Base):
     __tablename__ = "orders"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"))
+    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"), index=True)
     paypal_order_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     capture_id: Mapped[str | None] = mapped_column(String(64))
     capture_status: Mapped[str | None] = mapped_column(String(32))
@@ -74,7 +74,7 @@ class Order(Base):
 class Shipment(Base):
     __tablename__ = "shipments"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"))
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
     carrier: Mapped[str] = mapped_column(String(64))
     tracking_number: Mapped[str] = mapped_column(String(128), index=True)
     method: Mapped[str] = mapped_column(String(16))
@@ -90,7 +90,7 @@ class Shipment(Base):
 class TrackingEvent(Base):
     __tablename__ = "tracking_events"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"))
+    shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), index=True)
     status: Mapped[str] = mapped_column(String(32))
     occurred_at: Mapped[datetime] = mapped_column(UTCDateTime())
     applied: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -100,7 +100,7 @@ class TrackingEvent(Base):
 class Evidence(Base):
     __tablename__ = "evidence"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"))
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
     kind: Mapped[str] = mapped_column(String(32))
     uri: Mapped[str] = mapped_column(String(500), default="")
     ai_result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -110,8 +110,8 @@ class Evidence(Base):
 class Case(Base):
     __tablename__ = "cases"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"))
-    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"))
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
+    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"), index=True)
     payer_id: Mapped[str | None] = mapped_column(String(64), index=True)
     reported_by: Mapped[str] = mapped_column(String(32))
     reason: Mapped[str] = mapped_column(String(64))
@@ -122,7 +122,7 @@ class Case(Base):
 class Decision(Base):
     __tablename__ = "decisions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"))
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), index=True)
     failure_point: Mapped[str | None] = mapped_column(String(48))
     confidence: Mapped[str | None] = mapped_column(String(8))
     route: Mapped[str] = mapped_column(String(32))
@@ -144,8 +144,8 @@ class Decision(Base):
 class Approval(Base):
     __tablename__ = "approvals"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"))
-    decision_id: Mapped[str] = mapped_column(ForeignKey("decisions.id"))
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), index=True)
+    decision_id: Mapped[str] = mapped_column(ForeignKey("decisions.id"), index=True)
     approver_kind: Mapped[str] = mapped_column(String(16))
     approver_id: Mapped[str] = mapped_column(String(64))
     rule_id: Mapped[str | None] = mapped_column(String(64))
@@ -159,10 +159,10 @@ class MoneyAction(Base):
         UniqueConstraint("decision_id", "kind", name="uq_money_action_decision_kind"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"))
-    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"))
-    decision_id: Mapped[str | None] = mapped_column(ForeignKey("decisions.id"))
-    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"))
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"), index=True)
+    decision_id: Mapped[str | None] = mapped_column(ForeignKey("decisions.id"), index=True)
+    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"), index=True)
     kind: Mapped[str] = mapped_column(String(16))
     amount_minor: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3))
@@ -179,7 +179,7 @@ class MoneyAction(Base):
 class Dispute(Base):
     __tablename__ = "disputes"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"))
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
     paypal_dispute_id: Mapped[str] = mapped_column(String(64), unique=True)
     status: Mapped[str] = mapped_column(String(16))  # open | resolved
     opened_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
@@ -193,7 +193,7 @@ class Recovery(Base):
     case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), unique=True)
     order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
     seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"), index=True)
-    decision_id: Mapped[str] = mapped_column(ForeignKey("decisions.id"))
+    decision_id: Mapped[str] = mapped_column(ForeignKey("decisions.id"), index=True)
     carrier: Mapped[str] = mapped_column(String(64))  # as on the shipment
     carrier_id: Mapped[str] = mapped_column(String(64))  # entry in carrier_claims_v1.yaml
     failure_point: Mapped[str] = mapped_column(String(32))

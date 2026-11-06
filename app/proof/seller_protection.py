@@ -22,18 +22,24 @@ ACTION = "paypal.seller_protection"
 ACTOR = "paypal"
 
 
-def latest_report(session: Session, order_id: str) -> dict[str, Any] | None:
-    row = session.scalars(
+def latest_reports(session: Session, order_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+    """The latest report per order, in one query for any number of orders."""
+    latest: dict[str, dict[str, Any]] = {}
+    for row in session.scalars(
         select(AuditLog)
         .where(
             AuditLog.entity_type == "order",
-            AuditLog.entity_id == order_id,
+            AuditLog.entity_id.in_(order_ids),
             AuditLog.action == ACTION,
         )
         .order_by(AuditLog.at.desc(), AuditLog.id.desc())
-        .limit(1)
-    ).first()
-    return dict(row.after) if row is not None else None
+    ):
+        latest.setdefault(row.entity_id, dict(row.after))
+    return latest
+
+
+def latest_report(session: Session, order_id: str) -> dict[str, Any] | None:
+    return latest_reports(session, [order_id]).get(order_id)
 
 
 def protection_status(session: Session, order_id: str) -> str | None:

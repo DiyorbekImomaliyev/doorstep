@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import DateTime, Dialect, Engine, create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
@@ -54,3 +56,18 @@ def import_all_models() -> None:
     import app.orders.models
     import app.proof.models
     import app.worker.models  # noqa: F401
+
+
+def ensure_indexes(engine: Engine) -> None:
+    """R30 (review S11): create every model index the database lacks.
+
+    create_all never alters a table that already exists, so an index added to a model later would
+    never reach a database made before it. Tables are small, so each build takes milliseconds. The
+    web service and the worker may start together: a lost race to create one index is logged.
+    """
+    for table in Base.metadata.sorted_tables:
+        for index in table.indexes:
+            try:
+                index.create(bind=engine, checkfirst=True)
+            except SQLAlchemyError:
+                logging.getLogger(__name__).warning("index %s not created", index.name)

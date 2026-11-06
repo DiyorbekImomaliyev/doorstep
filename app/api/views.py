@@ -7,11 +7,14 @@ refund is labelled simulated, a receipt chain that was not checked says not_run.
 
 from __future__ import annotations
 
+from collections import defaultdict
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.ai.risk import RiskFeatures, load_model
@@ -19,7 +22,7 @@ from app.cases.signals import EvidenceKind
 from app.checkout.risk import seller_case_rate, seller_order_count
 from app.geo import postcode_district  # re-exported: shown in the Control Room
 from app.money import MINOR_UNIT_EXPONENT, parse_currency
-from app.orders.enums import CaseState, MoneyActionKind, OrderState
+from app.orders.enums import CaseState, MoneyActionKind, MoneyActionStatus, OrderState
 from app.orders.models import (
     AuditLog,
     Case,
@@ -33,9 +36,9 @@ from app.orders.models import (
     TrackingEvent,
 )
 from app.proof.models import Receipt
-from app.proof.seal import AFTER_HANDOVER, BEFORE_HANDOVER, SELLER_BROWSER, counted_scan
+from app.proof.seal import AFTER_HANDOVER, BEFORE_HANDOVER, SELLER_BROWSER
 from app.proof.seller_protection import ACTION as SELLER_PROTECTION_ACTION
-from app.proof.seller_protection import protection_status
+from app.proof.seller_protection import latest_reports
 from app.worker.simulated import SIMULATED_STATUS, is_simulated
 
 _OPEN_CASE = [s.value for s in CaseState if s not in (CaseState.SETTLED, CaseState.CLOSED)]
@@ -128,31 +131,64 @@ class EvidenceScore(BaseModel):
     missing: list[str]
 
 
-def evidence_completeness(s: Session, order: Order) -> EvidenceScore:
-    rows = s.execute(
-        select(Evidence.kind, Evidence.ai_result).where(Evidence.order_id == order.id)
-    ).all()
+@dataclass(frozen=True)
+class _Proof:
+    """The proof rows of a list of orders, loaded in three queries for any number of orders."""
+
+    evidence: dict[str, list[Evidence]]  # per order, oldest first
+    shipment: dict[str, Shipment]  # the latest per order
+    delivered: set[str]  # shipment ids with a DELIVERED scan
+
+
+def _latest_by[T](rows: Iterable[T], key: Callable[[T], str]) -> dict[str, T]:
+    """The first row per key; rows arrive newest first, as the single-order queries read them."""
+    latest: dict[str, T] = {}
+    for row in rows:
+        latest.setdefault(key(row), row)
+    return latest
+
+
+def _load_proof(s: Session, order_ids: Sequence[str]) -> _Proof:
+    evidence: dict[str, list[Evidence]] = defaultdict(list)
+    for e in s.scalars(
+        select(Evidence).where(Evidence.order_id.in_(order_ids)).order_by(Evidence.created_at)
+    ):
+        evidence[e.order_id].append(e)
+    shipment = _latest_by(
+        s.scalars(
+            select(Shipment)
+            .where(Shipment.order_id.in_(order_ids))
+            .order_by(Shipment.created_at.desc())
+        ),
+        lambda x: x.order_id,
+    )
+    delivered = set(
+        s.scalars(
+            select(TrackingEvent.shipment_id).where(
+                TrackingEvent.shipment_id.in_([x.id for x in shipment.values()]),
+                TrackingEvent.status == "DELIVERED",
+            )
+        )
+    )
+    return _Proof(evidence=dict(evidence), shipment=shipment, delivered=delivered)
+
+
+def _evidence_score(order: Order, proof: _Proof) -> EvidenceScore:
+    rows = proof.evidence.get(order.id, [])
     # SL-08: a confirmation from the seller's own browser is not the buyer's.
     kinds = {
-        kind
-        for kind, result in rows
+        e.kind
+        for e in rows
         if not (
-            kind == EvidenceKind.BUYER_CONFIRMATION.value
-            and (result or {}).get("source") == SELLER_BROWSER
+            e.kind == EvidenceKind.BUYER_CONFIRMATION.value
+            and (e.ai_result or {}).get("source") == SELLER_BROWSER
         )
     }
-    shipment = latest_shipment(s, order.id)
-    delivered = False
-    if shipment is not None:
-        delivered = (
-            s.scalar(
-                select(TrackingEvent.id)
-                .where(TrackingEvent.shipment_id == shipment.id)
-                .where(TrackingEvent.status == "DELIVERED")
-                .limit(1)
-            )
-            is not None
-        )
+    shipment = proof.shipment.get(order.id)
+    delivered = shipment is not None and shipment.id in proof.delivered
+    counted = any(
+        e.kind == EvidenceKind.SEAL_SCAN.value and e.ai_result.get("counted") for e in rows
+    )
     checks = {
         "address checked": order.address_check in ("valid", "overridden"),
         "packing photo": EvidenceKind.PACKING_PHOTO.value in kinds,
@@ -160,13 +196,23 @@ def evidence_completeness(s: Session, order: Order) -> EvidenceScore:
         "delivered scan": delivered or order.state == OrderState.PICKED_UP.value,
         "possession proof": bool(kinds & _POSSESSION)
         or order.state == OrderState.PICKED_UP.value
-        or counted_scan(s, order.id) is not None,
+        or counted,
     }
     present = [k for k, ok in checks.items() if ok]
     missing = [k for k, ok in checks.items() if not ok]
     return EvidenceScore(
         score=round(len(present) / len(checks), 2), present=present, missing=missing
     )
+
+
+def evidence_scores(s: Session, orders: Sequence[Order]) -> dict[str, EvidenceScore]:
+    """Evidence completeness for many orders in three queries (not three per order)."""
+    proof = _load_proof(s, [o.id for o in orders])
+    return {o.id: _evidence_score(o, proof) for o in orders}
+
+
+def evidence_completeness(s: Session, order: Order) -> EvidenceScore:
+    return evidence_scores(s, [order])[order.id]
 
 
 # ---------------------------------------------------------------- timeline
@@ -454,20 +500,30 @@ _RISK_STATES = {
 }
 
 
-def delivery_risk(s: Session, order: Order) -> tuple[float | None, list[str]]:
+def _seller_history(s: Session, seller_id: str) -> tuple[float, int]:
+    return min(seller_case_rate(s, seller_id), 1.0), seller_order_count(s, seller_id)
+
+
+def delivery_risk(
+    s: Session, order: Order, history: tuple[float, int] | None = None
+) -> tuple[float | None, list[str]]:
     """The trained model's view of this parcel as sent (method, address outcome, shop history).
-    None once the parcel is delivered, or when the model is unavailable."""
+    None once the parcel is delivered, or when the model is unavailable. `history` is the
+    seller's (case rate, order count), passed in when a list shares one seller."""
     model = load_model()
     if model is None or order.state not in _RISK_STATES:
         return None, []
+    case_rate, seller_orders = (
+        history if history is not None else _seller_history(s, order.seller_id)
+    )
     method = order.shipping_method if order.shipping_method in ("locker", "signature") else "home"
     score = model.score(
         RiskFeatures(
             order_value_major=order.amount_minor
             / 10 ** MINOR_UNIT_EXPONENT[parse_currency(order.currency)],
             buyer_country=order.buyer_country,
-            seller_case_rate=min(seller_case_rate(s, order.seller_id), 1.0),
-            seller_orders=seller_order_count(s, order.seller_id),
+            seller_case_rate=case_rate,
+            seller_orders=seller_orders,
             method=method,  # type: ignore[arg-type]
             address_overridden=order.address_check == "overridden",
         )
@@ -475,41 +531,97 @@ def delivery_risk(s: Session, order: Order) -> tuple[float | None, list[str]]:
     return score.p_failure, [r.text for r in score.top_reasons]
 
 
-def _awaits_evidence(s: Session, case: Case) -> bool:
-    """DE-01: an open PayPal dispute waits for the seller's evidence (PayPal sets a deadline)."""
-    if case.state != CaseState.DISPUTE_EVIDENCE.value:
-        return False
-    sent = s.scalars(
-        select(MoneyAction.id).where(
-            MoneyAction.case_id == case.id, MoneyAction.kind == MoneyActionKind.EVIDENCE.value
+@dataclass(frozen=True)
+class _RowData:
+    """Everything the order rows need, loaded once per list: a fixed number of queries whatever
+    the number of orders (the per-order version ran about ten per row)."""
+
+    case: dict[str, Case]  # the latest per order
+    decision: dict[str, Decision]  # the latest per case
+    money: dict[str, MoneyAction]  # the latest refund per order (evidence writes excluded)
+    evidence_sent: set[str]  # case ids with a dispute-evidence write
+    proof: _Proof
+    last_at: dict[str, datetime]  # the latest audit time per order id and case id
+    protection: dict[str, dict[str, Any]]  # PayPal's latest Seller Protection report per order
+    history: dict[str, tuple[float, int]]  # per seller with a risk to show: (case rate, orders)
+
+
+def _load_rows(s: Session, orders: Sequence[Order]) -> _RowData:
+    ids = [o.id for o in orders]
+    case = _latest_by(
+        s.scalars(select(Case).where(Case.order_id.in_(ids)).order_by(Case.opened_at.desc())),
+        lambda c: c.order_id,
+    )
+    case_ids = [c.id for c in case.values()]
+    decision = _latest_by(
+        s.scalars(
+            select(Decision)
+            .where(Decision.case_id.in_(case_ids))
+            .order_by(Decision.created_at.desc())
+        ),
+        lambda d: d.case_id,
+    )
+    # A case's money writes carry its order's id, so one filter on order_id finds them all.
+    actions = list(
+        s.scalars(
+            select(MoneyAction)
+            .where(MoneyAction.order_id.in_(ids))
+            .order_by(MoneyAction.created_at.desc())
         )
-    ).first()
-    return sent is None
+    )
+    evidence = MoneyActionKind.EVIDENCE.value
+    money = _latest_by((a for a in actions if a.kind != evidence), lambda a: a.order_id)
+    sent = {a.case_id for a in actions if a.kind == evidence and a.case_id is not None}
+    # The shop's history feeds the risk model only, so it is counted only when a row shows a risk.
+    at_risk = {o.seller_id for o in orders if o.state in _RISK_STATES}
+    last_at: dict[str, datetime] = {
+        entity_id: at
+        for entity_id, at in s.execute(
+            select(AuditLog.entity_id, func.max(AuditLog.at))
+            .where(AuditLog.entity_id.in_(ids + case_ids))
+            .group_by(AuditLog.entity_id)
+        )
+    }
+    return _RowData(
+        case=case,
+        decision=decision,
+        money=money,
+        evidence_sent=sent,
+        proof=_load_proof(s, ids),
+        last_at=last_at,
+        protection=latest_reports(s, ids),
+        history={sid: _seller_history(s, sid) for sid in at_risk} if load_model() else {},
+    )
 
 
-def order_row(s: Session, order: Order) -> OrderRow:
-    case = latest_case(s, order.id)
-    decision = latest_decision(s, case.id) if case else None
-    ma = s.scalars(
-        select(MoneyAction)
-        .where(MoneyAction.order_id == order.id, MoneyAction.kind != MoneyActionKind.EVIDENCE.value)
-        .order_by(MoneyAction.created_at.desc())
-    ).first()
-    packing = s.scalars(
-        select(Evidence)
-        .where(Evidence.order_id == order.id, Evidence.kind == EvidenceKind.PACKING_PHOTO)
-        .order_by(Evidence.created_at.desc())
-    ).first()
+def _last_update(order: Order, case: Case | None, data: _RowData) -> datetime:
+    times = [data.last_at.get(order.id), data.last_at.get(case.id) if case else None]
+    return max((t for t in times if t is not None), default=order.created_at)
+
+
+def _row(order: Order, data: _RowData, s: Session) -> OrderRow:
+    case = data.case.get(order.id)
+    decision = data.decision.get(case.id) if case else None
+    ma = data.money.get(order.id)
+    packing = next(
+        (
+            e
+            for e in reversed(data.proof.evidence.get(order.id, []))
+            if e.kind == EvidenceKind.PACKING_PHOTO
+        ),
+        None,
+    )
     packing_result = packing.ai_result if packing is not None else {}
     open_case = case is not None and case.state in _OPEN_CASE
     stake = order.amount_minor if open_case or order.state in _IN_FLIGHT else 0
-    last = s.scalar(
-        select(AuditLog.at)
-        .where(AuditLog.entity_id.in_([order.id, case.id if case else ""]))
-        .order_by(AuditLog.at.desc())
-        .limit(1)
+    risk_now, risk_reasons = delivery_risk(s, order, data.history.get(order.seller_id))
+    # DE-01: an open PayPal dispute waits for the seller's evidence (PayPal sets a deadline).
+    awaits_evidence = (
+        case is not None
+        and case.state == CaseState.DISPUTE_EVIDENCE.value
+        and case.id not in data.evidence_sent
     )
-    risk_now, risk_reasons = delivery_risk(s, order)
+    report = data.protection.get(order.id)
     return OrderRow(
         order_id=order.id,
         order_ref=order.id[:8].upper(),
@@ -524,7 +636,7 @@ def order_row(s: Session, order: Order) -> OrderRow:
         state=order.state,
         status=_status(order, SELLER_STATUS, SELLER_PAYMENT),
         address_check=order.address_check,
-        evidence=evidence_completeness(s, order),
+        evidence=_evidence_score(order, data.proof),
         case_id=case.id if case else None,
         case_state=case.state if case else None,
         failure_point=decision.failure_point if decision else None,
@@ -538,16 +650,26 @@ def order_row(s: Session, order: Order) -> OrderRow:
             and case.state in (CaseState.AWAITING_SELLER.value, CaseState.HOLD_FOR_REVIEW.value)
         )
         or order.state in (OrderState.PAID.value, OrderState.PACKED.value)
-        or (case is not None and _awaits_evidence(s, case)),
-        last_update=last or order.created_at,
+        or awaits_evidence,
+        last_update=_last_update(order, case, data),
         simulated=is_simulated(order.capture_id),
         packing_verdict=packing_result.get("verdict"),
         packing_message=packing_result.get("message"),
         packing_cleared=bool(packing_result.get("cleared", False)),
         delivery_risk=risk_now,
         risk_reasons=risk_reasons,
-        seller_protection=protection_status(s, order.id),
+        seller_protection=str(report["status"]) if report else None,
     )
+
+
+def order_rows(s: Session, orders: Sequence[Order]) -> list[OrderRow]:
+    """The Control Room rows for a list of orders, in about ten queries for any number of rows."""
+    data = _load_rows(s, orders)
+    return [_row(order, data, s) for order in orders]
+
+
+def order_row(s: Session, order: Order) -> OrderRow:
+    return order_rows(s, [order])[0]
 
 
 # ---------------------------------------------------------------- case page
@@ -703,6 +825,13 @@ def case_view(s: Session, case: Case) -> CaseView:
             explainer_source=explainer.get("source"),
             missing_signals=list(engine.get("missing_signals") or []),
         )
+    actions_rows = list(
+        s.scalars(
+            select(MoneyAction)
+            .where(MoneyAction.case_id == case.id)
+            .order_by(MoneyAction.created_at)
+        )
+    )
     money = [
         MoneyView(
             kind=ma.kind,
@@ -711,17 +840,23 @@ def case_view(s: Session, case: Case) -> CaseView:
             status=money_status(ma),
             refund_id=ma.paypal_refund_id,
         )
-        for ma in s.scalars(
-            select(MoneyAction)
-            .where(MoneyAction.case_id == case.id)
-            .order_by(MoneyAction.created_at)
-        )
+        for ma in actions_rows
     ]
     actions: list[str] = []
     if case.state == CaseState.AWAITING_SELLER.value:
         actions = ["approve", "decline"]
     elif case.state == CaseState.HOLD_FOR_REVIEW.value:
-        actions = ["approve"]
+        # R23: a blocked or failed refund cannot be approved again; a fresh decision can follow.
+        stopped = d is not None and any(
+            m.decision_id == d.id
+            and m.status in (MoneyActionStatus.BLOCKED.value, MoneyActionStatus.FAILED.value)
+            for m in actions_rows
+        )
+        on_its_way = any(m.status == MoneyActionStatus.QUEUED.value for m in actions_rows)
+        if on_its_way:
+            actions = []  # the refund job owns the case until it lands (design review of R23)
+        else:
+            actions = ["re-check"] if stopped else ["approve", "re-check"]
     elif case.state == CaseState.DISPUTE_EVIDENCE.value and not any(
         m.kind == MoneyActionKind.EVIDENCE.value for m in money
     ):

@@ -24,7 +24,7 @@ from app.ai.packing import PackingChecker
 from app.api.deps import AppDeps, Services, ServiceUnavailable
 from app.clock import Clock, SystemClock
 from app.config import Settings
-from app.db import Base, import_all_models, make_engine, make_session_factory
+from app.db import Base, ensure_indexes, import_all_models, make_engine, make_session_factory
 from app.proof.receipts import ReceiptSigner
 from app.security.links import LinkSigner
 
@@ -136,6 +136,10 @@ def _link_secret(environment: str) -> str:
 
 def build_runtime(*, create_tables: bool = True) -> Runtime:
     environment = env("APP_ENV", "development")
+    # Review S1 (R22): development opens /demo/reset and a public signing secret. Render sets
+    # RENDER=true in every service, so a missing or mistyped APP_ENV there stops startup instead.
+    if env("RENDER") and environment != "production":
+        raise ConfigError(f"on Render, set APP_ENV=production (got {environment!r})")
     clock = SystemClock()
     settings = _settings()
     import_all_models()
@@ -143,6 +147,7 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
     engine = make_engine(database_url)
     if create_tables:
         Base.metadata.create_all(engine)  # ADR-024: no migrations in the hackathon build
+        ensure_indexes(engine)  # R30: indexes added after a table was made
     session_factory = make_session_factory(engine)
 
     paypal = None
