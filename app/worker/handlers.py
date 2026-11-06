@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.clock import Clock
 from app.orders.enums import OrderState
-from app.orders.models import Order, Shipment
+from app.orders.models import AuditLog, Order, Shipment
 from app.orders.state import transition_order
 from app.paypal_client.idempotency import request_id_for
 from app.proof.seller_protection import record_seller_protection
@@ -19,6 +19,7 @@ from app.worker.runner import PermanentError
 log = logging.getLogger("doorstep.worker")
 
 CAPTURE_ORDER = "paypal.capture_order"  # payload: {"order_id": <Doorstep order id>}
+CAPTURE_FAILED = "FAILED"  # our marker: the capture call itself failed; nothing was charged
 ADD_TRACKING = "paypal.add_tracking"  # payload: {"shipment_id": <Doorstep shipment id>}
 
 # Doorstep/Shippo carrier token -> PayPal ShipmentCarrier member (paypal-plan.md).
@@ -74,7 +75,24 @@ class CaptureOrderHandler:
             transition_order(session, order, OrderState.PAID, actor="worker", reason="captured")
 
     def on_failed(self, session: Session, job: Job, error: Exception) -> None:
+        """No money was taken: say so on the order, so neither side waits for a capture that will
+        never come (the buyer page and the Control Room read capture_status)."""
         log.error("capture job %s failed for order %s: %s", job.id, job.payload, error)
+        order = session.get(Order, job.payload.get("order_id"))
+        if order is None or order.capture_status == "COMPLETED":
+            return
+        order.capture_status = CAPTURE_FAILED
+        session.add(
+            AuditLog(
+                actor="worker",
+                action="checkout.capture_failed",
+                entity_type="order",
+                entity_id=order.id,
+                before={"capture_status": None},
+                after={"capture_status": CAPTURE_FAILED, "error": type(error).__name__},
+                at=self.clock.now(),
+            )
+        )
 
 
 class AddTrackingHandler:

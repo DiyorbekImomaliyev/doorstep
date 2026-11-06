@@ -67,6 +67,25 @@ BUYER_STATUS = {
     "CASE_OPEN": "We're sorting it out",
     "RESOLVED": "Resolved",
 }
+# A capture that did not complete leaves the order CREATED; these words say why (PP-03).
+BUYER_PAYMENT = {
+    "FAILED": "Payment didn't go through",
+    "DECLINED": "Payment didn't go through",
+    "PENDING": "Payment processing",
+}
+SELLER_PAYMENT = {
+    "FAILED": "Payment failed",
+    "DECLINED": "Payment declined",
+    "PENDING": "Payment pending at PayPal",
+}
+
+
+def _status(order: Order, words: dict[str, str], payment: dict[str, str]) -> str:
+    if order.state == OrderState.CREATED.value and order.capture_status in payment:
+        return payment[order.capture_status]
+    return words.get(order.state, order.state)
+
+
 SELLER_STATUS = {
     **BUYER_STATUS,
     "PAID": "Paid, ready to pack",
@@ -304,6 +323,7 @@ class BuyerView(BaseModel):
     currency: str
     status: str
     state: str
+    capture_status: str | None = None
     method: str | None
     tracking_number: str | None
     carrier: str | None
@@ -357,7 +377,8 @@ def buyer_view(s: Session, order: Order) -> BuyerView:
         item=order.item_description,
         amount_minor=order.amount_minor,
         currency=order.currency,
-        status=BUYER_STATUS.get(order.state, order.state),
+        status=_status(order, BUYER_STATUS, BUYER_PAYMENT),
+        capture_status=order.capture_status,
         state=order.state,
         progress_state=progress_state(s, order),
         method=order.shipping_method,
@@ -499,7 +520,7 @@ def order_row(s: Session, order: Order) -> OrderRow:
         recommended_method=order.recommended_method,
         risk=order.risk_score,
         state=order.state,
-        status=SELLER_STATUS.get(order.state, order.state),
+        status=_status(order, SELLER_STATUS, SELLER_PAYMENT),
         address_check=order.address_check,
         evidence=evidence_completeness(s, order),
         case_id=case.id if case else None,

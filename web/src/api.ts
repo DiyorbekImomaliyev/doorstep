@@ -11,6 +11,8 @@ export type BuyerView = {
   currency: string;
   status: string;
   state: string;
+  /** Set when a capture did not complete: FAILED (our call failed), DECLINED or PENDING. */
+  capture_status?: string | null;
   method: string | null;
   tracking_number: string | null;
   carrier: string | null;

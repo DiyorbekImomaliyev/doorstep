@@ -24,6 +24,12 @@ function heroFor(v: BuyerView): Hero {
   if (v.state === "EXCEPTION") return { icon: <TriangleAlert />, tone: "warn", title: "The courier couldn't deliver", text: "Choose what happens next." };
   if (v.state === "CONFIRMED") return { icon: <CircleCheck />, tone: "good", title: "Received", text: "Thanks for confirming." };
   if (v.state === "DELIVERED" || v.state === "PICKED_UP") return { icon: <House />, tone: "accent", title: v.status, text: "Do you have it? One tap tells the seller." };
+  if (v.state === "CREATED" && (v.capture_status === "FAILED" || v.capture_status === "DECLINED")) {
+    return { icon: <TriangleAlert />, tone: "warn", title: "Payment didn't go through", text: "Nothing was charged. You can order again from the shop." };
+  }
+  if (v.state === "CREATED" && v.capture_status === "PENDING") {
+    return { icon: <MapPin />, tone: "", title: "Payment processing", text: "PayPal is still processing your payment. This page updates when it completes." };
+  }
   if (v.state === "CREATED") return { icon: <MapPin />, tone: "", title: "Checking your address", text: "We check the address before you're charged." };
   return { icon: <Truck />, tone: "", title: v.status, text: v.tracking_number ? `Tracking ${v.tracking_number}` : "This page updates as it moves." };
 }
