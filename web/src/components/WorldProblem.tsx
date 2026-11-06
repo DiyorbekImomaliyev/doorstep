@@ -61,7 +61,7 @@ const REGIONS: Region[] = [
   },
 ];
 
-const CYCLE = 5200;
+const CYCLE = 3800;
 
 /* One path per dot class: "M x y h0" with round caps draws a dot, so ~3,900 dots are 4 elements. */
 function decode(): Record<"l" | "u" | "e" | "s", string> {
@@ -117,8 +117,16 @@ export default function WorldProblem() {
 
   return (
     <div className="wp" ref={ref}>
-      <div className="wp-map" aria-hidden>
-        <svg viewBox={`0 0 ${W} ${H}`} data-r={r.key} preserveAspectRatio="xMidYMid meet">
+      <div className="wp-map">
+        <div className="seg wp-tabs" role="tablist" aria-label="Region">
+          {REGIONS.map((g, n) => (
+            <button key={g.key} role="tab" aria-selected={n === i} onClick={() => { setI(n); setAuto(false); }}>
+              {g.tab}
+              {n === i && auto && seen && <i key={i} className="seg-time" style={{ animationDuration: `${CYCLE}ms` }} aria-hidden />}
+            </button>
+          ))}
+        </div>
+        <svg aria-hidden viewBox={`0 0 ${W} ${H}`} data-r={r.key} preserveAspectRatio="xMidYMid meet">
           <g className="wp-zoom" style={{ transform: zoom }}>
             <Dots />
             {pins.map((p) => (
@@ -134,13 +142,9 @@ export default function WorldProblem() {
       </div>
 
       <div className="wp-side">
-        <div className="seg" role="tablist" aria-label="Region">
-          {REGIONS.map((g, n) => (
-            <button key={g.key} role="tab" aria-selected={n === i} onClick={() => { setI(n); setAuto(false); }}>
-              {g.tab}
-              {n === i && auto && seen && <i key={i} className="seg-time" style={{ animationDuration: `${CYCLE}ms` }} aria-hidden />}
-            </button>
-          ))}
+        <div className="wp-head">
+          <span className="kicker">The problem</span>
+          <h2>Parcels go missing everywhere.</h2>
         </div>
         <div className="wp-body" role="tabpanel" aria-label={r.tab} key={r.key}>
           <div className="wp-figs">
@@ -154,13 +158,15 @@ export default function WorldProblem() {
           </div>
           <div className="wp-law">
             <span className="wp-law-icon" aria-hidden><Scale /></span>
-            <div className="col" style={{ gap: 3, minWidth: 0 }}>
+            <div className="col" style={{ gap: 4, minWidth: 0, flex: 1 }}>
               <b>{r.law}</b>
-              {r.lawHref
-                ? <a className="stat-src" href={r.lawHref} target="_blank" rel="noreferrer">{r.lawSource}</a>
-                : <span className="stat-src">{r.lawSource}</span>}
+              <span className="wp-law-src">
+                {r.lawHref
+                  ? <a className="stat-src" href={r.lawHref} target="_blank" rel="noreferrer">{r.lawSource}</a>
+                  : <span className="stat-src">{r.lawSource}</span>}
+                {r.rule && <code className="wp-rule">{r.rule}</code>}
+              </span>
             </div>
-            {r.rule && <code className="wp-rule">{r.rule}</code>}
           </div>
         </div>
       </div>

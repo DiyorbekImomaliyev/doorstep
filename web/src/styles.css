@@ -697,3 +697,92 @@ svg[data-r="uk"] .dots.r-uk, svg[data-r="eu"] .dots.r-eu, svg[data-r="us"] .dots
 .trace code { font: 500 12.5px var(--mono, ui-monospace, monospace); color: #f4ece8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: fade-up .35s var(--ease); }
 @media (max-width: 700px) { .trace { flex-wrap: wrap; } .trace code { white-space: normal; } }
 @media (prefers-reduced-motion: reduce) { .flow2d, .awning, .person, .pin-pulse, .trace-k i { animation: none !important; } .wp-zoom, .pin { transition: none; } }
+
+/* ===== v3: compact, faster ===== */
+.section { padding: 44px 24px; }
+.hero { max-width: 1100px; padding: 56px 24px 28px; gap: 18px; }
+.hero h1 { max-width: 1060px; font-size: clamp(34px, 4.7vw, 56px); }
+.hero .lede { max-width: 780px; }
+.world { transition: transform .9s var(--ease), opacity .5s ease; }
+.stage-wrap:not(.pre) .awning { animation: awning .6s .45s var(--ease) both; }
+.flow2d { animation-duration: 1s; animation-delay: .12s; }
+.parcel { transition: transform .75s var(--ease), opacity .45s; }
+.coin { transition: transform .9s var(--ease), opacity .4s; }
+.wp-zoom, .pin { transition-duration: .8s; }
+
+/* problem: one self-contained card */
+.wp-map { flex-direction: column; align-items: stretch; justify-content: center; gap: 10px; padding: 16px 20px 18px; min-height: 0; }
+.wp-tabs { align-self: flex-start; }
+.wp-side { gap: 18px; padding: 24px 26px; justify-content: center; }
+.wp-head { display: flex; flex-direction: column; gap: 6px; }
+.wp-head .kicker { font-size: 13px; font-weight: 600; color: var(--accent); }
+.wp-head h2 { font-family: var(--serif); font-size: clamp(24px, 2.4vw, 30px); font-weight: 450; letter-spacing: -0.02em; line-height: 1.12; }
+.wp-body { gap: 16px; }
+.wp-fig .stat-value { font-size: 32px; }
+.wp-law { padding: 12px 14px; }
+
+/* how it works: a horizontal stepper over a full-width stage */
+.journey { display: block; }
+.jbar { display: flex; align-items: flex-end; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.jtrack { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.jtrack::-webkit-scrollbar { display: none; }
+.jgroup { display: flex; flex-direction: column; gap: 6px; padding: 0 10px; border-left: 1px solid var(--line); }
+.jgroup:first-child { border-left: 0; padding-left: 0; }
+.jgroup .jstage { padding: 0 2px; font-size: 10.5px; }
+.jchips { display: flex; gap: 4px; }
+.jchip { position: relative; appearance: none; border: 1px solid transparent; background: transparent; font: inherit; color: var(--text-2); display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px 8px 7px; border-radius: 9px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
+.jchip:hover { background: var(--surface-2); }
+.jchip .n { width: 24px; height: 24px; border-radius: 7px; background: var(--surface-2); color: var(--text-3); display: grid; place-items: center; transition: background .2s, color .2s; }
+.jchip .n svg { width: 14px; height: 14px; }
+.jchip .t { font-size: 13px; font-weight: 600; }
+.jchip[aria-current="step"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.jchip[aria-current="step"] .n { background: var(--accent); color: #fff; }
+.jchip .progress-line { position: absolute; left: 9px; right: 9px; bottom: 3px; height: 2px; border-radius: 2px; background: rgba(123, 45, 61, .14); overflow: hidden; }
+.jchip .progress-line i { display: block; height: 100%; width: 0; background: var(--accent); animation: fill var(--dur, 3000ms) linear forwards; }
+.jchip .progress-line.paused i { animation-play-state: paused; }
+.jplay { flex: none; width: 36px; height: 36px; padding: 0; justify-content: center; }
+.journey .stage-wrap { min-height: 430px; }
+.readout { width: 300px; gap: 6px; }
+.readout .r-step { font-size: 11.5px; color: var(--text-3); font-weight: 600; letter-spacing: .02em; }
+.readout .r-head { font-size: 15px; font-weight: 600; color: var(--text); }
+.readout .r-text { font-size: 13px; color: var(--text-2); }
+.readout .r-sep { height: 1px; background: var(--line); margin: 4px 0 2px; }
+
+/* demo: previews carry the live links */
+.demo .previews { padding: 20px 24px 22px; gap: 14px; }
+.demo .preview { box-shadow: none; }
+.demo .pv-shot { border-bottom: 1px solid var(--line); border-radius: 12px; margin-bottom: 0; }
+.mock-note { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--accent); }
+.pv-go { padding: 12px 20px 16px; margin-top: auto; }
+.go { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.go svg { width: 15px; height: 15px; }
+.go .go-arrow { width: 14px; height: 14px; transition: transform .15s; }
+a.go:hover { text-decoration: none; }
+a.go:hover .go-arrow { transform: translateX(3px); }
+.go.locked { color: var(--text-3); cursor: not-allowed; }
+.demo-path .more { margin-left: auto; display: inline-flex; gap: 18px; flex-wrap: wrap; }
+.demo-path .more .go { font-size: 13px; }
+.demo + .truth { margin-top: 14px; }
+.truth > div { padding: 14px 20px; }
+.truth h3 { margin-bottom: 8px; }
+
+/* architecture: tighter */
+.system { padding: 22px; }
+.trace { margin-top: 14px; }
+.ai-band { margin-top: 12px; }
+@media (max-width: 760px) {
+  .jbar { padding: 10px 12px; }
+  .journey .stage-wrap { min-height: 360px; }
+  .demo-path .more { margin-left: 0; }
+}
+.hero .lede { max-width: 860px; }
+.wp-law { flex-wrap: nowrap; }
+.wp-law-src { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wp-rule { margin-left: 0; }
+.jtrack { position: relative; }
+@media (min-width: 900px) { .journey .stage-scale { left: calc(50% + 80px); } }
+@media (max-width: 640px) {
+  .journey .stage-wrap { min-height: 0; padding: 236px 12px 12px; }
+  .journey .stage-scale { top: 118px; }
+  .journey .readout { position: relative; left: auto; right: auto; top: auto; bottom: auto; width: auto; }
+}
