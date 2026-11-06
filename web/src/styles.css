@@ -636,3 +636,64 @@ a.demo-item:hover .di-go svg { transform: translateX(3px); }
   opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; z-index: 30; white-space: normal;
 }
 .hint:hover::after, .hint:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---- The problem: dotted world map that zooms to a region ---- */
+.wp { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow); }
+.wp-map { position: relative; padding: 22px; background: radial-gradient(120% 100% at 50% 40%, #fff 0%, var(--bg) 70%, var(--bg-2) 100%); border-right: 1px solid var(--line); display: flex; align-items: center; min-height: 300px; overflow: hidden; }
+.wp-map svg { width: 100%; height: auto; display: block; overflow: hidden; }
+.wp-zoom { transition: transform 1.1s var(--ease); transform-origin: 0 0; }
+.dots { fill: none; stroke-linecap: round; stroke-width: .62; transition: stroke .6s; }
+.dots.land { stroke: #ddd3ca; }
+.dots.r-uk, .dots.r-eu, .dots.r-us { stroke: #cdbfb3; }
+svg[data-r="world"] .dots.r-uk, svg[data-r="world"] .dots.r-eu, svg[data-r="world"] .dots.r-us { stroke: #b9707f; }
+svg[data-r="uk"] .dots.r-uk, svg[data-r="eu"] .dots.r-eu, svg[data-r="us"] .dots.r-us { stroke: var(--accent); }
+.pin { transition: transform 1.1s var(--ease); }
+.pin-dot { fill: var(--accent); stroke: #fff; stroke-width: .45; }
+.pin-pulse { fill: var(--accent); opacity: 0; transform-box: fill-box; transform-origin: center; animation: pin-pulse 2.4s ease-out infinite; }
+@keyframes pin-pulse { 0% { transform: scale(.4); opacity: .45; } 100% { transform: scale(2.2); opacity: 0; } }
+.wp-side { padding: 22px 24px; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.seg { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
+.seg button { position: relative; overflow: hidden; appearance: none; border: 0; background: transparent; font: 600 13px/1 var(--font); color: var(--text-2); padding: 8px 14px; border-radius: 7px; cursor: pointer; }
+.seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(40, 25, 20, .08), 0 0 0 1px var(--line); }
+.seg-time { position: absolute; left: 8px; right: 8px; bottom: 2px; height: 2px; border-radius: 2px; background: var(--accent); transform-origin: 0 50%; animation: seg-time linear forwards; opacity: .55; }
+@keyframes seg-time { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.wp-body { display: flex; flex-direction: column; gap: 22px; animation: fade-up .45s var(--ease); }
+@keyframes fade-up { from { transform: translateY(6px); opacity: 0; } }
+.wp-figs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.wp-fig { display: flex; flex-direction: column; gap: 6px; }
+.wp-fig .stat-value { font-size: 36px; }
+.wp-law { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent-line); flex-wrap: wrap; }
+.wp-law b { font-size: 14px; color: var(--text); }
+.wp-law-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; display: grid; place-items: center; flex: none; }
+.wp-law-icon svg { width: 16px; height: 16px; }
+.wp-rule { margin-left: auto; align-self: center; font: 500 11.5px var(--mono, ui-monospace, monospace); color: var(--accent); background: #fff; border: 1px solid var(--accent-line); border-radius: 6px; padding: 3px 7px; }
+@media (max-width: 900px) { .wp { grid-template-columns: 1fr; } .wp-map { border-right: 0; border-bottom: 1px solid var(--line); min-height: 0; padding: 14px; } }
+@media (max-width: 520px) { .wp-figs { grid-template-columns: 1fr; } .wp-side { padding: 18px 16px; } }
+
+/* ---- Journey: stages, people, money that moves, the shop opening ---- */
+.jstage { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); padding: 10px 14px 2px; }
+.jstage:first-child { padding-top: 2px; }
+.jstep { padding: 9px 12px 9px 14px; }
+.person { display: block; overflow: visible; filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .7)); }
+.person.cheer, .person.phone { animation: bob 1.1s ease-in-out infinite alternate; }
+@keyframes bob { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+.flow2d { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; animation: flow3d 1.7s var(--ease) .35s both; }
+.flow2d > .tag3d { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; box-shadow: 0 6px 18px rgba(123, 45, 61, .28); }
+@keyframes flow3d { 0% { transform: var(--from); opacity: 0; } 14% { opacity: 1; } 100% { transform: var(--to); opacity: 1; } }
+.tag3d.accent svg { color: #fff; }
+.awning { transform-origin: 50% 0; }
+.stage-wrap:not(.pre) .awning { animation: awning 1s .9s var(--ease) both; }
+@keyframes awning { from { transform: translateZ(50px) rotateX(88deg); } to { transform: translateZ(50px) rotateX(0deg); } }
+
+/* ---- Inside: one report traced through the pipeline ---- */
+.trace { display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 10px 14px; border-radius: 10px; background: #221c1a; color: #efe7e2; font-size: 13px; min-height: 42px; overflow: hidden; }
+.trace-k { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #fff; white-space: nowrap; }
+.trace-k i { width: 7px; height: 7px; border-radius: 50%; background: #e0727f; box-shadow: 0 0 0 3px rgba(224, 114, 127, .25); animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.trace-steps { display: inline-flex; gap: 4px; }
+.trace-steps b { width: 16px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .18); transition: background .3s; }
+.trace-steps b.done { background: rgba(224, 114, 127, .55); }
+.trace-steps b.on { background: #e0727f; }
+.trace code { font: 500 12.5px var(--mono, ui-monospace, monospace); color: #f4ece8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: fade-up .35s var(--ease); }
+@media (max-width: 700px) { .trace { flex-wrap: wrap; } .trace code { white-space: normal; } }
+@media (prefers-reduced-motion: reduce) { .flow2d, .awning, .person, .pin-pulse, .trace-k i { animation: none !important; } .wp-zoom, .pin { transition: none; } }

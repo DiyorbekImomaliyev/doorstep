@@ -7,13 +7,7 @@ import { api, type SeedOut } from "../api";
 import { Brand, ErrorBox, useAsync } from "../components/ui";
 import Journey3D from "../components/Journey3D";
 import SystemDiagram from "../components/SystemDiagram";
-
-/* Sourced figures (SPEC section 2). */
-const STATS = [
-  { value: "15M", label: "UK shoppers had a problem with their last delivery", source: "Citizens Advice, 2025", href: "https://www.hellorayo.co.uk/greatest-hits/south-coast/news/record-high-parcel-problems" },
-  { value: "29.7%", label: "of US households had a parcel stolen in 2025", source: "Omnisend", href: "https://www.omnisend.com/porch-pirates/" },
-  { value: "s.29", label: "UK law: the seller's risk until the buyer holds it", source: "Consumer Rights Act 2015", href: "https://www.legislation.gov.uk/ukpga/2015/15/section/29" },
-];
+import WorldProblem from "../components/WorldProblem";
 
 const REAL = ["PayPal orders, refunds, disputes, webhooks", "Shippo courier tracking", "Rules, policy service, signed receipts"];
 
@@ -29,6 +23,7 @@ const SIMULATED: Record<string, string> = {
 
 const NAV = (
   <nav aria-label="Sections">
+    <a href="#problem">Problem</a>
     <a href="#how">How it works</a>
     <a href="#product">Product</a>
     <a href="#inside">Architecture</a>
@@ -61,17 +56,16 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="stats" aria-label="The problem">
-        {STATS.map((s) => (
-          <div key={s.value} className="stat">
-            <span className="stat-value">{s.value}</span>
-            <span className="stat-label">{s.label}</span>
-            <a className="stat-src" href={s.href} target="_blank" rel="noreferrer">{s.source}</a>
-          </div>
-        ))}
+      <section className="section" id="problem" style={{ paddingTop: 16 }}>
+        <div className="section-head">
+          <span className="kicker">The problem</span>
+          <h2>Parcels go missing everywhere.</h2>
+          <p>Who pays depends on where the buyer lives.</p>
+        </div>
+        <WorldProblem />
       </section>
 
-      <section className="section" id="how" style={{ paddingTop: 24 }}>
+      <section className="section" id="how">
         <div className="section-head">
           <span className="kicker">How it works</span>
           <h2>One parcel, start to finish</h2>

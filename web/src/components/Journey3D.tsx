@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Banknote, CircleCheck, CircleX, CreditCard, House, Landmark, Pause, Play, QrCode, Scale, ScanLine,
   Smartphone, Store, Truck,
@@ -7,16 +7,16 @@ import {
 /* How Doorstep works, as one parcel's journey in an isometric world (CSS 3D, no library).
    The step list is the accessible content; the stage is decoration (aria-hidden). */
 
-type Step = { title: string; text: string; icon: ReactNode };
+type Step = { stage: "Prevent" | "Prove" | "Resolve" | "Recover"; title: string; text: string; icon: ReactNode };
 
 const STEPS: Step[] = [
-  { title: "Pays with PayPal", text: "Address checked before he's charged.", icon: <CreditCard /> },
-  { title: "Packed with a seal", text: "A QR inside the box proves who opened it.", icon: <QrCode /> },
-  { title: "Shipped and tracked", text: "Tracking goes on the PayPal payment.", icon: <Truck /> },
-  { title: "“Delivered”, but not here", text: "Wrong street. Sam taps Not here.", icon: <ScanLine /> },
-  { title: "Doorstep checks the facts", text: "Courier data, the seal and the law.", icon: <Scale /> },
-  { title: "Refunded through PayPal", text: "Sam gets £60 back. Maria taps once.", icon: <Banknote /> },
-  { title: "The courier pays it back", text: "A checked claim. Maria loses nothing.", icon: <Landmark /> },
+  { stage: "Prevent", title: "Pays with PayPal", text: "Address checked before he's charged.", icon: <CreditCard /> },
+  { stage: "Prove", title: "Packed with a seal", text: "A QR inside the box proves who opened it.", icon: <QrCode /> },
+  { stage: "Prove", title: "Shipped and tracked", text: "Tracking goes on the PayPal payment.", icon: <Truck /> },
+  { stage: "Resolve", title: "“Delivered”, but not here", text: "Wrong street. Sam taps Not here.", icon: <ScanLine /> },
+  { stage: "Resolve", title: "Doorstep checks the facts", text: "Courier data, the seal and the law.", icon: <Scale /> },
+  { stage: "Resolve", title: "Refunded through PayPal", text: "Sam gets £60 back. Maria taps once.", icon: <Banknote /> },
+  { stage: "Recover", title: "The courier pays it back", text: "A checked claim. Maria loses nothing.", icon: <Landmark /> },
 ];
 
 const DURATION = 4200;
@@ -88,17 +88,61 @@ function Tag({ x, y, z, children, tone = "", show = true, style }: { x: number; 
   );
 }
 
-/* A person: head and shoulders, standing on the floor and always facing the viewer. */
-function Person({ x, y, color, label }: { x: number; y: number; color: string; label: string }) {
+/* A person as a rounded pictogram, standing on the floor and always facing the viewer. */
+type Pose = "stand" | "phone" | "cheer";
+const ARMS: Record<Pose, string> = {
+  stand: "M12 16 L6.5 26 M12 16 L17.5 26",
+  phone: "M12 16 L6.5 26 M12 16 L19 21 L19.5 14",
+  cheer: "M12 16 L5 7.5 M12 16 L19 7.5",
+};
+
+function Person({ x, y, color, pose = "stand" }: { x: number; y: number; color: string; pose?: Pose }) {
   return (
     <>
       <div className="fig-shadow" style={{ left: x - 13, top: y - 7 }} />
-      <div className="billboard" style={{ left: x, top: y }} aria-label={label}>
-        <div className="bb-inner"><span className="fig" style={{ ["--c" as string]: color } as CSSProperties}><i className="head" /><i className="body" /></span></div>
+      <div className="billboard" style={{ left: x, top: y }}>
+        <div className="bb-inner">
+          <svg className={`person ${pose}`} viewBox="0 0 24 44" width="24" height="44" style={{ color }}>
+            <circle cx="12" cy="6" r="5" fill="currentColor" />
+            <path d={`M12 13 L12 28 M12 28 L7.5 41 M12 28 L16.5 41 ${ARMS[pose]}`} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            {pose === "phone" && <rect x="17.5" y="7" width="5" height="8.5" rx="1.3" fill="#1f1a18" stroke="#fff" strokeWidth=".8" />}
+          </svg>
+        </div>
       </div>
     </>
   );
 }
+
+/* Money moving between people. It is drawn on a flat layer above the world (never hidden behind
+   a building), at the screen point of a world point: .world is rotateX(58deg) rotateZ(-34deg)
+   around (400, 268), orthographic. */
+type P3 = [number, number, number];
+const COS_Z = Math.cos(-34 * Math.PI / 180), SIN_Z = Math.sin(-34 * Math.PI / 180);
+const COS_X = Math.cos(58 * Math.PI / 180), SIN_X = Math.sin(58 * Math.PI / 180);
+function screen([x, y, z]: P3): string {
+  const sx = x * COS_Z - y * SIN_Z;
+  const sy = (x * SIN_Z + y * COS_Z) * COS_X - z * SIN_X;
+  return `translate(${(400 + sx).toFixed(1)}px, ${(268 + sy).toFixed(1)}px)`;
+}
+
+function Flow({ from, to, children }: { from: P3; to: P3; children: ReactNode }) {
+  return (
+    <div className="flow2d" style={{ ["--from" as string]: screen(from), ["--to" as string]: screen(to) } as CSSProperties}>
+      <span className="tag3d accent">{children}</span>
+    </div>
+  );
+}
+
+function Flows({ step }: { step: number }) {
+  if (step === 0) return <Flow key="pay" from={AT_SAM} to={AT_SHOP}><CreditCard />£60 via PayPal</Flow>;
+  if (step === 5) return <Flow key="refund" from={AT_SHOP} to={AT_SAM}><Banknote />£60 back to Sam</Flow>;
+  if (step === 6) return <Flow key="recover" from={AT_E8} to={[-112, 76, 18]}><Landmark />Royal Mail pays £60</Flow>;
+  return null;
+}
+
+const AT_SAM: P3 = [150, 14, 64];
+const AT_SHOP: P3 = [-206, 34, 66];
+const AT_E8: P3 = [250, 52, 40];
 
 /* Door drawn on a front face (front faces are flipped: local y grows upward). */
 function Door({ left, w = 16, h = 30, color = "#7b2d3d" }: { left: number; w?: number; h?: number; color?: string }) {
@@ -129,6 +173,8 @@ function Scene({ step }: { step: number }) {
     { x: 238, y: 16, z: 0, o: 1 },
     { x: 238, y: 16, z: 0, o: 1 },
   ][step];
+  const sam: Pose = step === 0 || step === 3 || step === 4 ? "phone" : step >= 5 ? "cheer" : "stand";
+  const maria: Pose = step === 5 ? "phone" : step === 6 ? "cheer" : "stand";
   const parcelStyle: CSSProperties = { transform: `translate3d(${parcel.x}px, ${parcel.y}px, ${parcel.z}px)`, opacity: parcel.o, left: 0, top: 0 };
   const sealed = step >= 1;
 
@@ -142,9 +188,9 @@ function Scene({ step }: { step: number }) {
         frontChildren={<><Door left={44} /><Windows count={2} left={10} bottom={40} gap={64} /></>}>
         <div style={{ position: "absolute", inset: 10, borderRadius: 4, background: "#f3eee9" }} />
       </Box>
-      <Box x={-304} y={12} w={112} d={10} h={9} top="#a24c5e" front="#7b2d3d" side="#64222f" style={{ transform: "translateZ(50px)" }} />
+      <Box x={-304} y={12} w={112} d={10} h={9} top="#a24c5e" front="#7b2d3d" side="#64222f" className="awning" style={{ transform: "translateZ(50px)" }} />
       <Tag x={-248} y={-30} z={96}><Store />Maria's shop</Tag>
-      <Person x={-206} y={34} color="#4a403c" label="Maria" />
+      <Person x={-206} y={34} color="#4a403c" pose={maria} />
 
       {/* courier van (moves) */}
       <div className="obj parcel" style={{ left: 0, top: 0, transform: `translate3d(${vanX}px, 0px, 0px)`, opacity: step >= 3 ? 0 : 1 }}>
@@ -160,8 +206,7 @@ function Scene({ step }: { step: number }) {
         frontChildren={<><Door left={38} /><Windows count={2} left={10} bottom={44} gap={60} /></>} />
       <Tag x={104} y={-54} z={98}><House />Sam <span className="sub">N1</span></Tag>
       <div className="ghost-box" style={{ left: 92, top: 18, width: 30, height: 30, opacity: step >= 3 ? 1 : 0 }} />
-      <Person x={150} y={14} color="#7b2d3d" label="Sam" />
-      <Tag x={150} y={14} z={64} show={step === 0}><CreditCard />Pays £60</Tag>
+      <Person x={150} y={14} color="#7b2d3d" pose={sam} />
       <Tag x={150} y={14} z={64} tone="accent" show={step === 3 || step === 4}><Smartphone />Not here</Tag>
 
       {/* another street, E8 */}
@@ -179,14 +224,7 @@ function Scene({ step }: { step: number }) {
       </Box>
       <Tag x={-170} y={44} z={34} show={step === 1}><QrCode />Seal inside</Tag>
 
-      {/* settlement */}
-      <Tag x={150} y={14} z={step === 5 ? 64 : 44} tone="accent" show={step === 5}><Banknote />Refunded £60</Tag>
-      <div className="billboard coin" style={{
-        left: 0, top: 0, opacity: step === 6 ? 1 : 0,
-        transform: step === 6 ? "translate3d(-112px, 76px, 18px)" : "translate3d(250px, 52px, 40px)",
-      }}>
-        <div className="bb-inner"><span className="tag3d accent"><Landmark />Royal Mail pays £60</span></div>
-      </div>
+
     </div>
   );
 }
@@ -210,10 +248,10 @@ export default function Journey3D() {
   }, []);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !seen) return;
     const t = setTimeout(() => setStep((s) => (s + 1) % STEPS.length), DURATION);
     return () => clearTimeout(t);
-  }, [playing, step, cycle]);
+  }, [playing, seen, step, cycle]);
 
   useEffect(() => {
     const el = wrap.current;
@@ -233,7 +271,9 @@ export default function Journey3D() {
     <div className="journey">
       <div className="journey-steps" role="list" aria-label="How Doorstep works">
         {STEPS.map((s, i) => (
-          <button key={s.title} role="listitem" className="jstep" aria-current={i === step ? "step" : undefined} onClick={() => pick(i)}>
+          <Fragment key={s.title}>
+          {(i === 0 || STEPS[i - 1].stage !== s.stage) && <span className="jstage" aria-hidden>{s.stage}</span>}
+          <button role="listitem" className="jstep" aria-current={i === step ? "step" : undefined} onClick={() => pick(i)}>
             <span className="n" aria-hidden>{s.icon}</span>
             <span>
               <span className="t">{s.title}</span>
@@ -245,6 +285,7 @@ export default function Journey3D() {
               </span>
             )}
           </button>
+          </Fragment>
         ))}
         <div className="journey-controls">
           <span className="faint num">Step {step + 1} of {STEPS.length}</span>
@@ -256,6 +297,7 @@ export default function Journey3D() {
       <div className={`stage-wrap ${seen ? "" : "pre"}`} ref={wrap} aria-hidden>
         <div className="stage-scale" style={{ ["--s" as string]: scale } as CSSProperties}>
           <Scene step={step} />
+          {seen && <Flows step={step} />}
         </div>
         <div className="readout" key={step}>
           <span className="r-title">{r.icon}{r.title}</span>

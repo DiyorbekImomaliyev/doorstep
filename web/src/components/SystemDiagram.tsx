@@ -31,11 +31,20 @@ const COLUMNS: Column[] = [
   ] },
 ];
 
+/* One report followed through the columns above, in step with the lit column. */
+const TRACE = [
+  "Sam taps “Not here” on his £60 order",
+  "Stored once, then queued as a job",
+  "Lost by carrier · uk_possession_v1 → the seller's risk",
+  "£60 is over the £50 auto-refund limit → Maria approves",
+  "PayPal refund sent · receipt signed · claim pack ready",
+];
+
 export default function SystemDiagram() {
   const [lit, setLit] = useState(0);
   useEffect(() => {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const t = setInterval(() => setLit((l) => (l + 1) % COLUMNS.length), 1600);
+    const t = setInterval(() => setLit((l) => (l + 1) % COLUMNS.length), 2600);
     return () => clearInterval(t);
   }, []);
 
@@ -58,6 +67,11 @@ export default function SystemDiagram() {
             </div>
           </FlowCell>
         ))}
+      </div>
+      <div className="trace" aria-hidden>
+        <span className="trace-k"><i />Live trace</span>
+        <span className="trace-steps">{COLUMNS.map((c, i) => <b key={c.label} className={i === lit ? "on" : i < lit ? "done" : ""} />)}</span>
+        <code key={lit}>{TRACE[lit]}</code>
       </div>
       <div className="ai-band">
         <span className="ni" aria-hidden><Bot /></span>
