@@ -652,9 +652,9 @@ svg[data-r="uk"] .dots.r-uk, svg[data-r="eu"] .dots.r-eu, svg[data-r="us"] .dots
 .pin-pulse { fill: var(--accent); opacity: 0; transform-box: fill-box; transform-origin: center; animation: pin-pulse 2.4s ease-out infinite; }
 @keyframes pin-pulse { 0% { transform: scale(.4); opacity: .45; } 100% { transform: scale(2.2); opacity: 0; } }
 .wp-side { padding: 22px 24px; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
-.seg { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
-.seg button { position: relative; overflow: hidden; appearance: none; border: 0; background: transparent; font: 600 13px/1 var(--font); color: var(--text-2); padding: 8px 14px; border-radius: 7px; cursor: pointer; }
-.seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(40, 25, 20, .08), 0 0 0 1px var(--line); }
+.region-tabs { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
+.region-tabs button { position: relative; overflow: hidden; appearance: none; border: 0; background: transparent; font: 600 13px/1 var(--font); color: var(--text-2); padding: 8px 14px; border-radius: 7px; cursor: pointer; }
+.region-tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(40, 25, 20, .08), 0 0 0 1px var(--line); }
 .seg-time { position: absolute; left: 8px; right: 8px; bottom: 2px; height: 2px; border-radius: 2px; background: var(--accent); transform-origin: 0 50%; animation: seg-time linear forwards; opacity: .55; }
 @keyframes seg-time { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .wp-body { display: flex; flex-direction: column; gap: 22px; animation: fade-up .45s var(--ease); }
@@ -752,3 +752,16 @@ button.kpi { appearance: none; font: inherit; color: inherit; text-align: left; 
 button.kpi:hover { border-color: var(--accent-line); box-shadow: 0 4px 14px rgba(60, 30, 30, .06); }
 button.kpi[aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--accent); }
 button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent), 0 4px 14px rgba(60, 30, 30, .06); }
+
+/* Checkout: risk note and order summary */
+.risk-note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-2); margin: 0; }
+.risk-note svg { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--accent); }
+.risk-note b { color: var(--text); font-variant-numeric: tabular-nums; }
+.summary { gap: 10px; }
+.sum-line { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; color: var(--text-2); }
+.sum-line.total { border-top: 1px solid var(--line); padding-top: 12px; color: var(--text); font-weight: 600; font-size: 15px; }
+
+/* Receipt check: a visible chain from each receipt to the next */
+.chain li { position: relative; align-items: center; }
+.chain li:not(:last-child)::after { content: ""; position: absolute; left: 22px; top: calc(50% + 12px); height: calc(100% - 24px); width: 2px; border-radius: 2px; background: rgba(47, 107, 79, .28); z-index: 1; }
+.chain .hash { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

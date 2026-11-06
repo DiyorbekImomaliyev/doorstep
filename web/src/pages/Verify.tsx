@@ -2,6 +2,11 @@ import { CircleCheck, CircleX, FileCheck2, Info } from "lucide-react";
 import { api } from "../api";
 import { Badge, Brand, ErrorBox, Loading, useAsync } from "../components/ui";
 
+const KIND: Record<string, string> = {
+  decision: "Decision", approval: "Approval", settlement: "Settled", refund: "Refund sent to PayPal", evidence: "Evidence sent to PayPal",
+};
+const kindLabel = (k: string) => KIND[k] ?? k.charAt(0).toUpperCase() + k.slice(1);
+
 export default function Verify({ caseId }: { caseId: string }) {
   const { data: r, error } = useAsync(() => api.verify(caseId), [caseId]);
   return (
@@ -21,11 +26,14 @@ export default function Verify({ caseId }: { caseId: string }) {
             {r.status === "broken" && <div className="notice bad"><CircleX aria-hidden /><span><strong>Tampered.</strong>&nbsp;Receipt #{r.first_broken_seq}: {r.reason}.</span></div>}
             {r.status === "not_run" && <div className="notice"><Info aria-hidden /><span><strong>Not checked.</strong>&nbsp;{r.reason}.</span></div>}
             {r.receipts.length > 0 && (
-              <ol className="checks" style={{ listStyle: "none" }}>
+              <ol className="checks chain" style={{ listStyle: "none" }} aria-label="Receipt chain, oldest first">
                 {r.receipts.map((x) => (
                   <li key={x.seq} style={{ gridTemplateColumns: "20px 1fr auto" }}>
                     {x.valid ? <CircleCheck className="r-supports" aria-hidden /> : <CircleX className="r-contradicts" aria-hidden />}
-                    <span>#{x.seq} · {x.kind} <span className="mono faint">{x.hash.slice(0, 20)}…</span></span>
+                    <span className="col" style={{ gap: 2, minWidth: 0 }}>
+                      <span><b style={{ fontWeight: 600 }}>{kindLabel(x.kind)}</b> <span className="faint num">#{x.seq}</span></span>
+                      <span className="mono faint hash" title={x.hash}>{x.hash.slice(0, 24)}…</span>
+                    </span>
                     <Badge tone={x.valid ? "good" : "bad"}>{x.valid ? "valid" : "broken"}</Badge>
                   </li>
                 ))}

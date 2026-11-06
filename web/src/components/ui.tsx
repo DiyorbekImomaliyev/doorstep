@@ -53,6 +53,17 @@ export function Bar({ value, label }: { value: number; label?: string }) {
   );
 }
 
+/* Courier statuses in plain words (the stored title stays "Carrier: <status>"). */
+const COURIER: Record<string, string> = {
+  "pre transit": "Label created", transit: "On its way with the courier", delivered: "Courier marked it delivered",
+  returned: "Returned to the shop", failure: "Courier couldn't deliver", unknown: "Courier update",
+};
+function titleFor(t: string): string {
+  const m = /^Carrier: (.+)$/i.exec(t);
+  if (m) return COURIER[m[1].toLowerCase()] ?? `Courier: ${m[1]}`;
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 export function Timeline({ items }: { items: TimelineItem[] }) {
   if (!items.length) return <p className="faint">Nothing yet.</p>;
   return (
@@ -60,7 +71,7 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
       {[...items].reverse().map((it, i) => (
         <li key={i} className={`k-${it.kind}`}>
           <span>
-            <span className="t-title">{it.title.charAt(0).toUpperCase() + it.title.slice(1)}</span>
+            <span className="t-title">{titleFor(it.title)}</span>
             {it.detail && !/^(transition:|open$)/.test(it.detail) ? <span className="t-detail"> · {it.detail}</span> : null}
           </span>
           <span className="t-when">{when(it.at)}</span>

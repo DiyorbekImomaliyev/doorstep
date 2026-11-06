@@ -134,7 +134,7 @@ export default function WorldProblem() {
       </div>
 
       <div className="wp-side">
-        <div className="seg" role="tablist" aria-label="Region">
+        <div className="region-tabs" role="tablist" aria-label="Region">
           {REGIONS.map((g, n) => (
             <button key={g.key} role="tab" aria-selected={n === i} onClick={() => { setI(n); setAuto(false); }}>
               {g.tab}

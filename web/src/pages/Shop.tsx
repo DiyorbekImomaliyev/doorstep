@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, House, Lock, PenLine, ShieldCheck, Shirt } from "lucide-react";
+import { Check, House, Lock, PenLine, ShieldCheck, Shirt, Sparkles } from "lucide-react";
 import { api, type Quote } from "../api";
 import { Brand, ErrorBox, Loading } from "../components/ui";
 import { METHOD, money } from "../format";
@@ -11,6 +11,19 @@ const HINT: Record<string, string> = {
   signature: "Someone signs for it at the door.",
 };
 const ICON: Record<string, ReactNode> = { home: <House size={17} />, locker: <Lock size={17} />, signature: <PenLine size={17} /> };
+
+/** The risk model's buyer-facing line: the order's risk and why the recommended method helps.
+ *  The seller-side reasons (shop history) stay in the tooltip, not in the buyer's face. */
+function RiskNote({ q }: { q: Quote }) {
+  const pct = Math.round(q.risk * 100);
+  const why = q.reasons[0]?.split(": ").slice(1).join(": ");
+  return (
+    <p className="risk-note" title={q.reasons.slice(1).join(" · ")}>
+      <Sparkles aria-hidden />
+      <span>Delivery risk on this order: <b>{pct}%</b>{why ? `. ${why.charAt(0).toUpperCase() + why.slice(1)}.` : "."}</span>
+    </p>
+  );
+}
 
 export default function Shop({ sellerId }: { sellerId: string }) {
   const [country, setCountry] = useState("GB");
@@ -79,7 +92,13 @@ export default function Shop({ sellerId }: { sellerId: string }) {
               ))}
             </div>
           )}
-          {quote && quote.reasons.length > 0 && <p className="faint">Why: {quote.reasons[quote.reasons.length - 1]}</p>}
+          {quote && <RiskNote q={quote} />}
+        </section>
+
+        <section className="card col summary" aria-label="Order summary">
+          <div className="sum-line"><span>{PRODUCT.name}</span><span className="num">{money(PRODUCT.amount, currency)}</span></div>
+          <div className="sum-line"><span>Delivery{method ? ` · ${METHOD[method] ?? method}` : ""}</span><span>Free</span></div>
+          <div className="sum-line total"><span>Total</span><span className="num">{money(PRODUCT.amount, currency)}</span></div>
         </section>
 
         {err && <ErrorBox message={err} />}

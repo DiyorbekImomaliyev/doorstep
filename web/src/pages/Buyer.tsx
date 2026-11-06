@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Bot, Check, CircleCheck, House, LifeBuoy, Lock, MapPin, Receipt, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
+import { Bot, Check, CircleCheck, History, House, LifeBuoy, Lock, MapPin, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
 import { api, type BuyerView } from "../api";
 import { Brand, ErrorBox, Loading, Timeline, Toast, useAsync } from "../components/ui";
 import { METHOD, REASONS, money } from "../format";
@@ -158,7 +158,7 @@ export default function Buyer({ token }: { token: string }) {
         )}
 
         <section className="card col">
-          <h3 className="row" style={{ gap: 8 }}><Receipt size={16} color="var(--text-3)" />History</h3>
+          <h3 className="row" style={{ gap: 8 }}><History size={16} color="var(--text-3)" aria-hidden />History</h3>
           <Timeline items={v.timeline} />
         </section>
         {v.can_report && <AgentLink token={token} />}
