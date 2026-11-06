@@ -1,4 +1,5 @@
-"""AP-02/05/06 over HTTP: the seller's autopilot suggestions and rules (seller link only).
+"""AP-02/05/06/07 over HTTP: the seller's autopilot suggestions, rules and statement (seller link
+only).
 
 Turning a rule on takes no amount: the policy uses the current suggestion's maximum (AP-02).
 """
@@ -19,8 +20,10 @@ from app.orders.models import Seller, SellerRule
 from app.policy.autopilot import (
     AutopilotError,
     RuleSuggestion,
+    Statement,
     active_rules,
     dismiss,
+    statement,
     suggest_rules,
     turn_off,
     turn_on,
@@ -61,18 +64,23 @@ def _out(rule: SellerRule) -> RuleOut:
     )
 
 
+def seller_from_link(s: Session, services: Services, token: str) -> Seller:
+    """The seller a signed seller link names; 404 for a bad link or an unknown seller."""
+    try:
+        seller = s.get(Seller, services.links.verify(token, scope=SELLER))
+    except InvalidLink:
+        seller = None
+    if seller is None:
+        raise HTTPException(404, "not found")
+    return seller
+
+
 def build_autopilot_router(deps: AppDeps, services: Services, rulebook: RuleBook) -> APIRouter:
     router = APIRouter()
     base = "/api/seller/{token}/autopilot"
 
     def _seller(s: Session, token: str) -> Seller:
-        try:
-            seller = s.get(Seller, services.links.verify(token, scope=SELLER))
-        except InvalidLink:
-            seller = None
-        if seller is None:
-            raise HTTPException(404, "not found")
-        return seller
+        return seller_from_link(s, services, token)
 
     @router.get(base, response_model=AutopilotOut)
     def autopilot(token: str, s: Db) -> AutopilotOut:
@@ -81,6 +89,11 @@ def build_autopilot_router(deps: AppDeps, services: Services, rulebook: RuleBook
             rules=[_out(r) for r in active_rules(s, seller.id)],
             suggestions=suggest_rules(s, rulebook, seller, now=deps.clock.now()),
         )
+
+    @router.get(f"{base}/statement", response_model=Statement)
+    def autopilot_statement(token: str, s: Db) -> Statement:
+        """AP-07: what the seller's rules refunded in the last 7 days, and what carriers owe."""
+        return statement(s, _seller(s, token).id, now=deps.clock.now())
 
     @router.post(base, response_model=RuleOut)
     def rule_on(token: str, body: RuleKindIn, s: Db) -> RuleOut:

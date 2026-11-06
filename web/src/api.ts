@@ -219,6 +219,20 @@ export type SellerRule = {
   id: string; failure_point: string; currency: string; max_amount_minor: number; status: string; precedents: number; updated_at: string;
 };
 export type Autopilot = { rules: SellerRule[]; suggestions: RuleSuggestion[] };
+/** AP-07: what the seller's rules refunded in the last days, and what carriers owe back. */
+export type AutopilotStatement = {
+  days: number;
+  totals: { currency: string; refunds: number; refunded_minor: number; claimable_minor: number; recovered_minor: number; ready_to_send: number }[];
+  cases: { case_id: string; order_id: string; order_ref: string; item: string; amount_minor: number; currency: string; refunded_at: string }[];
+};
+/** PC: the seller's written policy, read against the rules; only code-verified issues. */
+export type PolicyFact = { id: string; source: string; text: string };
+export type PolicyCheck = {
+  status: "checked" | "unchecked" | "no_policy";
+  issues: { quote: string; problem: string; suggestion: string; facts: PolicyFact[] }[];
+  facts: PolicyFact[]; rule_id: string | null; rule_version: string | null; source: string; disclaimer: string;
+  provider: string | null; dropped: number;
+};
 
 export type Quote = {
   options: { method: string; label: string; amount: Money }[];
@@ -318,6 +332,8 @@ export const api = {
     call<SellerRule>("POST", `/api/seller/${t}/autopilot`, { failure_point, currency }),
   autopilotDismiss: (t: string, failure_point: string, currency: string) =>
     call<SellerRule>("POST", `/api/seller/${t}/autopilot/dismiss`, { failure_point, currency }),
+  autopilotStatement: (t: string) => call<AutopilotStatement>("GET", `/api/seller/${t}/autopilot/statement`),
+  policyCheck: (t: string) => call<PolicyCheck>("GET", `/api/seller/${t}/policy-check`),
   autopilotOff: (t: string, ruleId: string) =>
     call<SellerRule>("POST", `/api/seller/${t}/autopilot/${encodeURIComponent(ruleId)}/off`),
   orders: (t: string) => call<OrderRow[]>("GET", `/api/seller/${t}/orders`),

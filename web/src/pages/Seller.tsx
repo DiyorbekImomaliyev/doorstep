@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { ArrowRight, BarChart3, BookOpen, Columns3, Download, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
-import { api, type Autopilot, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
+import { ArrowRight, BarChart3, BookOpen, Check, Columns3, Copy, Download, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
+import { api, type Autopilot, type AutopilotStatement, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import { money } from "../format";
 import CaseDrawer from "./CaseDrawer";
@@ -58,7 +58,9 @@ const kindText = (fp: string) => KIND[fp] ?? fp.toLowerCase().replaceAll("_", " 
 
 /** AP-06: the seller's own pattern, offered as a rule they turn on; active rules with an off switch.
  *  Suggestions are computed in code from the seller's approvals; money still moves only through the policy. */
-function AutopilotCard({ token, data, onChange }: { token: string; data: Autopilot; onChange: (m: string) => void }) {
+function AutopilotCard({ token, data, statement, onChange, onOpen }: {
+  token: string; data: Autopilot; statement: AutopilotStatement | null; onChange: (m: string) => void; onOpen: (orderId: string) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function act(fn: () => Promise<unknown>, done: string) {
@@ -86,7 +88,7 @@ function AutopilotCard({ token, data, onChange }: { token: string; data: Autopil
       </section>
     );
   }
-  if (!data.rules.length) return null;
+  if (!data.rules.length && !statement?.cases.length) return null;
   return (
     <section className="autopilot on" aria-label="Autopilot rules">
       <span className="ap-icon" aria-hidden><Zap /></span>
@@ -104,7 +106,76 @@ function AutopilotCard({ token, data, onChange }: { token: string; data: Autopil
             </div>
           );
         })}
+        {!data.rules.length && <span className="ap-title">Autopilot is off</span>}
+        {statement && <StatementLine s={statement} onOpen={onOpen} />}
         {err && <ErrorBox message={err} />}
+      </div>
+    </section>
+  );
+}
+
+/** AP-07: automatic spending, accounted for. Figures come from stored records, never a model. */
+function StatementLine({ s, onOpen }: { s: AutopilotStatement; onOpen: (orderId: string) => void }) {
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  if (!s.cases.length) return <span className="ap-statement muted">No automatic refunds in the last {s.days} days.</span>;
+  return (
+    <div className="ap-statement" aria-label="Autopilot statement">
+      {s.totals.map((t) => (
+        <span key={t.currency}>
+          <strong>Last {s.days} days: {plural(t.refunds, "automatic refund")}, {money(t.refunded_minor, t.currency)}</strong>
+          {t.claimable_minor > 0 && <> · {money(t.claimable_minor, t.currency)} to claim back from couriers{t.ready_to_send > 0 && ` (${plural(t.ready_to_send, "claim")} ready to send)`}</>}
+          {t.recovered_minor > 0 && <> · {money(t.recovered_minor, t.currency)} recovered</>}
+        </span>
+      ))}
+      <span className="ap-cases">
+        {s.cases.map((c) => (
+          <button key={c.case_id} className="chip" onClick={() => onOpen(c.order_id)} title={`Open ${c.order_ref}`}>
+            {c.item} · {money(c.amount_minor, c.currency)}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/** PC-05: sentences in the seller's own policy that the rules contradict. The model reads; code
+ *  checked every quote word for word against the policy before it reached this card. */
+function PolicyCard({ check }: { check: PolicyCheck }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<number | null>(null);
+  const n = check.issues.length;
+  const law = check.source.split(" — ")[0];
+  async function copy(i: number, text: string) {
+    try { await navigator.clipboard.writeText(text); setCopied(i); window.setTimeout(() => setCopied(null), 1600); } catch { /* clipboard blocked: the text stays selectable */ }
+  }
+  return (
+    <section className="autopilot policy" aria-label="Policy check">
+      <span className="ap-icon" aria-hidden><FileWarning /></span>
+      <div className="col grow" style={{ gap: 6, minWidth: 0 }}>
+        <div className="ap-rule">
+          <span className="col" style={{ gap: 2, minWidth: 0 }}>
+            <span className="ap-title">{n === 1 ? "One sentence" : `${n} sentences`} in your delivery policy {n === 1 ? "conflicts" : "conflict"} with {law}</span>
+            {!open && <span className="ap-text">{check.issues[0].problem}</span>}
+          </span>
+          <button className="btn ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide" : "Review"}</button>
+        </div>
+        {open && (
+          <ol className="pc-issues">
+            {check.issues.map((it, i) => (
+              <li key={i}>
+                <blockquote>“{it.quote}”</blockquote>
+                <p>{it.problem}</p>
+                <div className="pc-fix">
+                  <span className="faint">Suggested wording</span>
+                  <p>{it.suggestion}</p>
+                  <button className="btn ghost" onClick={() => copy(i, it.suggestion)}>{copied === i ? <><Check aria-hidden />Copied</> : <><Copy aria-hidden />Copy</>}</button>
+                </div>
+                <span className="faint">Based on: {it.facts.map((f) => (f.source === "doorstep_settings" ? "your Doorstep settings" : `${f.source} (${check.rule_version})`)).filter((v, j, a) => a.indexOf(v) === j).join(", ")}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+        {open && <span className="faint">Read by AI; every quote was matched word for word to your policy before it was shown. Nothing changes until you edit your policy. {check.disclaimer}</span>}
       </div>
     </section>
   );
@@ -116,7 +187,9 @@ export default function Seller({ token }: { token: string }) {
   const recovered = useAsync(() => api.recoveries(token), [token]);
   const tips = useAsync(() => api.prevention(token), [token]);
   const auto = useAsync(() => api.autopilot(token), [token]);
-  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); auto.reload(); };
+  const spent = useAsync(() => api.autopilotStatement(token), [token]);
+  const policy = useAsync(() => api.policyCheck(token), [token]);
+  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); auto.reload(); spent.reload(); policy.reload(); };
   const [filter, setFilter] = useState<Filter | null>(null);
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -239,8 +312,18 @@ export default function Seller({ token }: { token: string }) {
                 <RecoveredKpi s={recovered.data ?? null} onClick={() => go("insights")} />
               </section>
 
-              {auto.data && <AutopilotCard token={token} data={auto.data} onChange={(m) => { setToast(m); reload(); }} />}
-              {!auto.data?.suggestions.length && tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />}
+              {auto.data && (
+                <AutopilotCard
+                  token={token} data={auto.data} statement={spent.data ?? null}
+                  onChange={(m) => { setToast(m); reload(); }}
+                  onOpen={(orderId) => { const r = rows?.find((x) => x.order_id === orderId); if (r) setOpen(r); }}
+                />
+              )}
+              {policy.data && policy.data.issues.length > 0 ? (
+                <PolicyCard check={policy.data} />
+              ) : (
+                !auto.data?.suggestions.length && tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />
+              )}
 
               <div className="table-card">
                 <div className="head">

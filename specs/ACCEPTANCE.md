@@ -370,9 +370,34 @@ Numbers marked (config) are targets kept in config, not hardcoded.
   stops further suggestions of that kind. Every change writes an audit row.
 - AP-06 The Control Room shows the suggestion with its evidence and each active rule with an off
   switch; in the seeded demo the suggestion appears after Maria approves Sam's refund.
+- AP-07 Autopilot statement: for the last `STATEMENT_DAYS` (7) days, computed in code from stored
+  records (no model), the refunds that a seller rule approved and PayPal completed: per currency the
+  count and total, the amount still claimable from carriers for those cases (recoveries PREPARED or
+  SUBMITTED), the amount carriers paid back, and the claims ready to send; plus each case (order
+  ref, item, amount) so the seller can open it. Refunds the seller approved by hand, or the ordinary
+  auto-approve limit made, are not in it; nor are another seller's.
 - AT-06 The agent's PayPal pre-check runs on its own when the seller opens a case that needs them;
   opening it again within `AGENT_REUSE_S` (or before the case changes) reuses that run, so the
   timeline never repeats it.
+
+## PC — Policy check (the AI reads the seller's written policy against the rules)
+- PC-01 The check compares the seller's written delivery policy with facts built in code from the
+  rule file for the seller's region (its buyer rights, possession proofs and outcomes) and the
+  seller's Doorstep settings (auto-approve limit, daily cap, active autopilot rules). No rule is
+  written into the prompt; the policy text is data, never instructions.
+- PC-02 Each issue quotes the policy word for word and cites fact ids. Code drops an issue whose
+  quote is not in the policy, that cites an unknown fact, whose wording has a number that is not in
+  its quote or cited facts, or that accuses anyone. Issues proposed but none verified -> one retry;
+  still none -> `unchecked`.
+- PC-03 No written policy -> `no_policy` with no model call. No model, a failed call or invalid
+  output -> `unchecked`. The check never reports "no issues" unless the model read the policy and
+  proposed none.
+- PC-04 Read-only and cached: the check never changes the policy, a rule, a setting or a decision.
+  The same policy and facts cost at most one model call per process. The result names the rule id,
+  version and source, and the rule file's disclaimer.
+- PC-05 The Control Room shows verified issues only: the quoted sentence, the problem, suggested
+  wording the seller can copy, and what it was checked against. In the seeded demo, Maria's policy
+  says a parcel marked delivered is the buyer's responsibility, which the UK rule contradicts.
 
 ## RT — Buyer rights (SPEC section 7a.6)
 - RT-01 After "Not here", the buyer view shows the matching rule file's `buyer_rights` text.

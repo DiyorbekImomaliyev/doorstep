@@ -33,8 +33,8 @@ _FP_TEXT = {
 _CARRIER_FAULTS = {FailurePoint.CARRIER_LOST, FailurePoint.DAMAGED_IN_TRANSIT}
 # EX-02: words that accuse the buyer. A draft containing any of them is never shown.
 _ACCUSING = re.compile(
-    r"\b(fraud\w*|scam\w*|li(e|ed|ar|ying)|dishonest|fake claim|stole|steal\w*|suspicious buyer"
-    r"|abus\w+ the system)\b",
+    r"\b(fraud\w*|scam\w*|lie|lied|liars?|lying|dishonest|fake claim|stole|steal\w*"
+    r"|suspicious buyer|abus\w+ the system)\b",
     re.IGNORECASE,
 )
 # EX-03: phrases that contradict each route.

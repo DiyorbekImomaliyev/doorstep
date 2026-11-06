@@ -54,7 +54,7 @@ from app.orders.state import (
 )
 from app.paypal_client.idempotency import request_id_for
 from app.paypal_client.types import RefundInfo, RefundResult
-from app.policy.autopilot import matching_rule
+from app.policy.autopilot import RULE_APPROVER, matching_rule
 from app.policy.fingerprint import evidence_fingerprint
 from app.policy.ports import RefundGateway
 from app.policy.reasons import Reason, message
@@ -312,7 +312,7 @@ class PolicyService:
 
         ma_id: str | None = None
         if route == CaseState.AUTO_REFUND:  # liable seller, refund under every limit
-            approver_id = f"seller-rule:{applied[0].id}" if applied else "policy"
+            approver_id = f"{RULE_APPROVER}{applied[0].id}" if applied else "policy"
             approval = self._record_approval(
                 case, decision, Approver(kind=ApproverKind.SYSTEM, id=approver_id), decision.rule_id
             )

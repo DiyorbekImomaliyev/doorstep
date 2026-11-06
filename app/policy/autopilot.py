@@ -11,6 +11,8 @@ watches only what the seller already decided and offers a standing rule; the sel
 - `turn_off`: the seller's own active rule, one tap (AP-05). Every change writes an audit row.
 - `matching_rule`: what `PolicyService._route` asks at its last step, the auto-approve limit check
   (AP-03/04). Every earlier check still runs first, and a rule can never hold or deny a case.
+- `statement`: what the rules refunded in the last 7 days and what carriers owe back (AP-07),
+  read from stored records. Automatic spending is only trusted when it is accounted for.
 """
 
 from __future__ import annotations
@@ -25,13 +27,31 @@ from sqlalchemy.orm import Session
 
 from app.cases.engine import FailurePoint
 from app.money import Currency, Money
-from app.orders.enums import ApproverKind, CaseState
-from app.orders.models import Approval, AuditLog, Case, Decision, Seller, SellerRule
+from app.orders.enums import (
+    ApproverKind,
+    CaseState,
+    MoneyActionKind,
+    MoneyActionStatus,
+    RecoveryStatus,
+)
+from app.orders.models import (
+    Approval,
+    AuditLog,
+    Case,
+    Decision,
+    MoneyAction,
+    Order,
+    Recovery,
+    Seller,
+    SellerRule,
+)
 from app.policy.reasons import Reason
 from app.policy.rules import RuleBook, effective_limits
 
 ON, OFF, DISMISSED = "on", "off", "dismissed"
 DECLINED = "transition: seller declined"  # the audit action PolicyService.decline writes
+RULE_APPROVER = "seller-rule:"  # the system approval's id prefix when a seller rule refunded
+STATEMENT_DAYS = 7
 
 
 class AutopilotError(Exception):
@@ -275,3 +295,81 @@ def matching_rule(
         return None
     cap = min(rule.max_amount_minor, cfg.ceiling(refund.currency).amount_minor)
     return rule if refund.amount_minor <= cap else None
+
+
+# ---------------------------------------------------------------- AP-07 statement
+
+
+class StatementCase(BaseModel):
+    case_id: str
+    order_id: str
+    order_ref: str
+    item: str
+    amount_minor: int
+    currency: str
+    refunded_at: datetime
+
+
+class StatementTotal(BaseModel):
+    currency: str
+    refunds: int = 0
+    refunded_minor: int = 0
+    claimable_minor: int = 0  # carrier claims prepared or submitted for those cases
+    recovered_minor: int = 0  # what carriers paid back
+    ready_to_send: int = 0  # claims prepared, not yet submitted
+
+
+class Statement(BaseModel):
+    days: int
+    totals: list[StatementTotal]
+    cases: list[StatementCase]
+
+
+def statement(
+    session: Session, seller_id: str, *, now: datetime, days: int = STATEMENT_DAYS
+) -> Statement:
+    """Completed refunds a seller rule approved in the window, with their carrier claims."""
+    by_rule = select(Approval.decision_id).where(
+        Approval.approver_kind == ApproverKind.SYSTEM.value,
+        Approval.approver_id.startswith(RULE_APPROVER),
+    )
+    rows = session.execute(
+        select(MoneyAction, Order, Recovery)
+        .join(Order, Order.id == MoneyAction.order_id)
+        .outerjoin(Recovery, Recovery.case_id == MoneyAction.case_id)
+        .where(
+            MoneyAction.seller_id == seller_id,
+            MoneyAction.kind.in_(
+                (MoneyActionKind.REFUND.value, MoneyActionKind.PARTIAL_REFUND.value)
+            ),
+            MoneyAction.status == MoneyActionStatus.COMPLETED.value,
+            MoneyAction.completed_at >= now - timedelta(days=days),
+            MoneyAction.decision_id.in_(by_rule),
+        )
+        .order_by(MoneyAction.completed_at.desc(), MoneyAction.id)
+    ).all()
+    totals: dict[str, StatementTotal] = {}
+    cases: list[StatementCase] = []
+    for ma, order, rec in rows:
+        t = totals.setdefault(ma.currency, StatementTotal(currency=ma.currency))
+        t.refunds += 1
+        t.refunded_minor += ma.amount_minor
+        if rec is not None:
+            if rec.status in (RecoveryStatus.PREPARED.value, RecoveryStatus.SUBMITTED.value):
+                t.claimable_minor += rec.claim_minor
+            if rec.status == RecoveryStatus.PREPARED.value:
+                t.ready_to_send += 1
+            if rec.status == RecoveryStatus.PAID.value:
+                t.recovered_minor += rec.recovered_minor or 0
+        cases.append(
+            StatementCase(
+                case_id=ma.case_id or "",
+                order_id=order.id,
+                order_ref=order.id[:8].upper(),
+                item=order.item_description,
+                amount_minor=ma.amount_minor,
+                currency=ma.currency,
+                refunded_at=ma.completed_at or now,
+            )
+        )
+    return Statement(days=days, totals=[totals[c] for c in sorted(totals)], cases=cases)

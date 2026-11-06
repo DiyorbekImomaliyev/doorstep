@@ -302,6 +302,23 @@ SCENARIO: tuple[_Spec, ...] = (
         seal_scan_after_h=2,
         dispute=True,
     ),
+    # AP-07: delivered, no case yet. After Maria turns autopilot on, Priya's "Not here" is
+    # refunded by her rule without waiting for her (over the £50 limit, within her £60 rule).
+    _Spec(
+        "priya-beret",
+        "Priya Shah",
+        "Wool beret, burgundy",
+        5200,
+        "GBP",
+        "GB",
+        "home",
+        _O.DELIVERED,
+        "M14 5RG",
+        "Manchester",
+        26,
+        (_PACKED,),
+        carrier="evri",  # not Royal Mail, so it never joins the filmed batch-scan story (SA-03)
+    ),
     # Maria's week (AP-01): two lost parcels over her £50 limit that she approved herself. Kept no
     # older than the other demo orders, so Insights' simulated history still ends where it did.
     # After she approves Sam's £60 refund, Doorstep offers to handle these for her.
@@ -413,8 +430,9 @@ def _build(
             region="GB",
             scratch_tag=tag,
             policy_text=(
-                "We refund or reship any order that does not reach you. Report a problem within "
-                "30 days of the expected delivery date."
+                "We refund or reship any order that does not reach you. Once tracking shows your "
+                "parcel as delivered, it is your responsibility. Report a problem within 30 days "
+                "of the expected delivery date."
             ),
         )
     )

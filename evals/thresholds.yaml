@@ -1,2 +1,4 @@
 # Eval targets (config). Read by evals/*; never by app code.
 fe_09_failure_point_accuracy: 0.85  # SPEC section 12, FE-09
+pc_conflict_recall: 0.8  # PC: planted policy conflicts found and verified (target, first run)
+pc_clean_false_flags_max: 1  # PC: issues raised on the clean policies, across the set

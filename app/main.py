@@ -55,8 +55,10 @@ def create_app(deps: AppDeps) -> FastAPI:
 
         app.include_router(build_journey_router(deps, deps.services, rulebook))
         from app.api.autopilot import build_autopilot_router
+        from app.api.policy_check import build_policy_check_router
 
         app.include_router(build_autopilot_router(deps, deps.services, rulebook))
+        app.include_router(build_policy_check_router(deps, deps.services, rulebook))
         _mount_web(app)
     else:
 

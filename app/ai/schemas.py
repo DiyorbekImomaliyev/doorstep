@@ -148,3 +148,21 @@ class InsightPlan(BaseModel):
         if self.answerable and self.group_by not in groups_for(self.metric):
             raise ValueError(f"{self.metric} cannot be split by {self.group_by}")
         return self
+
+
+# ---------------------------------------------------------------- PC policy check
+
+
+class PolicyIssueDraft(BaseModel):
+    """One issue the model proposes; code verifies it before the seller sees it (PC-02)."""
+
+    quote: str = Field(max_length=600)
+    fact_ids: list[str] = Field(default_factory=list, max_length=8)
+    problem: str = Field(max_length=500)
+    suggestion: str = Field(max_length=600)
+
+
+class PolicyCheckDraft(BaseModel):
+    """PC-02: the model's reading of the seller's policy; an empty list means it found none."""
+
+    issues: list[PolicyIssueDraft] = Field(default_factory=list, max_length=6)
