@@ -1,4 +1,4 @@
-"""AS-02..05 in a real browser: the Insights reports on AG Studio (web/e2e/insights.spec.ts).
+"""AS-02..07 in a real browser: the Insights reports on AG Studio (web/e2e/insights.spec.ts).
 
 Skipped unless E2E_BASE_URL is set (`make e2e` sets it), like E2E-01. Each test runs the
 Playwright tests named with its criterion ID against a scratch demo shop.
@@ -21,11 +21,11 @@ pytestmark = [
 ]
 
 
-def _playwright(criterion: str) -> None:
+def _playwright(criterion: str, spec: str = "e2e/insights.spec.ts") -> None:
     npx = shutil.which("npx")
     assert npx is not None
     result = subprocess.run(
-        [npx, "playwright", "test", "e2e/insights.spec.ts", "--grep", criterion, "--reporter=line"],
+        [npx, "playwright", "test", spec, "--grep", criterion, "--reporter=line"],
         cwd=WEB,
         env={**os.environ},
         capture_output=True,
@@ -54,3 +54,7 @@ def test_AS_05_reports_from_state_and_drill_through_in_the_browser():
 
 def test_AS_06_13_ask_doorstep_builds_a_matching_studio_widget_in_the_browser():
     _playwright("AS-06")
+
+
+def test_AS_07_case_queue_approve_and_masked_addresses_in_the_browser():
+    _playwright("AS-07", "e2e/caseQueue.spec.ts")

@@ -38,13 +38,6 @@ def test_AS_06_09_works_beside_studio_built_in_agents():
     _unbuilt()
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the case queue runs on AG Grid in the Control Room, not inside Studio yet"
-)
-def test_AS_07_studio_case_queue_approve_calls_policy():
-    _unbuilt()
-
-
 _SB = NEEDS_HUMAN + "a live sandbox run with PAYPAL_WEBHOOK_ID and a public URL"
 
 
