@@ -1,0 +1,18 @@
+{
+  "what": "SB-01/SB-02: one real purchase on the live app, refunded through Doorstep (Nov 6, 2026)",
+  "live_url": "https://doorstep-ojmg.onrender.com",
+  "webhook_url": "https://doorstep-ojmg.onrender.com/webhooks/paypal",
+  "seller_email": "sb-qnfss53656833@business.example.com",
+  "buyer_country": "GB",
+  "amount": {"value": "60.00", "currency_code": "GBP"},
+  "paypal_order_id": "35M02907F7705714P",
+  "capture_id": "63U53267YN2418006",
+  "refund_id": "0LG29707DC2714523",
+  "tracking_number": "SHIPPO_DELIVERED",
+  "events_window_utc": ["2026-11-06T07:15:00Z", "2026-11-06T07:45:00Z"],
+  "checked_by_hand": [
+    "Seller sandbox Activity: Payment from John DoeskipKYC, GBP 60.00, Refunded",
+    "Buyer sandbox Activity: Test Store -GBP 60.00 Payment Refunded; +GBP 60.00 Refund",
+    "Developer dashboard Webhook Events (app doorstep-us): approved, capture completed, refunded; all Success"
+  ]
+}

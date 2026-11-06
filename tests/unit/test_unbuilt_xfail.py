@@ -38,17 +38,8 @@ def test_AS_06_09_works_beside_studio_built_in_agents():
     _unbuilt()
 
 
-_SB = NEEDS_HUMAN + "a live sandbox run with PAYPAL_WEBHOOK_ID and a public URL"
-
-
-@pytest.mark.xfail(strict=True, reason=_SB)
-def test_SB_01_refund_visible_in_merchant_and_buyer_sandbox():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_SB)
-def test_SB_02_webhook_delivered_in_sandbox_event_logs():
-    _unbuilt()
+# SB-01 and SB-02 are done: tests/integration/test_sb_live_sandbox_refund.py re-checks the live
+# refund of Nov 6, 2026 against PayPal (RUN_SANDBOX_CHECKS=1).
 
 
 @pytest.mark.xfail(strict=True, reason=NEEDS_HUMAN + "/paypal:doctor on the final commit")
