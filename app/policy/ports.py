@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from app.money import Money
-from app.paypal_client.types import CaptureState, DisputeEvidence, RefundResult
+from app.paypal_client.types import CaptureState, DisputeEvidence, DisputeSummary, RefundResult
 
 
 class RefundGateway(Protocol):
@@ -23,3 +24,15 @@ class RefundGateway(Protocol):
     def provide_dispute_evidence(
         self, dispute_id: str, *, evidence: DisputeEvidence, request_id: str
     ) -> None: ...
+
+
+@runtime_checkable
+class DisputeLookup(Protocol):
+    """Live dispute read for the pre-refund re-check (review R1).
+
+    Webhooks fill the local disputes table, but a webhook can be late, so right before money
+    moves the re-check asks PayPal itself. Both production gateways implement this, and a test
+    says so; a gateway without it is only ever a test double.
+    """
+
+    def open_disputes_since(self, since: datetime, *, capture_id: str) -> list[DisputeSummary]: ...

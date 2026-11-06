@@ -32,6 +32,9 @@ class Reason(StrEnum):
     # Pre-refund re-check refusals (PO-12).
     CASE_FINISHED = "case_finished"
     DISPUTE_OPENED = "dispute_opened"
+    DISPUTE_CHECK_UNAVAILABLE = "dispute_check_unavailable"
+    UNMATCHED_DISPUTE = "unmatched_dispute"
+    DISPUTE_CHECK_REFUSED = "dispute_check_refused"
     EVIDENCE_CHANGED = "evidence_changed"
     NO_PAYPAL_CAPTURE = "no_paypal_capture"
     CAPTURE_CURRENCY_MISMATCH = "capture_currency_mismatch"
@@ -66,6 +69,15 @@ MESSAGES: dict[Reason, str] = {  # pragma: no mutate
     ),  # pragma: no mutate
     Reason.CASE_FINISHED: "case is {state}: no money moves",  # pragma: no mutate
     Reason.DISPUTE_OPENED: "a PayPal dispute opened after the decision",  # pragma: no mutate
+    Reason.DISPUTE_CHECK_UNAVAILABLE: (  # pragma: no mutate
+        "the order is too old for PayPal to list its disputes: human review"  # pragma: no mutate
+    ),  # pragma: no mutate
+    Reason.UNMATCHED_DISPUTE: (  # pragma: no mutate
+        "PayPal shows an open dispute it does not tie to a payment: human review"  # pragma: no mutate
+    ),  # pragma: no mutate
+    Reason.DISPUTE_CHECK_REFUSED: (  # pragma: no mutate
+        "PayPal refused the dispute check (HTTP {status}): human review"  # pragma: no mutate
+    ),  # pragma: no mutate
     Reason.EVIDENCE_CHANGED: "evidence changed since the decision",  # pragma: no mutate
     Reason.NO_PAYPAL_CAPTURE: "order has no PayPal capture",  # pragma: no mutate
     Reason.CAPTURE_CURRENCY_MISMATCH: "PayPal capture is in another currency",  # pragma: no mutate

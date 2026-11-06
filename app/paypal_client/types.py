@@ -54,3 +54,11 @@ class DisputeEvidence(BaseModel):
     notes: str
     carrier: str | None = None
     tracking_number: str | None = None
+
+
+class DisputeSummary(BaseModel):
+    """An unresolved PayPal dispute and the captures it names (review R1)."""
+
+    dispute_id: str  # "" when PayPal lists a dispute without an id: never matched to an order
+    status: str  # PayPal's status, upper case; anything but RESOLVED counts as open
+    capture_ids: list[str] = []  # disputed_transactions[].seller_transaction_id

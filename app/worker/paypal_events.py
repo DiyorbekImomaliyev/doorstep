@@ -122,8 +122,10 @@ def _make_dispute(clock: Clock) -> Handler:
                     opened_at=clock.now(),
                 )
             )
-        else:
+        elif dispute.status != "resolved":
             dispute.status = status
+        else:  # resolved is final for webhooks: a late or reordered event never reopens it (R3)
+            log.info("dispute %s already resolved; %s ignored", dispute_id, row.event_type)
         s.flush()
 
     return handle

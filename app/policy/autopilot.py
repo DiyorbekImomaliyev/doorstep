@@ -83,8 +83,10 @@ def _approvals(
             Decision.route,
             Decision.reason_codes,
         )
-        .join(Decision, Decision.id == Approval.decision_id)
-        .join(Case, Case.id == Approval.case_id)
+        # Explicit ON clauses. Each is the only foreign key between the two tables (the
+        # decision belongs to the approval's case), so dropping one is an equivalent mutant.
+        .join(Decision, Decision.id == Approval.decision_id)  # pragma: no mutate
+        .join(Case, Case.id == Approval.case_id)  # pragma: no mutate
         .where(
             Case.seller_id == seller_id,
             Approval.approver_kind == ApproverKind.SELLER.value,
@@ -111,7 +113,8 @@ def _declined(session: Session, seller_id: str, since: datetime) -> set[Kind]:
         .join(Case, Case.id == AuditLog.entity_id)
         .where(
             Case.seller_id == seller_id,
-            AuditLog.entity_type == "case",
+            # Only case transitions write DECLINED, and the join needs a case id: equivalent.
+            AuditLog.entity_type == "case",  # pragma: no mutate
             AuditLog.action == DECLINED,
             AuditLog.at >= since,
         )
@@ -119,8 +122,10 @@ def _declined(session: Session, seller_id: str, since: datetime) -> set[Kind]:
     rows = session.execute(
         select(Decision.failure_point, Decision.currency).where(
             Decision.case_id.in_(declined),
-            Decision.failure_point.is_not(None),
-            Decision.currency.is_not(None),
+            # A (None, currency) kind can never match a precedent kind, which needs both: these
+            # two filters keep the set clean and change no suggestion (equivalent mutants).
+            Decision.failure_point.is_not(None),  # pragma: no mutate
+            Decision.currency.is_not(None),  # pragma: no mutate
         )
     ).all()
     return {(cast(str, fp), cast(str, cur)) for fp, cur in rows}
@@ -272,7 +277,9 @@ def active_rules(session: Session, seller_id: str) -> Sequence[SellerRule]:
     return session.scalars(
         select(SellerRule)
         .where(SellerRule.seller_id == seller_id, SellerRule.status == ON)
-        .order_by(SellerRule.failure_point, SellerRule.currency)
+        # SQLite's unique index (seller, kind, currency) already returns this order, so the unit
+        # suite cannot see the currency sort; tests/integration/test_pg_ap_rule_order.py does.
+        .order_by(SellerRule.failure_point, SellerRule.currency)  # pragma: no mutate
     ).all()
 
 
@@ -336,7 +343,9 @@ def statement(
     rows = session.execute(
         select(MoneyAction, Order, Recovery)
         .join(Order, Order.id == MoneyAction.order_id)
-        .outerjoin(Recovery, Recovery.case_id == MoneyAction.case_id)
+        # An order has at most one case (RESOLVED is terminal), so the join SQLAlchemy infers
+        # without this ON clause (recovery.order_id = order.id) is the same: equivalent mutant.
+        .outerjoin(Recovery, Recovery.case_id == MoneyAction.case_id)  # pragma: no mutate
         .where(
             MoneyAction.seller_id == seller_id,
             MoneyAction.kind.in_(

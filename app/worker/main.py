@@ -91,7 +91,7 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     else:
         real = NotConfigured("PayPal refunds", "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET")
     gateway = RoutingRefundGateway(real, sim)
-    refunds = RefundJobHandler(gateway, rulebook, rt.clock)
+    refunds = RefundJobHandler(gateway, rulebook, rt.clock, disputes=gateway)  # R1
     handlers[DISPUTE_EVIDENCE_JOB] = DisputeEvidenceJobHandler(  # DE-01..04
         gateway, rt.clock, rt.services.receipts
     )

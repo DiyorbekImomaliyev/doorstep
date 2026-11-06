@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.money import Money
 from app.paypal_client import reads
 from app.paypal_client.client import PayPalClient
-from app.paypal_client.types import CaptureState, DisputeEvidence, RefundResult
+from app.paypal_client.types import CaptureState, DisputeEvidence, DisputeSummary, RefundResult
 from app.paypal_client.writes import money as money_writes
 
 
@@ -15,6 +17,10 @@ class RestRefundGateway:
 
     def get_capture_state(self, paypal_order_id: str, capture_id: str) -> CaptureState:
         return reads.get_capture_state(self.client, paypal_order_id, capture_id)
+
+    def open_disputes_since(self, since: datetime, *, capture_id: str) -> list[DisputeSummary]:
+        del capture_id  # PayPal lists by time; the policy matches the capture (R1)
+        return reads.list_open_disputes_since(self.client, since)
 
     def refund_capture(
         self,

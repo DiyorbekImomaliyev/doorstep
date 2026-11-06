@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from app.money import Money
 from app.paypal_client.client import PayPalClient
 from app.paypal_client.errors import PayPalClientError, PayPalServerError
 from app.paypal_client.sdk_models import captures, decode_order, money_from_sdk, refunds, text
-from app.paypal_client.types import CaptureState, RefundInfo
+from app.paypal_client.types import CaptureState, DisputeSummary, RefundInfo
 
 # Refund statuses that hold or have moved money. FAILED/CANCELLED refunds don't count (PP-08).
 COUNTED_REFUND_STATUSES = frozenset({"COMPLETED", "PENDING"})
+
+# The disputes list rejects a start_time 180 or more days back (INVALID_START_TIME_RANGE, checked
+# in the sandbox on Nov 6, 2026). Ten days of margin; an older order goes to a person (R1).
+DISPUTE_LIST_MAX_AGE = timedelta(days=170)
+_DISPUTE_PAGE_SIZE = 50
+_DISPUTE_MAX_PAGES = 10  # 500 disputes: more than that is not something to page through blind
 
 # Webhook headers PayPal signs with (lower-case; HTTP header names are case-insensitive).
 _SIGNATURE_HEADERS = {
@@ -60,6 +68,60 @@ def get_capture_state(client: PayPalClient, paypal_order_id: str, capture_id: st
         refunded_total=refunded,
         refunds=listed,
     )
+
+
+def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[DisputeSummary]:
+    """Every unresolved dispute created since `since`, with the captures each one names (R1).
+
+    The list is filtered by time, not by transaction (the transaction filter answers 400 when
+    there is nothing to find). An unresolved dispute the list does not tie to a capture is read
+    once for it. Any status other than RESOLVED
+    counts as open, so a status PayPal adds later fails closed. A page link without a token, or
+    more pages than the cap, raises a retryable error: the refund waits rather than guesses.
+    """
+    query = {
+        "start_time": since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "page_size": str(_DISPUTE_PAGE_SIZE),
+    }
+    found: list[DisputeSummary] = []
+    for _ in range(_DISPUTE_MAX_PAGES):
+        page = client.request("GET", "/v1/customer/disputes?" + urlencode(query))
+        for item in page.get("items") or []:
+            status = str(item.get("status") or "").upper()
+            if status == "RESOLVED":
+                continue
+            dispute_id = str(item.get("dispute_id") or "")
+            if "disputed_transactions" in item:  # the list already names them: no extra read
+                captures_named = _seller_captures(item)
+            elif dispute_id:
+                captures_named = _seller_captures(
+                    client.request("GET", f"/v1/customer/disputes/{dispute_id}")
+                )
+            else:
+                captures_named = []
+            found.append(
+                DisputeSummary(dispute_id=dispute_id, status=status, capture_ids=captures_named)
+            )
+        next_href = next(
+            (link.get("href") for link in page.get("links") or [] if link.get("rel") == "next"),
+            None,
+        )
+        if next_href is None:
+            return found
+        tokens = parse_qs(urlsplit(str(next_href)).query).get("next_page_token")
+        if not tokens:
+            raise PayPalServerError(None, "disputes list: next page without a token")
+        query["next_page_token"] = tokens[0]
+    raise PayPalServerError(None, f"disputes list: more than {_DISPUTE_MAX_PAGES} pages")
+
+
+def _seller_captures(dispute: Mapping[str, Any]) -> list[str]:
+    """disputed_transactions[].seller_transaction_id: the captures a dispute names."""
+    return [
+        str(tx["seller_transaction_id"])
+        for tx in dispute.get("disputed_transactions") or []
+        if isinstance(tx, dict) and tx.get("seller_transaction_id")
+    ]
 
 
 def verify_webhook_signature(

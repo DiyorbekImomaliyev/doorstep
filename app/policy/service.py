@@ -52,15 +52,17 @@ from app.orders.state import (
     IllegalTransition,
     transition_case,
 )
+from app.paypal_client.errors import PayPalClientError
 from app.paypal_client.idempotency import request_id_for
-from app.paypal_client.types import RefundInfo, RefundResult
+from app.paypal_client.reads import DISPUTE_LIST_MAX_AGE
+from app.paypal_client.types import DisputeSummary, RefundInfo, RefundResult
 from app.policy.autopilot import RULE_APPROVER, matching_rule
 from app.policy.fingerprint import evidence_fingerprint
-from app.policy.ports import RefundGateway
+from app.policy.ports import DisputeLookup, RefundGateway
 from app.policy.reasons import Reason, message
 from app.policy.rules import RuleBook, effective_limits
 from app.worker.models import Job
-from app.worker.runner import PermanentError, enqueue
+from app.worker.runner import PermanentError, enqueue, is_permanent
 
 log = logging.getLogger("doorstep.policy")
 
@@ -69,6 +71,7 @@ REFUND_JOB = "paypal.refund"  # payload: {"money_action_id": ...}
 # Refund kinds and the statuses that hold or have moved money.
 _REFUND_KINDS = (MoneyActionKind.REFUND.value, MoneyActionKind.PARTIAL_REFUND.value)
 _COUNTED = (MoneyActionStatus.QUEUED.value, MoneyActionStatus.COMPLETED.value)
+_STOPPED = (MoneyActionStatus.BLOCKED.value, MoneyActionStatus.FAILED.value)
 # Capture statuses PayPal reports for a capture that can still be (partly) refunded.
 _REFUNDABLE_CAPTURE = frozenset({"COMPLETED", "PARTIALLY_REFUNDED"})
 
@@ -157,6 +160,37 @@ def _open_dispute(session: Session, order_id: str) -> bool:
         session.scalar(
             select(exists().where(Dispute.order_id == order_id, Dispute.status == "open"))
         )
+    )
+
+
+def _record_dispute_found(
+    session: Session, order: Order, found: DisputeSummary, *, at: datetime
+) -> None:
+    """Record a dispute PayPal reports as open that our table does not (R1): its webhook is late,
+    or PayPal reopened it. The case then sends evidence through it (DE-01)."""
+    row = session.scalar(select(Dispute).where(Dispute.paypal_dispute_id == found.dispute_id))
+    if row is not None and row.status == "open":
+        return
+    before: dict[str, Any] = {} if row is None else {"status": row.status}
+    if row is None:
+        try:
+            with session.begin_nested():  # a webhook may record the same dispute right now
+                session.add(
+                    Dispute(order_id=order.id, paypal_dispute_id=found.dispute_id, status="open")
+                )
+        except IntegrityError:  # it did: the dispute is on record, which is all the block needs
+            return
+    else:
+        row.status = "open"
+    _audit(
+        session,
+        actor="policy",
+        action="dispute.found_at_paypal",
+        entity_type="dispute",
+        entity_id=found.dispute_id,
+        before=before,
+        after={"status": "open", "paypal_status": found.status, "order_id": order.id},
+        at=at,
     )
 
 
@@ -443,6 +477,13 @@ class PolicyService:
         return int(others) + 1 >= limits.repeat_claims_threshold
 
     def _refunded_today(self, seller_id: str, currency: Currency) -> Money:
+        # R25 (review S9): two decisions for one seller must not both read the same total and
+        # both pass the cap. The seller row lock serialises them until the first commits its
+        # queued refund (report() commits before any model call, R27). Proved on Postgres in
+        # tests/integration/test_pg_r25_r27.py; SQLite has no row locks.
+        self.session.execute(
+            select(Seller.id).where(Seller.id == seller_id).with_for_update()  # pragma: no mutate
+        )
         start = datetime.combine(self.clock.now().date(), time.min, tzinfo=UTC)  # Clock is UTC
         total = self.session.execute(
             select(func.coalesce(func.sum(MoneyAction.amount_minor), 0)).where(
@@ -541,6 +582,11 @@ class PolicyService:
             raise PolicyStateError(f"case {case.id} has no decision to approve")
         existing = self._existing_refund(decision)
         if existing is not None:
+            if existing.status in _STOPPED:  # R23 (review S2): say so, never a silent no-op
+                raise PolicyStateError(
+                    f"case {case.id}: this refund was {existing.status}; decide again with the "
+                    "latest evidence"
+                )
             return existing
         if CaseState(case.state) not in (CaseState.AWAITING_SELLER, CaseState.HOLD_FOR_REVIEW):
             raise PolicyStateError(f"case {case.id} in {case.state} cannot be approved")
@@ -666,14 +712,57 @@ class _Verdict(NamedTuple):
         return cls(code, target, text=message(code, **values))
 
 
+# PayPal is asked for disputes created from a day before the order: room for clock skew (R1).
+DISPUTE_LOOKBACK_MARGIN = timedelta(days=1)
+
+
 class RefundJobHandler:
     """Executes REFUND_JOB: pre-refund re-check (dispute, capture state, evidence fingerprint),
     then refunds with the MoneyAction's request_id. Retries keep the same key (PO-12)."""
 
-    def __init__(self, gateway: RefundGateway, rulebook: RuleBook, clock: Clock) -> None:
+    def __init__(
+        self,
+        gateway: RefundGateway,
+        rulebook: RuleBook,
+        clock: Clock,
+        *,
+        disputes: DisputeLookup | None = None,
+    ) -> None:
         del rulebook  # the re-check needs no rules: the decision already recorded them (PO-12)
         self.gateway = gateway
         self.clock = clock
+        # The live dispute read (R1). The worker always passes one (a test pins that wiring);
+        # unit tests of other re-check steps may leave it out.
+        self._disputes = disputes
+
+    def _disputes_at_paypal(
+        self, session: Session, order: Order, capture_id: str
+    ) -> _Verdict | None:
+        """Ask PayPal itself for unresolved disputes on this capture (PO-05, review R1).
+
+        The local table only knows what webhooks delivered. A read error propagates, so the job
+        retries and no money moves meanwhile. None: PayPal shows no open dispute on it.
+        """
+        if self._disputes is None:
+            return None
+        since = order.created_at - DISPUTE_LOOKBACK_MARGIN
+        if self.clock.now() - since > DISPUTE_LIST_MAX_AGE:  # PayPal cannot list that far back
+            return _Verdict.block(Reason.DISPUTE_CHECK_UNAVAILABLE)
+        try:
+            listed = self._disputes.open_disputes_since(since, capture_id=capture_id)
+        except PayPalClientError as error:
+            if not is_permanent(error):  # 429: wait and retry with the job's backoff
+                raise
+            # A 4xx will not pass on retry. Say so plainly, rather than "refund failed" (F2).
+            return _Verdict.block(Reason.DISPUTE_CHECK_REFUSED, status=error.status)
+        ours = [d for d in listed if capture_id in d.capture_ids]
+        for found in ours:
+            _record_dispute_found(session, order, found, at=self.clock.now())
+        if ours:
+            return _Verdict.block(Reason.DISPUTE_OPENED, CaseState.DISPUTE_EVIDENCE)
+        if any(not d.capture_ids for d in listed):  # cannot rule it out: a person looks
+            return _Verdict.block(Reason.UNMATCHED_DISPUTE)
+        return None
 
     def _load(self, session: Session, job: Job) -> tuple[MoneyAction, Order, Case, Decision]:
         ma_id = str(job.payload.get("money_action_id", ""))  # pragma: no mutate
@@ -716,6 +805,10 @@ class RefundJobHandler:
             ):  # checked before the capture status: a full refund leaves it REFUNDED
                 return _Verdict(None, recovered=landed)
             return _Verdict.block(Reason.UNKNOWN_REFUND_AT_PAYPAL)
+        # After the recovery check: a refund that already landed is recorded, never blocked.
+        disputed = self._disputes_at_paypal(session, order, order.capture_id)
+        if disputed is not None:
+            return disputed
         if live.status not in _REFUNDABLE_CAPTURE:
             return _Verdict.block(Reason.CAPTURE_NOT_REFUNDABLE, status=live.status)
         if refunded != known:  # a refund we cannot identify: never guess (ADR-016)
