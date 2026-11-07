@@ -26,6 +26,7 @@ const REGIONS: Region[] = [
     key: "world", tab: "World",
     figures: [
       { value: "€577bn", label: "spent on parcel and express delivery in 2025, up 5.8%", source: "Ti Insight, 2026", href: "https://www.parcelandpostaltechnologyinternational.com/news/parcels/global-express-and-parcels-market-grew-5-8-to-e577-3bn-in-2025-ti-insight-says.html" },
+      { value: "439M", label: "active PayPal accounts in about 200 markets, $1.79tn paid in 2025", source: "PayPal, FY2025", href: "https://www.sec.gov/Archives/edgar/data/1633917/000163391726000024/pypl-20251231.htm" },
     ],
     law: "UK and EU: the seller's risk. US: the seller's policy.", lawSource: "Each one a versioned rule file in Doorstep",
     view: { cx: W / 2, cy: H / 2, k: 1 },
