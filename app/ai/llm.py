@@ -347,8 +347,8 @@ def adapter_from_env(
     *, purpose: str = "runtime", budget: CallBudget | None = None
 ) -> LLMAdapter | None:
     """runtime: LLM_PROVIDER with LLM_FALLBACK_PROVIDER, the main one capped by `budget` (EX-06).
-    eval: EVAL_LLM_PROVIDER only (never the paid key for bulk work), uncapped. None when no
-    provider has a key (callers use templates)."""
+    eval: EVAL_LLM_PROVIDER only, uncapped (evals/recording.py adds the opt-in, capped paid
+    fallback). None when no provider has a key (callers use templates)."""
     if purpose == "eval":
         primary = _provider(os.environ.get("EVAL_LLM_PROVIDER", "gemini"))
         return LLMAdapter(primary) if primary else None
@@ -357,6 +357,13 @@ def adapter_from_env(
     if primary is None:
         return LLMAdapter(fallback) if fallback else None
     return LLMAdapter(primary, fallback, budget=budget)
+
+
+def provider_adapter(name: str) -> LLMAdapter | None:
+    """One named provider with no fallback and no cap, or None without its key. Evals use it for
+    their opt-in paid fallback and apply their own cap."""
+    provider = _provider(name)
+    return LLMAdapter(provider) if provider else None
 
 
 _default: LLMAdapter | None = None

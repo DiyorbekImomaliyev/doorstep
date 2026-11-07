@@ -3,8 +3,9 @@
     uv run --env-file .env python -m evals.redteam.run            # replay, ask only new prompts
     uv run --env-file .env python -m evals.redteam.run --promptfoo-cases   # rewrite cases.yaml
 
-Recorded answers are replayed. A prompt with no recording is asked once on EVAL_LLM_PROVIDER
-(never the paid key), with a pause between live calls for the free tier's rate limit.
+Recorded answers are replayed. A prompt with no recording is asked once on EVAL_LLM_PROVIDER,
+with a pause between live calls for the free tier's rate limit. EVAL_LLM_FALLBACK_PROVIDER opts in
+to the paid key while the free tier is down, capped by EVAL_PAID_PROMPT_LIMIT.
 """
 
 from __future__ import annotations

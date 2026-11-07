@@ -76,7 +76,8 @@ evals:
 	uv run pytest evals -q -m eval
 
 # SE-03 red-team in Promptfoo (needs Node). The provider replays recorded model answers and asks
-# only new prompts, on EVAL_LLM_PROVIDER (never the paid key). `make evals` runs the same probes.
+# only new prompts, on EVAL_LLM_PROVIDER (paid key only as the opt-in, capped fallback). `make evals`
+# runs the same probes.
 PROMPTFOO := npx --yes promptfoo@0.125.1
 redteam:
 	PYTHONPATH=$(CURDIR) PROMPTFOO_PYTHON=$(CURDIR)/.venv/bin/python PROMPTFOO_DISABLE_TELEMETRY=1 \

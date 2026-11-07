@@ -1,10 +1,13 @@
 """Record once, replay (CLAUDE.md): model answers for evals, keyed by the exact prompt.
 
 Every eval that calls a model goes through a Recorder. A prompt with a recording is answered
-from it. A new prompt is asked live, on EVAL_LLM_PROVIDER only (never the paid key), and its
-answer is appended. A changed prompt has a new key, so it is asked again, never answered from an
-old recording. Each recording names the model that gave it and the output schema it was given
-for, and is not replayed for another schema. Failures are not recorded, so a rerun asks again.
+from it. A new prompt is asked live on EVAL_LLM_PROVIDER (the free tier), and its answer is
+appended. The paid key never runs evals by default: EVAL_LLM_FALLBACK_PROVIDER opts in to it as a
+fallback that answers only while the free provider is down (quota, outage), for at most
+EVAL_PAID_PROMPT_LIMIT prompts per run. A changed prompt has a new key, so it is asked again,
+never answered from an old recording. Each recording names the model that gave it and the output
+schema it was given for, and is not replayed for another schema. Failures are not recorded, so a
+rerun asks again.
 """
 
 from __future__ import annotations
@@ -20,7 +23,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.ai.explainer import StructuredLLM
-from app.ai.llm import Image, LLMUnavailable, adapter_from_env
+from app.ai.llm import Image, LLMAdapter, LLMUnavailable, adapter_from_env, provider_adapter
+
+DEFAULT_PAID_PROMPT_LIMIT = 100
 
 
 def schema_id(schema: type[BaseModel]) -> str:
@@ -37,14 +42,60 @@ def _label(row: dict[str, Any]) -> str | None:
 
 
 class PaidKeyRefused(RuntimeError):
-    """Bulk work never runs on the paid provider (CLAUDE.md)."""
+    """The paid provider is never the main eval provider (CLAUDE.md)."""
+
+
+def paid_prompt_limit() -> int:
+    """EVAL_PAID_PROMPT_LIMIT: paid fallback prompts per run; 0 turns the fallback off. A bad
+    value gives the default."""
+    try:
+        value = int(os.environ.get("EVAL_PAID_PROMPT_LIMIT", DEFAULT_PAID_PROMPT_LIMIT))
+    except ValueError:
+        return DEFAULT_PAID_PROMPT_LIMIT
+    return value if value >= 0 else DEFAULT_PAID_PROMPT_LIMIT
+
+
+class PaidFallback:
+    """The free eval model first; the paid one only when the free one is down, and at most
+    `limit` prompts in this run. Past the limit a prompt is not run, so it is never charged.
+    `last_provider` and `model` name whichever model answered, for the recording."""
+
+    def __init__(self, free: LLMAdapter, paid: LLMAdapter, limit: int) -> None:
+        self.free, self.paid, self.limit = free, paid, limit
+        self.paid_prompts = 0
+        self.last_provider: str | None = None
+        self.model: str | None = None
+
+    def complete_structured(
+        self, *, schema: type[BaseModel], system: str, user: str, **kwargs: Any
+    ) -> BaseModel:
+        kw = {"schema": schema, "system": system, "user": user, **kwargs}
+        try:
+            answer = self.free.complete_structured(**kw)
+            self.last_provider, self.model = self.free.last_provider, self.free.primary.model
+            return answer
+        except LLMUnavailable:
+            if self.paid_prompts >= self.limit:
+                raise LLMUnavailable(f"paid eval fallback used its {self.limit} prompts") from None
+        self.paid_prompts += 1
+        answer = self.paid.complete_structured(**kw)
+        self.last_provider, self.model = self.paid.last_provider, self.paid.primary.model
+        return answer
 
 
 def eval_model() -> StructuredLLM | None:
-    """The eval provider (EVAL_LLM_PROVIDER, default gemini), or None without a key."""
-    if os.environ.get("EVAL_LLM_PROVIDER", "gemini").strip().lower() == "anthropic":
-        raise PaidKeyRefused("evals run on the eval provider only, never the paid key")
-    return adapter_from_env(purpose="eval")
+    """The eval provider (EVAL_LLM_PROVIDER, default gemini), or None without a key. With
+    EVAL_LLM_FALLBACK_PROVIDER set to another provider, a PaidFallback around it."""
+    name = os.environ.get("EVAL_LLM_PROVIDER", "gemini").strip().lower()
+    if name == "anthropic":
+        raise PaidKeyRefused("the paid key is only an opt-in eval fallback, never the main one")
+    free = adapter_from_env(purpose="eval")
+    fallback = os.environ.get("EVAL_LLM_FALLBACK_PROVIDER", "").strip().lower()
+    limit = paid_prompt_limit()
+    if free is None or not fallback or fallback == name or limit == 0:
+        return free
+    paid = provider_adapter(fallback)
+    return PaidFallback(free, paid, limit) if paid else free
 
 
 class Recorder:
@@ -98,7 +149,8 @@ class Recorder:
         row = {
             "key": key,
             "provider": getattr(self.live, "last_provider", None),
-            "model": getattr(getattr(self.live, "primary", None), "model", None),
+            "model": getattr(self.live, "model", None)
+            or getattr(getattr(self.live, "primary", None), "model", None),
             "schema": schema_id(schema),
             "answer": answer.model_dump(),
         }
