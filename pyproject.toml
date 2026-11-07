@@ -101,6 +101,8 @@ only_mutate = ["app/policy/*"]
 also_copy = ["rules/", "tuning/", "evals/", "docs/", "web/src/insights/"]
 # RK tests read evals/ and docs/; AS-06 tests read the Insights menu in web/src/insights/.
 pytest_add_cli_args_test_selection = ["tests/unit", "tests/property"]
-pytest_add_cli_args = ["--hypothesis-seed=20261104"]
+# The Ragas tests import pandas/pyarrow, whose native code aborts in a forked child on macOS;
+# they test the eval harness, not app/policy, so mutation runs leave them out.
+pytest_add_cli_args = ["--hypothesis-seed=20261104", "--ignore=tests/unit/test_rg03_ragas_keyless.py"]
 # fork after the suite has started the fake HTTP server thread segfaults on macOS
 process_isolation = "forkserver"

@@ -32,7 +32,10 @@ test-explore:
 # MUTMUT_JOBS and nice keep a laptop usable: an uncapped run pushed the load average past 120 on
 # 8 cores and made the local app crawl (Nov 6). CI sets MUTMUT_JOBS to the runner's cores.
 MUTMUT_JOBS ?= 2
-MUTMUT_RUN = OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES nice -n 19 uv run mutmut run --max-children $(MUTMUT_JOBS)
+# macOS: a forked test process aborts if it initialises Objective-C classes or reads the system
+# proxy settings (CoreFoundation); NO_PROXY makes Python skip that lookup. No effect on Linux CI.
+MUTMUT_RUN = OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES NO_PROXY='*' nice -n 19 \
+	uv run mutmut run --max-children $(MUTMUT_JOBS)
 mutmut:
 	$(MUTMUT_RUN)
 	uv run mutmut results
