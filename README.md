@@ -25,16 +25,15 @@ resolve, recover) and settles the money through PayPal's own APIs when something
 
 ## Why it matters
 
-Parcel problems are common in every market Doorstep covers, and the money to settle them already
-moves through PayPal.
+Parcel problems are common in every market Doorstep covers, and they end in disputes that the
+seller pays for.
 
 | | Figure | Source |
 | --- | --- | --- |
 | **UK** | 15 million people (37%) had a problem with their latest delivery; 29% said the courier left before they reached the door | [Citizens Advice, Nov 2025](https://www.citizensadvice.org.uk/about-us/media-centre/press-releases/parcel-problems-reach-record-as-15-million-people-are-let-down-on-the/) |
 | **EU** | 35% of online shoppers hit a problem buying online; a late delivery, for 1 in 5, was the most common | [Eurostat, Mar 2026](https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260311-1) |
 | **US** | 3 in 10 adults, about 80 million people, have had a package stolen; an estimated $7.7 billion of parcels were stolen in the past year | [Security.org, Oct 2026](https://www.security.org/package-theft/annual-report/) |
-| **PayPal** | 439 million active accounts in about 200 markets; $1.79 trillion in payments in 2025 | [10-K](https://www.sec.gov/Archives/edgar/data/1633917/000163391726000024/pypl-20251231.htm), [Q4 2025 results](https://s205.q4cdn.com/875401827/files/doc_financials/2025/q4/PYPL-4Q-25-Earnings-Release.pdf) |
-| **Shopify** | $378.4 billion sold in 2025 (up 29%) by millions of merchants in more than 175 countries; 44% of them in the US and 31% in Europe, the Middle East and Africa | [10-K](https://www.sec.gov/Archives/edgar/data/1594805/000159480526000007/shop-20251231.htm) |
+| **Disputes** | "Item not received" is 1 in 5 chargebacks in a normal week; over Black Friday 2025 it was 1 in 3 | [Chargeflow, about 3 million disputes, Oct 2026](https://www.chargeflow.io/data-lab/peak-season-part-1) |
 
 ## What makes it different
 
@@ -314,19 +313,21 @@ CI runs lint, types, import contracts, tests with coverage, the locked-test chec
 API fuzzing, a secrets scan and the web build on every push
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
-## What's next
+## Who can use it
 
-Doorstep settles money at the PayPal layer, so the next steps reach sellers wherever they sell.
+Any small seller who takes PayPal and ships parcels. The core stays the same everywhere: one policy
+gate for money, one outbox for PayPal writes, one verified webhook inbox. Only the way orders
+arrive changes from one platform to the next.
 
-| Step | What it adds | Who it reaches |
+| Where the seller sells | How they use Doorstep | Market |
 | --- | --- | --- |
-| **Connect with PayPal** | PayPal's partner onboarding: the seller grants access, dispute permission included, in one consent, and Doorstep acts on their account with `PayPal-Auth-Assertion` | Any shop that takes PayPal: own sites, WooCommerce, Swappa |
-| **Shopify app** | Orders and delivery events from Shopify webhooks; refunds through Shopify's refund API behind the same `app/policy` gate, so the Shopify order and the PayPal capture stay in step | Shopify stores that take PayPal |
-| **Marketplace evidence** | eBay, Etsy and Amazon hold the money and decide not-received cases, so there Doorstep supplies proof: tracking and signature answers to eBay inquiries (Post-Order API), the high-value signature rule as a rule file, carrier claim packs | Marketplace sellers |
+| **Own shop with PayPal Checkout** | Doorstep's checkout creates the PayPal order, as in the live demo, and runs all five stages end to end | 439 million active PayPal accounts in about 200 markets can pay there ([PayPal 10-K](https://www.sec.gov/Archives/edgar/data/1633917/000163391726000024/pypl-20251231.htm)) |
+| **Shopify** | Installs the Doorstep app and connects PayPal once. Orders and tracking arrive from Shopify; the address is checked before the parcel ships; the seal prints with the packing slip; the buyer reports a problem from the shipping email; refunds go through Shopify's refund API, so the Shopify order and the PayPal capture stay in step | Millions of merchants in more than 175 countries, 44% of them in the US; $378.4 billion sold in 2025 ([Shopify 10-K](https://www.sec.gov/Archives/edgar/data/1594805/000159480526000007/shop-20251231.htm)) |
+| **WooCommerce, Wix, Swappa** | Connects with PayPal in one consent, dispute permission included; Doorstep follows captures and disputes on the seller's PayPal account | Every shop on these platforms that takes PayPal |
+| **eBay, Etsy, Amazon** | The marketplace holds the money and decides the case, so Doorstep supplies the proof: tracking and signature answers to "not received" inquiries, and carrier claim packs | 135 million active eBay buyers ([eBay 10-K](https://www.sec.gov/Archives/edgar/data/1065088/000106508826000027/ebay-20251231.htm)) |
 
-The design already carries each step: a new payment channel is one connector behind `app/policy`, a
-platform's rule is one file in `rules/`, and every platform's webhooks land in the same verified
-inbox.
+The live app runs the first row. Each other row is one connector on the same core: the platform's
+orders come through the verified inbox, and its rules are one more file in `rules/`.
 
 ## Project structure
 
