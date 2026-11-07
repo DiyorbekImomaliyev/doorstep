@@ -12,7 +12,7 @@ from app.paypal_client.writes import orders as order_writes
 from tests.conftest import ROOT
 from tests.fakes import FakeClock
 
-RECORDING = ROOT / "recordings" / "paypal" / "capture_declined.json"
+RECORDING = ROOT / "tests" / "fixtures" / "paypal" / "capture_declined.json"
 
 pytestmark = pytest.mark.integration
 

@@ -98,7 +98,7 @@ forbidden_modules = ["app.paypal_client.writes"]
 # copied because policy imports it. Same deterministic Hypothesis seed as `make test`.
 source_paths = ["app"]
 only_mutate = ["app/policy/*"]
-also_copy = ["rules/", "tuning/", "recordings/", "evals/", "docs/", "web/src/insights/"]
+also_copy = ["rules/", "tuning/", "evals/", "docs/", "web/src/insights/"]
 # RK tests read evals/ and docs/; AS-06 tests read the Insights menu in web/src/insights/.
 pytest_add_cli_args_test_selection = ["tests/unit", "tests/property"]
 pytest_add_cli_args = ["--hypothesis-seed=20261104"]
