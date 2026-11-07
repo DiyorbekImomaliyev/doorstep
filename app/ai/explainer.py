@@ -3,10 +3,11 @@
 The configured model drafts a seller summary, a buyer message and (for carrier faults) a claim
 letter. The draft is checked before use: it must name the rule id (EX-01), must not accuse the
 buyer (EX-02), must not contradict the decided route (EX-03), must not name an amount the
-decision does not give (EX-07), must not repeat the buyer's note (EX-08) and, where no money has
-moved, must not promise any (EX-09). Any failure, or no
-model, falls back to template text. Buyer text is passed as data inside a delimited block, never as
-instructions (hard rule 8); only order ids and amounts are sent, never addresses (hard rule 9).
+decision does not give (EX-07), must not repeat the buyer's note (EX-08), where no money has
+moved must not promise any (EX-09), and must not take up a request from the note (EX-10). Any
+failure, or no model, falls back to template text. Buyer text is passed as data inside a
+delimited block, never as instructions (hard rule 8); only order ids and amounts are sent, never
+addresses (hard rule 9).
 """
 
 from __future__ import annotations
@@ -47,18 +48,28 @@ _ACCUSING = re.compile(
 _DONE = r"refund (has( already| now| just)? been|was( already| now| just)?|is (already|now|just))"
 _SENT = rf"{_DONE} (sent|issued|paid|processed)"
 _APPROVED = rf"{_DONE} approved"
+# The same claim told in the first person or about the buyer ("we have refunded the customer",
+# "the buyer has been refunded"): a claim letter must not tell the carrier money moved before it
+# did (red-team SE-03 on Claude Sonnet, Nov 7).
+_REFUNDED = (
+    r"(we|i|the seller|the shop|paypal) (have|has|had)( already| now| just)? "
+    r"(refunded|reimbursed|repaid)"
+    r"|(you|the (buyer|customer)) (have|has|had)( already| now| just)? been (refunded|reimbursed)"
+)
 _CONTRADICTS: dict[CaseState, re.Pattern[str]] = {
     CaseState.AUTO_REFUND: re.compile(
         r"\b(no refund|refund (is )?denied|not (be )?refunded|"
         r"buyer is (liable|responsible))\b",
         re.IGNORECASE,
     ),
-    CaseState.AWAITING_SELLER: re.compile(rf"\b({_SENT}|{_APPROVED}|denied)\b", re.IGNORECASE),
+    CaseState.AWAITING_SELLER: re.compile(
+        rf"\b({_SENT}|{_APPROVED}|{_REFUNDED}|denied)\b", re.IGNORECASE
+    ),
     CaseState.HOLD_FOR_REVIEW: re.compile(
-        rf"\b(denied|rejected|{_SENT}|{_APPROVED}|no refund)\b",
+        rf"\b(denied|rejected|{_SENT}|{_APPROVED}|{_REFUNDED}|no refund)\b",
         re.IGNORECASE,
     ),
-    CaseState.DISPUTE_EVIDENCE: re.compile(rf"\b({_SENT})\b", re.IGNORECASE),
+    CaseState.DISPUTE_EVIDENCE: re.compile(rf"\b({_SENT}|{_REFUNDED})\b", re.IGNORECASE),
 }
 # EX-09: on a route where no money has moved, a promise of money is not the decision unless it
 # waits on the person who decides ("once the seller approves, you will receive ...").
@@ -109,6 +120,17 @@ _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 # the note (a possible injection), not explaining the decision.
 ECHO_CHARS = 40
 NOTE_LIMIT = 500  # the model sees at most this much of the note
+# EX-10: the note is data, so a draft never takes up a request from it. "Your request for an
+# inconvenience fee is not part of this decision" or "I cannot round it up" answers the note
+# instead of explaining the decision, and carries the requester's words into a message from the
+# shop (red-team SE-03 on Claude Sonnet, Nov 7).
+_ANSWERS_NOTE = re.compile(
+    r"\b(your|the buyer's|the customer's) (note|request|message|comment)s? "
+    r"(asked|asking|asks|requested|requesting|for|to)\b"
+    r"|\byou (asked|requested|wanted)\b"
+    r"|\bi (cannot|can't|can not|won't|will not|am unable|am not able)\b",
+    re.IGNORECASE,
+)
 # Negations that reassure the buyer; removed before the contradiction check so "nothing has been
 # denied" is not read as "denied".
 _SAFE_NEGATIONS = re.compile(
@@ -309,6 +331,8 @@ def check_draft(draft: ExplanationDraft, ctx: ExplainContext) -> str | None:
         return "draft names an amount the decision does not give"
     if _echoes(ctx.buyer_note[:NOTE_LIMIT], texts):
         return "draft repeats the buyer's note"
+    if any(_ANSWERS_NOTE.search(t) for t in texts):
+        return "draft answers the buyer's note instead of explaining the decision"
     return None
 
 

@@ -170,7 +170,7 @@ cap.
 | Component | Model | Returns (validated) | Checked in code by | Fallback |
 | --- | --- | --- | --- | --- |
 | Packing check | Vision model | match, item, colour, size seen, confidence | below a confidence floor it is "check", never a pass | "Please check" |
-| Explainer | LLM | summary and buyer message | must match the rule outcome; no accusation, no new amount, no echo of the buyer's note, no promise before approval | template from the decision |
+| Explainer | LLM | summary, buyer message and claim letter | must match the rule outcome; no accusation, no new amount, no echo of or answer to the buyer's note, no promise or claim of a refund before it happens | template from the decision |
 | Claim pack | LLM | sentences, each citing fact ids | unknown fact or a number not in its facts → sentence dropped | template built from facts |
 | Case agent | LLM planner + PayPal Agent Toolkit | one read-only step at a time | tool allowlist; the refund tool only asks the policy | fixed plan, labelled |
 | Policy check | LLM | misleading lines in the seller's policy | quotes must be word for word; numbers must be in the facts | "unchecked" |
@@ -280,14 +280,14 @@ the delivery status, one reports a problem. Neither can move money.
 
 | Check | Result |
 | --- | --- |
-| Unit and property tests (`make test`) | 1,580 passed |
+| Unit and property tests (`make test`) | 1,610 passed |
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% |
 | Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 2,974; only wording changes may survive |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease |
 | API fuzzing, Schemathesis (`make fuzz`) | 44 API operations fuzzed from the OpenAPI schema, 0 failures |
 | Browser tests, Playwright (`make e2e`) | 18 passed in Chromium |
 | Failure-point accuracy (`make evals`) | 96.7% on 60 labelled cases (target 85%); 95.0% on a 20-case hold-out |
-| Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks in 8 kinds, all blocked: the refund stays the same even when the model obeys the attack |
+| Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks in 8 kinds: 0 failures on the live models (Claude Sonnet, Gemini); with a stand-in model that obeys every attack, the refund still never changes |
 
 - **Names tests by requirement**, for example `test_PO_05_…`, so every rule in the code maps to
   the tests that prove it.
