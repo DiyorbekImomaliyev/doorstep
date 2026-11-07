@@ -18,11 +18,8 @@ def test_PK_05_mismatch_recall_on_the_labelled_photo_set():
     _unbuilt()
 
 
-@pytest.mark.xfail(
-    strict=True, reason=NEEDS_HUMAN + "a Ragas run (30 questions) on the eval model key"
-)
-def test_RG_03_ragas_faithfulness():
-    _unbuilt()
+# RG-03 is built and run: evals/rag/test_rg03_ragas.py replays the recorded live run (30 of 30
+# questions, faithfulness 0.908 against 0.90); tests/unit/test_rg03_ragas_keyless.py needs no key.
 
 
 # AS-01..05 are built: tests/unit/test_as01_insights_sources.py (the tables) and

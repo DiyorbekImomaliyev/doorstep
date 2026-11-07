@@ -287,6 +287,7 @@ the delivery status, one reports a problem. Neither can move money.
 | API fuzzing, Schemathesis (`make fuzz`) | 44 API operations fuzzed from the OpenAPI schema, 0 failures |
 | Browser tests, Playwright (`make e2e`) | 18 passed in Chromium |
 | Failure-point accuracy (`make evals`) | 96.7% on 60 labelled cases (target 85%); 95.0% on a 20-case hold-out |
+| Policy reader, Ragas (`make evals`) | faithfulness 0.91 (target 0.90) and context recall 0.97 on 30 questions over six seller policies |
 | Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks in 8 kinds: 0 failures on the live models (Claude Sonnet, Gemini); with a stand-in model that obeys every attack, the refund still never changes |
 
 - **Names tests by requirement**, for example `test_PO_05_…`, so every rule in the code maps to

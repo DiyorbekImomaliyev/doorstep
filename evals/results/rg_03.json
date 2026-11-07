@@ -1,0 +1,504 @@
+{
+  "criterion": "RG-03",
+  "questions": 30,
+  "scored": 30,
+  "not_run": 0,
+  "faithfulness": 0.9078,
+  "context_recall": 0.9667,
+  "rows": [
+    {
+      "id": "rg-01",
+      "question": "What happens if my order does not reach me?",
+      "answer": "The seller's policy says it will refund or reship any order that does not reach you. The rule set (Consumer Rights Act 2015, section 29) says the seller is responsible for your order until you, or someone you chose, physically hold it, and that you do not need to contact the courier because the seller deals with them. These do not conflict, so both apply.",
+      "mode": "model",
+      "retrieved": [
+        "seller:1",
+        "uk_possession_v1:2",
+        "uk_possession_v1:1"
+      ],
+      "cited": [
+        "seller:1",
+        "uk_possession_v1:1",
+        "uk_possession_v1:2"
+      ],
+      "status": "scored",
+      "faithfulness": 0.6667,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-02",
+      "question": "How long do I have to report a delivery problem?",
+      "answer": "According to the seller's policy, you have 30 days from the expected delivery date to report a delivery problem. No other passage gives a different time limit.",
+      "mode": "model",
+      "retrieved": [
+        "seller:3"
+      ],
+      "cited": [
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 0.5,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-03",
+      "question": "Who is responsible once tracking shows the parcel as delivered?",
+      "answer": "The seller's policy says that once tracking shows the parcel as delivered, it is your responsibility. The rule set (Consumer Rights Act 2015, section 29) differs: the seller is responsible until you, or someone you chose, physically hold the order. Since this passage comes from the rule set, it is the one the rule set says applies, rather than the tracking status.",
+      "mode": "model",
+      "retrieved": [
+        "seller:2",
+        "uk_possession_v1:1"
+      ],
+      "cited": [
+        "seller:2",
+        "uk_possession_v1:1"
+      ],
+      "status": "scored",
+      "faithfulness": 0.6667,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-04",
+      "question": "Will the shop reship a parcel that never arrived?",
+      "answer": "According to the seller's policy, the shop will refund or reship any order that does not reach you. However, the policy also says that once tracking shows the parcel as delivered, it becomes your responsibility, so a parcel marked delivered may not qualify.",
+      "mode": "model",
+      "retrieved": [
+        "seller:1",
+        "seller:2"
+      ],
+      "cited": [
+        "seller:1",
+        "seller:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-05",
+      "question": "Is the report deadline counted from the expected delivery date?",
+      "answer": "Yes. According to the seller's policy, you should report a problem within 30 days of the expected delivery date, so the deadline is counted from that date. No other passage gives a different rule.",
+      "mode": "model",
+      "retrieved": [
+        "seller:3"
+      ],
+      "cited": [
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 0.5,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-06",
+      "question": "How quickly do orders ship and with which service?",
+      "answer": "According to the seller's policy, orders ship within 2 working days using Royal Mail Tracked 48.",
+      "mode": "model",
+      "retrieved": [
+        "seller:1"
+      ],
+      "cited": [
+        "seller:1"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-07",
+      "question": "What should I do if an item arrives broken?",
+      "answer": "According to the seller's policy, if an item arrives broken you should send them a photo within 7 days. They will then replace it or refund you in full.",
+      "mode": "model",
+      "retrieved": [
+        "seller:3"
+      ],
+      "cited": [
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-08",
+      "question": "How are fragile items packed?",
+      "answer": "According to the seller's policy, fragile items are double-boxed.",
+      "mode": "model",
+      "retrieved": [
+        "seller:2",
+        "seller:4"
+      ],
+      "cited": [
+        "seller:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-09",
+      "question": "Can I return an unused item, and by when?",
+      "answer": "Yes. The seller's policy accepts returns of unused items within 14 days of delivery.",
+      "mode": "model",
+      "retrieved": [
+        "seller:4",
+        "seller:3"
+      ],
+      "cited": [
+        "seller:4"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-10",
+      "question": "Is postage refunded when I choose to return an item?",
+      "answer": "According to the seller's policy, postage is not refunded on returns you choose to make. The only refund mentioned in the other passage is a full refund for items that arrive broken, if you send a photo within 7 days.",
+      "mode": "model",
+      "retrieved": [
+        "seller:5",
+        "seller:3"
+      ],
+      "cited": [
+        "seller:5",
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-11",
+      "question": "What time do orders ship?",
+      "answer": "According to the seller's policy, orders ship every weekday at 3pm.",
+      "mode": "model",
+      "retrieved": [
+        "seller:1"
+      ],
+      "cited": [
+        "seller:1"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-12",
+      "question": "Which parcels are sent with a signature?",
+      "answer": "According to the seller's policy, parcels over £100 are sent with a signature. The passages do not mention signature requirements for any other parcels.",
+      "mode": "model",
+      "retrieved": [
+        "seller:2",
+        "seller:5"
+      ],
+      "cited": [
+        "seller:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-13",
+      "question": "Can I choose a parcel locker instead of home delivery?",
+      "answer": "Yes. According to the seller's policy, you can choose a parcel locker at checkout instead of home delivery.",
+      "mode": "model",
+      "retrieved": [
+        "seller:3",
+        "seller:4"
+      ],
+      "cited": [
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-14",
+      "question": "What happens when my parcel is late?",
+      "answer": "According to the seller's policy, if your parcel is more than 5 working days late, you should contact the shop and they will chase the courier. The passages do not say anything further about what happens after that, such as refunds or compensation.",
+      "mode": "model",
+      "retrieved": [
+        "seller:4",
+        "seller:3"
+      ],
+      "cited": [
+        "seller:4"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 0.0
+    },
+    {
+      "id": "rg-15",
+      "question": "Are lost parcels refunded or reshipped?",
+      "answer": "According to the seller's policy, lost parcels are either refunded or reshipped, and the choice is the customer's.",
+      "mode": "model",
+      "retrieved": [
+        "seller:5",
+        "seller:2"
+      ],
+      "cited": [
+        "seller:5"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-16",
+      "question": "Where do orders ship from and how fast?",
+      "answer": "According to the seller's policy, orders ship from Ohio within 1 business day via USPS Ground Advantage. The policy does not give an estimated delivery time after shipping. The rule set only adds that orders ship with tracking.",
+      "mode": "model",
+      "retrieved": [
+        "seller:1",
+        "us_seller_policy_v1:1",
+        "seller:2"
+      ],
+      "cited": [
+        "seller:1",
+        "us_seller_policy_v1:1"
+      ],
+      "status": "scored",
+      "faithfulness": 0.8,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-17",
+      "question": "Which orders need a signature on delivery?",
+      "answer": "According to the seller's policy, orders over $200 need a signature on delivery. The passages don't mention a signature requirement for any other orders.",
+      "mode": "model",
+      "retrieved": [
+        "seller:2",
+        "seller:1",
+        "us_seller_policy_v1:4"
+      ],
+      "cited": [
+        "seller:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-18",
+      "question": "Tracking shows delivered but I cannot find the package. What should I do?",
+      "answer": "The seller's policy says to wait 48 hours and check with neighbors, then contact the seller. The rule set adds that a package counts as delivered when the carrier shows a delivered scan and a delivery photo, or when it was signed for or picked up from a locker with your code. These do not conflict, and the passages do not say anything further about what happens after you make contact.",
+      "mode": "model",
+      "retrieved": [
+        "seller:3",
+        "us_seller_policy_v1:2",
+        "us_seller_policy_v1:1"
+      ],
+      "cited": [
+        "seller:3",
+        "us_seller_policy_v1:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-19",
+      "question": "How long do I have to report damaged items?",
+      "answer": "According to the seller's policy, damaged items must be reported within 5 days of delivery, and you need to include photos with your report.",
+      "mode": "model",
+      "retrieved": [
+        "seller:4"
+      ],
+      "cited": [
+        "seller:4"
+      ],
+      "status": "scored",
+      "faithfulness": 0.5,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-20",
+      "question": "When does a package count as delivered?",
+      "answer": "According to the policy, a package counts as delivered when the carrier shows a delivered scan and a delivery photo, or when it was signed for or picked up from a locker with your code. If tracking says delivered but you can't find it, the seller's guidance is to wait 48 hours, check with neighbors, then contact them.",
+      "mode": "model",
+      "retrieved": [
+        "us_seller_policy_v1:2",
+        "seller:3"
+      ],
+      "cited": [
+        "us_seller_policy_v1:2",
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-21",
+      "question": "Which carrier ships the orders, and is there tracking?",
+      "answer": "The seller says it ships with UPS and provides tracking for every order. The rule set's passage also says orders ship with tracking, so the two do not conflict.",
+      "mode": "model",
+      "retrieved": [
+        "us_seller_policy_v1:1",
+        "seller:1",
+        "us_seller_policy_v1:2"
+      ],
+      "cited": [
+        "seller:1",
+        "us_seller_policy_v1:1"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-22",
+      "question": "How long is the return window?",
+      "answer": "According to the seller's policy, returns are accepted within 30 days. The passages given do not state a different return window from any other rule set.",
+      "mode": "model",
+      "retrieved": [
+        "seller:2",
+        "seller:3"
+      ],
+      "cited": [
+        "seller:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-23",
+      "question": "Who pays return shipping?",
+      "answer": "The seller's policy says the buyer pays return shipping for returns made within 30 days, unless the item is faulty. The passages do not say who pays for a faulty item beyond that exception.",
+      "mode": "model",
+      "retrieved": [
+        "seller:2",
+        "seller:3"
+      ],
+      "cited": [
+        "seller:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-24",
+      "question": "When do refunds reach the original payment method?",
+      "answer": "According to the seller's policy, refunds go back to the original payment method within 5 business days of the seller receiving the return.",
+      "mode": "model",
+      "retrieved": [
+        "seller:3"
+      ],
+      "cited": [
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-25",
+      "question": "What happens if a package did not arrive?",
+      "answer": "According to the policy, if a package did not arrive, the seller will either refund the order or reship it. The seller's written delivery policy decides what happens next, and the seller will reply to the buyer. If the matter is not resolved, you can still open a dispute with PayPal.",
+      "mode": "model",
+      "retrieved": [
+        "us_seller_policy_v1:3",
+        "us_seller_policy_v1:4",
+        "us_seller_policy_v1:5"
+      ],
+      "cited": [
+        "us_seller_policy_v1:3",
+        "us_seller_policy_v1:4",
+        "us_seller_policy_v1:5"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-26",
+      "question": "What is the QR seal inside the box for?",
+      "answer": "According to the seller's policy, every order ships with a QR seal inside the box. You are meant to scan it when you open the parcel to confirm that the parcel arrived.",
+      "mode": "model",
+      "retrieved": [
+        "seller:1",
+        "seller:2",
+        "seller:3"
+      ],
+      "cited": [
+        "seller:1",
+        "seller:2"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-27",
+      "question": "How long do I have to report something missing from the box?",
+      "answer": "According to the seller's policy, you should tell them within 3 days if something is missing from the box.",
+      "mode": "model",
+      "retrieved": [
+        "seller:3",
+        "seller:4",
+        "seller:1"
+      ],
+      "cited": [
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-28",
+      "question": "Do I pay for replacement of missing items?",
+      "answer": "According to the seller's policy, missing items are replaced at no cost. You need to tell the seller within 3 days if something is missing from the box.",
+      "mode": "model",
+      "retrieved": [
+        "seller:4",
+        "seller:3"
+      ],
+      "cited": [
+        "seller:4",
+        "seller:3"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-29",
+      "question": "Does every order ship with tracking?",
+      "answer": "Yes, according to the passages. The seller's policy says every order ships with tracking (plus a QR seal inside the box), and the rule set passage also says shipments go with tracking. The two do not conflict.",
+      "mode": "model",
+      "retrieved": [
+        "seller:1",
+        "us_seller_policy_v1:1"
+      ],
+      "cited": [
+        "seller:1",
+        "us_seller_policy_v1:1"
+      ],
+      "status": "scored",
+      "faithfulness": 1.0,
+      "context_recall": 1.0
+    },
+    {
+      "id": "rg-30",
+      "question": "Does a locker pickup with my code count as delivered?",
+      "answer": "Yes. The policy says a package counts as delivered when it was signed for or picked up from a locker with your code. A delivered scan and delivery photo also count as delivery.",
+      "mode": "model",
+      "retrieved": [
+        "us_seller_policy_v1:2"
+      ],
+      "cited": [
+        "us_seller_policy_v1:2"
+      ],
+      "status": "scored",
+      "faithfulness": 0.6,
+      "context_recall": 1.0
+    }
+  ]
+}
