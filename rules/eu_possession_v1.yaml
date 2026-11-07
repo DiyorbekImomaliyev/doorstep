@@ -1,9 +1,9 @@
-# EU consumer possession rule (SPEC section 6). The EU country list lives here (RL-03).
+# EU consumer possession rule. The EU country list lives here (RL-03).
 id: eu_possession_v1
 kind: liability
 region: EU
 source: "Directive 2011/83/EU Art. 20, via ECC-Net — https://www.eccnet.eu/publication/parcel-delivery-challenges-addressed-ecc-net-e-commerce-sector"
-version: "2026-11-06"  # added buyer_seal_scan (ADR-035)
+version: "2026-11-06"  # added buyer_seal_scan
 applies_if:
   buyer_country: [AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LV, LT, LU, MT, NL, PL, PT, RO, SK, SI, ES, SE]
   buyer_type: consumer

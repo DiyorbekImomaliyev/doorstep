@@ -23,7 +23,7 @@ CAPTURE_ORDER = "paypal.capture_order"  # payload: {"order_id": <Doorstep order 
 CAPTURE_FAILED = "FAILED"  # our marker: the capture call itself failed; nothing was charged
 ADD_TRACKING = "paypal.add_tracking"  # payload: {"shipment_id": <Doorstep shipment id>}
 
-# Doorstep/Shippo carrier token -> PayPal ShipmentCarrier member (paypal-plan.md).
+# Doorstep/Shippo carrier token -> PayPal ShipmentCarrier member.
 # Anything else (e.g. Shippo's test carrier "shippo") is sent as OTHER.
 PAYPAL_CARRIER = {
     "usps": "USPS",
@@ -110,7 +110,7 @@ class AddTrackingHandler:
             raise PermanentError(f"job {job.id}: shipment or order missing")
         if not order.paypal_order_id or not order.capture_id:
             raise PermanentError(f"job {job.id}: order {order.id} has no PayPal capture")
-        if is_simulated(order.capture_id):  # R19: PayPal has never seen this order
+        if is_simulated(order.capture_id):  # PayPal has never seen this order
             session.add(
                 AuditLog(
                     actor="worker",

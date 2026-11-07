@@ -1,4 +1,4 @@
-"""Machine reason codes for policy decisions and blocked refunds (ADR-023).
+"""Machine reason codes for policy decisions and blocked refunds.
 
 Code decides on Reason values and tests assert them. The human sentences live only in MESSAGES,
 so wording can change without touching logic or tests. The table is excluded from mutation

@@ -1,8 +1,8 @@
-"""R23 (review S2): a held case whose refund was blocked or failed has a way forward.
+"""A held case whose refund was blocked or failed has a way forward.
 
 Before this, approve() on such a case returned the old blocked money action and did nothing,
 decline works only from AWAITING_SELLER, and HOLD_FOR_REVIEW -> GATHERING_EVIDENCE (SPEC section 8)
-was never called: the "money waiting for a person" alert (R7) had no button that cleared it.
+was never called: the "money waiting for a person" alert on /healthz had no button that cleared it.
 """
 
 from __future__ import annotations
@@ -63,16 +63,16 @@ def held(db, clock, fake_paypal, pipeline, run_refunds) -> Case:
     return case
 
 
-def test_R23_approving_a_blocked_refund_says_so(db, rulebook, clock, held):
+def test_approving_a_blocked_refund_says_so(db, rulebook, clock, held):
     with pytest.raises(PolicyStateError, match="blocked; decide again"):
         PolicyService(db, rulebook, clock).approve(held, REVIEWER)
 
 
-def test_R23_a_held_case_with_a_stopped_refund_offers_only_a_fresh_decision(db, held):
+def test_a_held_case_with_a_stopped_refund_offers_only_a_fresh_decision(db, held):
     assert case_view(db, held).actions == ["re-check"]
 
 
-def test_R23_a_held_case_without_money_offers_approve_and_a_fresh_decision(db, clock, pipeline):
+def test_a_held_case_without_money_offers_approve_and_a_fresh_decision(db, clock, pipeline):
     _, order, _ = _shipped(db, clock, amount_minor=4000)
     report = pipeline.report(order, ClaimReason.NOT_RECEIVED, reported_by="buyer")
     case = db.get(Case, report.case_id)
@@ -83,7 +83,7 @@ def test_R23_a_held_case_without_money_offers_approve_and_a_fresh_decision(db, c
     assert case_view(db, case).actions == ["approve", "re-check"]
 
 
-def test_R23_a_fresh_decision_refunds_once(db, held, pipeline, run_refunds, fake_paypal):
+def test_a_fresh_decision_refunds_once(db, held, pipeline, run_refunds, fake_paypal):
     report = pipeline.redecide(held, actor="reviewer:reviewer-1")
     assert report.route == CaseState.AUTO_REFUND
     decisions = db.scalar(select(func.count()).where(Decision.case_id == held.id))
@@ -95,7 +95,7 @@ def test_R23_a_fresh_decision_refunds_once(db, held, pipeline, run_refunds, fake
     assert db.get(Case, held.id).state == CaseState.SETTLED
 
 
-def test_R23_a_refund_that_landed_unrecorded_is_never_repeated(
+def test_a_refund_that_landed_unrecorded_is_never_repeated(
     db, held, pipeline, run_refunds, fake_paypal
 ):
     """A FAILED refund may still have reached PayPal; the new action meets the live re-check."""
@@ -124,8 +124,8 @@ def _held_with_a_queued_refund(db, clock, pipeline, rulebook):
     return case
 
 
-def test_R23_no_fresh_decision_while_a_refund_is_on_its_way(db, clock, pipeline, rulebook):
-    """Design review of R23: the queued job would land under a newer decision."""
+def test_no_fresh_decision_while_a_refund_is_on_its_way(db, clock, pipeline, rulebook):
+    """The queued job would land under a newer decision."""
     case = _held_with_a_queued_refund(db, clock, pipeline, rulebook)
     assert case_view(db, case).actions == []
     with pytest.raises(PolicyStateError, match="refund is on its way"):
@@ -133,7 +133,7 @@ def test_R23_no_fresh_decision_while_a_refund_is_on_its_way(db, clock, pipeline,
     assert case.state == CaseState.HOLD_FOR_REVIEW
 
 
-def test_R23_only_a_held_case_can_be_decided_again(db, clock, pipeline):
+def test_only_a_held_case_can_be_decided_again(db, clock, pipeline):
     _, order, _ = _shipped(db, clock)
     report = pipeline.report(order, ClaimReason.NOT_RECEIVED, reported_by="buyer")
     with pytest.raises(PolicyStateError, match="cannot be decided again"):
@@ -160,7 +160,7 @@ def api(session_factory, settings, clock):
     return _client(session_factory, settings, clock, services)
 
 
-def test_R23_the_seller_can_ask_for_a_fresh_decision_on_a_held_case(api, session_factory):
+def test_the_seller_can_ask_for_a_fresh_decision_on_a_held_case(api, session_factory):
     from tests.unit.test_api_journey import _by_key
 
     demo = api.post("/demo/seed?scratch=1").json()
@@ -180,9 +180,7 @@ def test_R23_the_seller_can_ask_for_a_fresh_decision_on_a_held_case(api, session
     assert again.status_code == 409
 
 
-def test_R23_a_case_held_twice_counts_once_on_the_health_signal(
-    db, held, pipeline, run_refunds, clock
-):
+def test_a_case_held_twice_counts_once_on_the_health_signal(db, held, pipeline, run_refunds, clock):
     from app.ops.signals import pipeline_signals
 
     pipeline.redecide(held, actor="reviewer:reviewer-1")

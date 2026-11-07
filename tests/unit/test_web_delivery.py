@@ -1,4 +1,4 @@
-"""R21: how the built frontend is served.
+"""How the built frontend is served.
 
 - Vite names each asset by its content hash, so assets are cached for a year (`immutable`). Before
   this, no Cache-Control was sent and every visit downloaded the scripts again (about 2 MB
@@ -38,20 +38,20 @@ def web(monkeypatch, tmp_path) -> TestClient:
     return TestClient(create_app(build_runtime().deps))
 
 
-def test_R21_hashed_assets_are_cached_for_a_year(web):
+def test_hashed_assets_are_cached_for_a_year(web):
     response = web.get("/assets/index-AbC123.js")
     assert response.status_code == 200
     assert response.headers["cache-control"] == IMMUTABLE
 
 
-def test_R21_a_missing_asset_is_a_404_and_never_cached(web):
+def test_a_missing_asset_is_a_404_and_never_cached(web):
     response = web.get("/assets/index-gone.js")
     assert response.status_code == 404
     assert response.headers.get("cache-control") != IMMUTABLE
 
 
 @pytest.mark.parametrize("path", ["/", "/seller/token-1", "/t/token-2", "/verify/case-1", "/x"])
-def test_R21_the_page_is_always_revalidated(web, path):
+def test_the_page_is_always_revalidated(web, path):
     response = web.get(path)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -70,13 +70,13 @@ def test_R21_the_page_is_always_revalidated(web, path):
         "/mcp/x",
     ],
 )
-def test_R21_a_mistyped_api_path_is_a_404_not_the_page(web, path):
+def test_a_mistyped_api_path_is_a_404_not_the_page(web, path):
     response = web.get(path)
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/json")
 
 
-def test_R21_real_api_routes_still_answer(web):
+def test_real_api_routes_still_answer(web):
     response = web.get("/healthz")
     assert response.status_code == 200
     assert response.json()["ok"] is True

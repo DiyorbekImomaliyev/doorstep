@@ -1,4 +1,4 @@
-"""Builds the failure-point engine's Signals from what Doorstep stored (SPEC section 7).
+"""Builds the failure-point engine's Signals from what Doorstep stored.
 
 Every signal comes from a stored row: the checkout address check, carrier tracking events,
 evidence (packing photo, locker code, signature, buyer photo) and the shipment's label weight.

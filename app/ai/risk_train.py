@@ -1,6 +1,6 @@
 """Synthetic data, training and evaluation for the risk model (RK-01, RK-03).
 
-The synthetic world is seeded from published rates (SPEC sections 2 and 14): about 1-2% of
+The synthetic world is seeded from published rates: about 1-2% of
 orders have a costly problem in mature shops, US doorstep theft adds roughly 0.5-1 point, and
 lockers and signatures prevent most of the theft and "left insecure" failures. A new shop and an
 address the buyer kept after it failed the check both raise the rate. These effects are

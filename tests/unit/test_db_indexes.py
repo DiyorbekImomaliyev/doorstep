@@ -1,4 +1,4 @@
-"""R30 (review S11): every foreign key is indexed, on new databases and on old ones.
+"""Every foreign key is indexed, on new databases and on old ones.
 
 Postgres does not index foreign keys by itself, and every screen joins through them (orders by
 seller, shipments by order, events by shipment). Base.metadata.create_all never alters a table that
@@ -26,7 +26,7 @@ def _leading_columns(table) -> set[str]:
     return lead
 
 
-def test_R30_every_foreign_key_leads_an_index():
+def test_every_foreign_key_leads_an_index():
     import_all_models()
     missing = [
         f"{t.name}.{fk.parent.name}"
@@ -37,7 +37,7 @@ def test_R30_every_foreign_key_leads_an_index():
     assert missing == []
 
 
-def test_R30_startup_adds_an_index_an_old_database_lacks(tmp_path):
+def test_startup_adds_an_index_an_old_database_lacks(tmp_path):
     import_all_models()
     engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
     Base.metadata.create_all(engine)

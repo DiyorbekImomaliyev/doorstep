@@ -1,4 +1,4 @@
-# Render Blueprint: "Deploy to Render" builds the whole system (SPEC section 8, ADR-028).
+# Render Blueprint: "Deploy to Render" builds the whole system.
 # Sandbox and test keys only. Secrets are entered in the dashboard (sync: false), never here.
 envVarGroups:
   - name: doorstep-shared

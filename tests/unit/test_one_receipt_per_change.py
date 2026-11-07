@@ -1,4 +1,4 @@
-"""R31 (review S13): a receipt records a change, so a repeated tap signs nothing new.
+"""A receipt records a change, so a repeated tap signs nothing new.
 
 approve() is idempotent on money (PO-07): a second tap returns the same money action. It used to
 sign a second "approve" receipt anyway, so the public chain claimed two approvals of one refund.
@@ -33,7 +33,7 @@ def _approve_receipts(db, case_id):
     )
 
 
-def test_R31_a_second_approve_signs_no_second_receipt(db, rulebook, clock):
+def test_a_second_approve_signs_no_second_receipt(db, rulebook, clock):
     case = _awaiting(db, rulebook, clock)
     actions = CaseActions(db, rulebook, clock, ReceiptSigner.generate())
     first = actions.act(case, "approve", SELLER)

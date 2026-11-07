@@ -1,4 +1,4 @@
-"""Carrier claim terms (RC-01, RC-02, ADR-037): rules/carriers/carrier_claims_v1.yaml.
+"""Carrier claim terms (RC-01, RC-02): rules/carriers/carrier_claims_v1.yaml.
 
 A business rule like every other (hard rule 2), so code only reads it. It lives in its own folder
 because it is not a liability rule: it never decides who pays the buyer, only what a seller can

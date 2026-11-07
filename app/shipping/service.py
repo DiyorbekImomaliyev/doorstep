@@ -21,7 +21,7 @@ from app.worker.runner import enqueue
 
 REGISTER_TRACK = "shippo.register_track"  # payload: {"shipment_id": ...}
 # TR-03: what the buyer may choose after a failed attempt. Both are simulated in the demo
-# (no live carrier rerouting or locker booking; SPEC section 17).
+# (no live carrier rerouting or locker booking).
 FAILED_ATTEMPT_CHOICES = ("rebook", "locker")
 _SHIPPABLE = (OrderState.PAID.value, OrderState.PACKED.value)
 _IN_FLIGHT = (OrderState.SHIPPED.value, OrderState.IN_TRANSIT.value)

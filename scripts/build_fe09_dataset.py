@@ -1,8 +1,8 @@
 """Build the FE-09 failure-point eval set (60 labelled cases + 20 hold-out).
 
-Every label comes from the failure-point table in SPEC section 7 (and 7a.2 for contradicted
-scans), written here as a scenario with a one-line reason. Labels are never taken from the engine's
-output: run `make evals` to see how the engine scores against them.
+Every label comes from the product's failure-point table (and the delivered-scan audit for
+contradicted scans), written here as a scenario with a one-line reason. Labels are never taken
+from the engine's output: run `make evals` to see how the engine scores against them.
 
 Region (GB / US) changes who is liable, not the failure point, so each scenario appears in both.
 The hold-out set uses different combinations of the same scenarios and is never used for tuning.
@@ -26,7 +26,7 @@ HOLDOUT = ROOT / "evals" / "datasets" / "holdout" / "failure_cases.jsonl"
 class Case:
     name: str
     label: str
-    why: str  # the SPEC section 7 row this label comes from
+    why: str  # the failure-point table row this label comes from
     signals: dict[str, Any] = field(default_factory=dict)
 
 

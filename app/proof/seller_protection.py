@@ -42,11 +42,6 @@ def latest_report(session: Session, order_id: str) -> dict[str, Any] | None:
     return latest_reports(session, [order_id]).get(order_id)
 
 
-def protection_status(session: Session, order_id: str) -> str | None:
-    report = latest_report(session, order_id)
-    return str(report["status"]) if report else None
-
-
 def record_seller_protection(
     session: Session,
     order_id: str,

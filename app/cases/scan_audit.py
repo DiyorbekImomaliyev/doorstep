@@ -1,4 +1,4 @@
-"""Delivered-scan audit (SPEC section 7a.2, SA-01..05, ADR-036).
+"""Delivered-scan audit (SA-01..05).
 
 A carrier's "Delivered" scan usually wins every argument. This module checks that scan against
 the carrier's own data: where it was made, when it was made, and what else the same carrier

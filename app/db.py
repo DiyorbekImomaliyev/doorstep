@@ -59,7 +59,7 @@ def import_all_models() -> None:
 
 
 def ensure_indexes(engine: Engine) -> None:
-    """R30 (review S11): create every model index the database lacks.
+    """Create every model index the database lacks.
 
     create_all never alters a table that already exists, so an index added to a model later would
     never reach a database made before it. Tables are small, so each build takes milliseconds. The

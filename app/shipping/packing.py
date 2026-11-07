@@ -1,4 +1,4 @@
-"""Packing step (SPEC section 5 step 4): store the check as evidence and move the order.
+"""Packing step: store the check as evidence and move the order.
 
 A match moves PAID -> PACKED. A mismatch or "check" keeps the order PAID until the seller
 clears it ("I checked it, ship anyway"), which is recorded and later read by the failure-point

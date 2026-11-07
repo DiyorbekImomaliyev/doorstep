@@ -1,8 +1,8 @@
-"""PO-05, review R1 and R3: a refund never goes out while PayPal holds an open dispute.
+"""PO-05: a refund never goes out while PayPal holds an open dispute.
 
 The local disputes table is filled by webhooks, and webhooks can be late or arrive out of order.
-Right before money moves, the re-check asks PayPal itself (R1). Webhook events can never move a
-resolved dispute back to open (R3); only a live read from PayPal can.
+Right before money moves, the re-check asks PayPal itself. Webhook events can never move a
+resolved dispute back to open; only a live read from PayPal can.
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ def _summary(dispute_id: str, *captures: str, status: str = "OPEN") -> DisputeSu
     return DisputeSummary(dispute_id=dispute_id, status=status, capture_ids=list(captures))
 
 
-# ---------------------------------------------------------------- R1: ask PayPal itself
+# ---------------------------------------------------------------- ask PayPal itself
 
 
 def test_PO_05_a_dispute_only_paypal_knows_blocks_the_refund(db, refund_case, run_refund, paypal):
@@ -161,7 +161,7 @@ def test_PO_05_a_dispute_paypal_cannot_tie_to_a_capture_goes_to_a_person(
 def test_PO_05_a_dispute_hold_is_visible_on_the_pipeline_signals(
     db, clock, refund_case, run_refund, paypal
 ):
-    """Review F1: an untied dispute holds refunds by design, so someone must be told (R7)."""
+    """An untied dispute holds refunds by design, so someone must be told on /healthz."""
     from app.ops.signals import pipeline_signals
 
     refund_case()
@@ -309,7 +309,7 @@ def test_PO_05_paypal_is_never_asked_further_back_than_it_allows():
     assert reads.DISPUTE_LIST_MAX_AGE < timedelta(days=180)  # 180+ days: INVALID_START_TIME_RANGE
 
 
-# ---------------------------------------------------------------- R1: the real gateways
+# ---------------------------------------------------------------- the real gateways
 
 
 class _Client:
@@ -458,7 +458,7 @@ def test_PO_05_a_routed_gateway_that_cannot_read_disputes_fails_closed(session_f
     assert routed.open_disputes_since(SINCE, capture_id="SIM-CAP-1") == []
 
 
-# ---------------------------------------------------------------- R3: event order
+# ---------------------------------------------------------------- event order
 
 
 def _event(db, rulebook, clock, event_type: str, resource: dict[str, Any]) -> None:

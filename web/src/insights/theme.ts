@@ -9,7 +9,6 @@ import type { AgStudioThemeParams } from "ag-studio";
 import { studioTheme } from "ag-studio";
 
 const INTER = "'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-export const SERIF = "'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif";
 
 /** Maroon first, then colours that stay apart from it and from each other in both modes. */
 const PALETTE = ["#7b2d3d", "#c98a97", "#3f6f73", "#c9a46a", "#5a524e", "#a24c5e", "#8fb3a5"];

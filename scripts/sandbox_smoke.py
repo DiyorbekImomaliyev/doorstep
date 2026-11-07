@@ -6,8 +6,8 @@
    capture exists. The buyer-approval half (PayPal popup) is shown in the video instead.
 2. Doorstep records the order, checks packing, and ships it: the outbox registers the tracking
    number with Shippo and on the PayPal payment (real calls, PayPal-Request-Id).
-3. The carrier's "delivered" event is replayed from a fixture (Shippo cannot reach localhost;
-   SPEC section 17 fallback), then the buyer taps "Not here".
+3. The carrier's "delivered" event is replayed from a fixture (Shippo cannot reach
+   localhost), then the buyer taps "Not here".
 4. The engine, rules and policy decide; under the seller's limit the policy queues the refund
    and the worker sends it to PayPal. The script prints the PayPal refund id and verifies the
    signed receipt chain.

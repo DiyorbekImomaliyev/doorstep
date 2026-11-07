@@ -3,7 +3,7 @@ import {
   Coffee, Footprints, Gem, Headphones, House, Lamp, Lock, Package, PenLine, Shirt, Watch,
 } from "lucide-react";
 import type { OrderRow } from "../api";
-import { METHOD, ROUTE, money, pct, riskTone, type Tone } from "../format";
+import { METHOD, ROUTE, pct, riskTone, type Tone } from "../format";
 
 /** Cell renderers for the Control Room grid, after AG Grid's finance demo: an identity tile,
  * a compact progress track in place of a sparkline, values in soft pills, numbers right-aligned. */
@@ -22,37 +22,6 @@ export function itemKind(item: string): { icon: ReactNode; label: string } {
   const k = ITEM_KINDS.find(([re]) => re.test(item));
   return k ? { icon: k[1], label: k[2] } : { icon: <Package />, label: "General" };
 }
-const itemIcon = (item: string) => itemKind(item).icon;
-
-export function ItemCell({ r }: { r: OrderRow }) {
-  return (
-    <div className="item-cell">
-      <span className="item-tile" aria-hidden>{itemIcon(r.item)}</span>
-      <span className="cell-two">
-        <span className="item-name">{r.item}</span>
-        <span className="sub num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
-      </span>
-    </div>
-  );
-}
-
-/** The inventory demo's product cell: a larger tile, the name, then a category tag and the reference. */
-export function ItemWideCell({ r }: { r: OrderRow }) {
-  const k = itemKind(r.item);
-  return (
-    <div className="item-cell wide">
-      <span className="item-tile lg" aria-hidden>{k.icon}</span>
-      <span className="cell-two" style={{ gap: 5 }}>
-        <span className="item-name">{r.item}</span>
-        <span className="row" style={{ gap: 6 }}>
-          <span className="tag">{k.label}</span>
-          <span className="sub num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
-        </span>
-      </span>
-    </div>
-  );
-}
-
 const STEPS = ["Paid", "Packed", "Shipped", "Delivered", "Received"];
 const STEP_OF: Record<string, number> = {
   CREATED: 0, PAID: 1, PACKED: 2, SHIPPED: 3, IN_TRANSIT: 3, EXCEPTION: 3,
@@ -102,9 +71,4 @@ export function RiskCell({ r }: { r: OrderRow }) {
       {pct(r.delivery_risk)}
     </span>
   );
-}
-
-export function StakeCell({ r }: { r: OrderRow }) {
-  if (!r.money_at_stake_minor) return <span className="faint">—</span>;
-  return <span className="pill accent">{money(r.money_at_stake_minor, r.currency)}</span>;
 }

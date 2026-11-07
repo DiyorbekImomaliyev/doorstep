@@ -1,8 +1,9 @@
-"""Glue between Doorstep types and the generated PayPal SDK models (ADR-014, ADR-015).
+"""Glue between Doorstep types and the generated PayPal SDK models.
 
 Request bodies are built from SDK models (validated against PayPal's spec) and serialized with
-to_dict(); success bodies are decoded with SDK models. Every model/field name here comes from
-the contract sheet in paypal-plan.md. SDK `Optional` means "may be UNSET", never None.
+to_dict(); success bodies are decoded with SDK models. Every model and field name here was looked
+up in the SDK's own map (APIMatic), never written from memory. SDK `Optional` means "may be
+UNSET", never None.
 """
 
 from __future__ import annotations

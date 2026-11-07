@@ -1,4 +1,4 @@
-"""Mutation gate for the money path (ADR-023).
+"""Mutation gate for the money path.
 
 Reads the results of the last `mutmut run` and fails if any surviving mutant changes logic.
 
@@ -14,8 +14,8 @@ removing the places that only produce human-readable text:
 
 Every other surviving change is *logic* and fails the gate. That includes a changed string in a
 comparison (`status == "COMPLETED"`), a dict key in an audit payload, or a reason code. True
-equivalent mutants are excluded at the source with `# pragma: no mutate` and listed, with one
-line each, in docs/mutation-report.md.
+equivalent mutants are excluded at the source with `# pragma: no mutate`, each with a comment
+saying why.
 
 Exit code 0: no logic survivors. 1: logic survivors (printed with their diff). 2: no results.
 """

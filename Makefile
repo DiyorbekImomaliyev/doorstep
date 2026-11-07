@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration test-pg cov locked-untouched gate trace locked evals web-build dev demo e2e fuzz smoke risk-model
+.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration test-pg cov locked-untouched gate evals redteam web-build dev demo e2e fuzz smoke risk-model
 
 setup:
 	uv sync
@@ -9,7 +9,7 @@ lint:
 	uv run lint-imports
 
 # The official gate: unit + property tests, offline and deterministic. A fixed Hypothesis seed
-# means the same examples every run, so the gate never depends on luck (ADR-020).
+# means the same examples every run, so the gate never depends on luck.
 HYPOTHESIS_SEED ?= 20261104
 
 test:
@@ -37,7 +37,7 @@ mutmut:
 	$(MUTMUT_RUN)
 	uv run mutmut results
 
-# Gate (ADR-023): zero surviving logic mutants in the money path; text-only survivors allowed.
+# Gate: zero surviving logic mutants in the money path; text-only survivors allowed.
 # Starts clean: mutmut's cached test map misses tests added since the last run.
 mutmut-gate:
 	rm -rf mutants
@@ -56,35 +56,32 @@ cov:
 		--cov=app/policy --cov=app/orders/state --cov-branch --cov-fail-under=100 \
 		--cov-report=term-missing:skip-covered
 
-# Locked tests are never edited or deleted (CLAUDE.md); new test files are fine. The one sanctioned
-# edit: an entry leaves test_unbuilt_xfail.py when its criterion is built.
+# Locked tests are never edited or deleted (CLAUDE.md); new test files are fine. A placeholder
+# leaves test_unbuilt_xfail.py, or an approved one leaves a locked file, when its criterion is built.
 locked-untouched:
-	@tag=$$(git tag --list 'tests-locked-*' --sort=-creatordate | head -n1); \
-	test -n "$$tag" || { echo "no tests-locked-* tag"; exit 1; }; \
-	changed=$$(git diff --name-only --diff-filter=MDRT "$$tag" -- tests/ \
-		| grep -v '^tests/unit/test_unbuilt_xfail.py$$' || true); \
-	if [ -n "$$changed" ]; then echo "locked tests edited since $$tag:"; echo "$$changed"; exit 1; fi; \
-	echo "locked tests untouched since $$tag (new test files allowed)"
+	uv run python scripts/locked_tests.py
 
-# Every check a design task must pass before it counts as done (.claude/commands/design-loop.md).
-gate: lint cov trace locked-untouched
+# Every check a change must pass before it counts as done.
+gate: lint cov locked-untouched
 	@if [ -n "$$TEST_DATABASE_URL" ]; then $(MAKE) --no-print-directory test-pg \
 		&& echo "gate: all checks passed"; \
 	else echo "gate: all checks passed except Postgres (set TEST_DATABASE_URL; CI runs it)"; fi
 
 # Row locks and SKIP LOCKED only mean something on Postgres (SQLite ignores FOR UPDATE), so these
-# run against a real server. REQUIRE_PG=1: no reachable database is a failure, never a skip (R2).
+# run against a real server. REQUIRE_PG=1: no reachable database is a failure, never a skip.
 test-pg:
 	REQUIRE_PG=1 uv run pytest tests/integration -m pg -q
 
-trace:
-	uv run python scripts/trace.py
-
-locked:
-	scripts/check_tests_locked.sh
-
 evals:
 	uv run pytest evals -q -m eval
+
+# SE-03 red-team in Promptfoo (needs Node). The provider replays recorded model answers and asks
+# only new prompts, on EVAL_LLM_PROVIDER (never the paid key). `make evals` runs the same probes.
+PROMPTFOO := npx --yes promptfoo@0.125.1
+redteam:
+	PYTHONPATH=$(CURDIR) PROMPTFOO_PYTHON=$(CURDIR)/.venv/bin/python PROMPTFOO_DISABLE_TELEMETRY=1 \
+	  $(PROMPTFOO) eval -c evals/redteam/promptfooconfig.yaml $(ENV_FILE) -j 1 --no-cache \
+	  --no-write --no-progress-bar -o evals/results/redteam_promptfoo.json
 
 # ---------------------------------------------------------------- app
 

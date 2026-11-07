@@ -4,8 +4,8 @@
 id: us_seller_policy_v1
 kind: liability
 region: US
-source: "Seller written delivery policy (demo seller defaults); no single US rule — SPEC section 6"
-version: "2026-11-06"  # seal proof, contradicted scans (ADR-035/036)
+source: "Seller written delivery policy (demo seller defaults); the US has no single rule"
+version: "2026-11-06"  # seal proof, contradicted scans
 applies_if:
   buyer_country: [US]
   buyer_type: consumer

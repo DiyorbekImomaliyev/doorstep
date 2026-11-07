@@ -237,7 +237,7 @@ class PolicyChecker:
                     temperature=0,
                     purpose="policy_check",
                 )
-            except Exception as exc:  # any model failure -> unchecked (SPEC section 10)
+            except Exception as exc:  # any model failure -> unchecked
                 log.warning("policy check model failed (%s)", type(exc).__name__)
                 return PolicyCheck(status="unchecked", issues=[], dropped=dropped, **base)  # type: ignore[arg-type]
             assert isinstance(draft, PolicyCheckDraft)

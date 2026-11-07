@@ -1,4 +1,4 @@
-"""Domain tables (SPEC section 8). Approvals and disputes are added by ADR-001/ADR-011."""
+"""Domain tables: orders, shipments, cases, decisions, approvals, money actions, disputes."""
 
 from __future__ import annotations
 

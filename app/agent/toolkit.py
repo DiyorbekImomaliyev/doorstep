@@ -2,7 +2,7 @@
 
 Only read actions are enabled. The toolkit's shipment *create* action is left off on purpose:
 it would write to PayPal outside Doorstep's jobs outbox and idempotency keys (hard rule 4);
-tracking is registered by the outbox job instead (TR-05, ADR-031). No refund, capture or
+tracking is registered by the outbox job instead (TR-05). No refund, capture or
 dispute-accept action is enabled; the only money tool is Doorstep's own request_refund.
 """
 

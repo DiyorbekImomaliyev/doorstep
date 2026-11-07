@@ -1,4 +1,4 @@
-"""R7: the pipeline's golden signals, so a stalled worker or held money is seen, not just handled.
+"""The pipeline's golden signals, so a stalled worker or held money is seen, not just handled.
 
 Counts only, never personal data. `/healthz` stays HTTP 200: a restart of the web service cannot
 fix a stalled worker, so the status is in the body for an uptime checker to alert on.
@@ -83,7 +83,7 @@ def _money(
     db.flush()
 
 
-def test_R7_a_quiet_pipeline_is_ok(db, clock):
+def test_a_quiet_pipeline_is_ok(db, clock):
     s = pipeline_signals(db, clock.now())
     assert (s.status, s.reasons) == ("ok", [])
     counts = s.model_dump(exclude={"status", "reasons", "money_blocked_24h"})
@@ -95,7 +95,7 @@ def test_R7_a_quiet_pipeline_is_ok(db, clock):
 
 
 @pytest.mark.parametrize(("age_s", "status"), [(LAG_LIMIT, "ok"), (LAG_LIMIT + 1, "degraded")])
-def test_R7_a_webhook_waiting_past_the_limit_degrades(db, clock, age_s, status):
+def test_a_webhook_waiting_past_the_limit_degrades(db, clock, age_s, status):
     now = clock.now()
     _inbox(db, age_s=age_s, now=now)
     _inbox(db, age_s=5, now=now)
@@ -107,7 +107,7 @@ def test_R7_a_webhook_waiting_past_the_limit_degrades(db, clock, age_s, status):
 
 
 @pytest.mark.parametrize(("late_s", "status"), [(LAG_LIMIT, "ok"), (LAG_LIMIT + 1, "degraded")])
-def test_R7_a_job_overdue_past_the_limit_degrades(db, clock, late_s, status):
+def test_a_job_overdue_past_the_limit_degrades(db, clock, late_s, status):
     now = clock.now()
     _job(db, due_in_s=-late_s, now=now)
     _job(db, due_in_s=600, now=now)  # backing off: queued, not overdue
@@ -117,7 +117,7 @@ def test_R7_a_job_overdue_past_the_limit_degrades(db, clock, late_s, status):
     assert s.reasons == ([] if status == "ok" else ["jobs_lagging"])
 
 
-def test_R7_a_job_due_later_is_not_overdue(db, clock):
+def test_a_job_due_later_is_not_overdue(db, clock):
     now = clock.now()
     _job(db, due_in_s=600, now=now)
     assert pipeline_signals(db, now).jobs_oldest_overdue_s == 0
@@ -126,7 +126,7 @@ def test_R7_a_job_due_later_is_not_overdue(db, clock):
 # ---------------------------------------------------------------- failures: an hour, then a count
 
 
-def test_R7_a_failure_in_the_last_hour_degrades(db, clock):
+def test_a_failure_in_the_last_hour_degrades(db, clock):
     now = clock.now()
     _job(db, due_in_s=-HOUR, status="failed", now=now)  # exactly an hour ago
     _inbox(db, age_s=HOUR, status="failed", now=now)
@@ -135,7 +135,7 @@ def test_R7_a_failure_in_the_last_hour_degrades(db, clock):
     assert s.reasons == ["webhooks_failed", "jobs_failed", "money_writes_failed"]
 
 
-def test_R7_an_older_failure_is_counted_but_no_longer_degrades(db, clock):
+def test_an_older_failure_is_counted_but_no_longer_degrades(db, clock):
     now = clock.now()
     _job(db, due_in_s=-HOUR - 1, status="failed", now=now)
     _inbox(db, age_s=HOUR + 1, status="failed", now=now)
@@ -145,7 +145,7 @@ def test_R7_an_older_failure_is_counted_but_no_longer_degrades(db, clock):
     assert (s.status, s.reasons) == ("ok", [])
 
 
-def test_R7_a_failure_older_than_a_day_is_not_counted(db, clock):
+def test_a_failure_older_than_a_day_is_not_counted(db, clock):
     now = clock.now()
     _job(db, due_in_s=-25 * HOUR, status="failed", now=now)
     _inbox(db, age_s=25 * HOUR, status="failed", now=now)
@@ -155,7 +155,7 @@ def test_R7_a_failure_older_than_a_day_is_not_counted(db, clock):
     assert (s.jobs_failed_24h, s.inbox_failed_24h, s.money_failed_24h) == (0, 0, 0)
 
 
-def test_R7_a_dispute_evidence_write_that_failed_counts_too(db, clock):
+def test_a_dispute_evidence_write_that_failed_counts_too(db, clock):
     now = clock.now()
     _money(db, status=FAILED, kind=MoneyActionKind.EVIDENCE, now=now)
     assert pipeline_signals(db, now).money_failed_24h == 1
@@ -164,7 +164,7 @@ def test_R7_a_dispute_evidence_write_that_failed_counts_too(db, clock):
 # ---------------------------------------------------------------- held money: state, no window
 
 
-def test_R7_blocked_money_writes_are_counted_by_reason(db, clock):
+def test_blocked_money_writes_are_counted_by_reason(db, clock):
     now = clock.now()
     for _ in range(2):
         _money(db, status=BLOCKED, code="dispute_opened", now=now)
@@ -177,7 +177,7 @@ def test_R7_blocked_money_writes_are_counted_by_reason(db, clock):
 
 
 @pytest.mark.parametrize("status", [BLOCKED, FAILED])
-def test_R7_money_held_for_a_reviewer_degrades_at_any_age(db, clock, status):
+def test_money_held_for_a_reviewer_degrades_at_any_age(db, clock, status):
     now = clock.now()
     _money(db, status=status, age_s=10 * 24 * HOUR, case_state=CaseState.HOLD_FOR_REVIEW, now=now)
     s = pipeline_signals(db, now)
@@ -185,7 +185,7 @@ def test_R7_money_held_for_a_reviewer_degrades_at_any_age(db, clock, status):
 
 
 @pytest.mark.parametrize("state", [CaseState.SETTLED, CaseState.CLOSED, CaseState.DISPUTE_EVIDENCE])
-def test_R7_held_money_stops_alerting_once_its_case_moves_on(db, clock, state):
+def test_held_money_stops_alerting_once_its_case_moves_on(db, clock, state):
     now = clock.now()
     _money(db, status=BLOCKED, case_state=state, now=now)
     _money(
@@ -197,7 +197,7 @@ def test_R7_held_money_stops_alerting_once_its_case_moves_on(db, clock, state):
 # ---------------------------------------------------------------- model calls
 
 
-def test_R7_paid_model_calls_are_counted_for_today_only(db, clock):
+def test_paid_model_calls_are_counted_for_today_only(db, clock):
     now = clock.now()
     today = now.date()
     db.add(ModelUsage(day=today, provider="anthropic", calls=7))
@@ -227,7 +227,7 @@ def health_api(monkeypatch, tmp_path) -> TestClient:
     return TestClient(create_app(build_runtime().deps))
 
 
-def test_R7_healthz_shows_the_pipeline_as_counts(health_api):
+def test_healthz_shows_the_pipeline_as_counts(health_api):
     response = health_api.get("/healthz")
     assert response.status_code == 200
     pipeline = response.json()["pipeline"]
@@ -237,8 +237,8 @@ def test_R7_healthz_shows_the_pipeline_as_counts(health_api):
     assert all(isinstance(v, int) for k, v in numbers.items() if k != "money_blocked_24h")
 
 
-def test_R7_healthz_stays_up_when_the_signals_fail(health_api, monkeypatch):
-    """Design review R7-1: Render restarts a service whose health check fails."""
+def test_healthz_stays_up_when_the_signals_fail(health_api, monkeypatch):
+    """Render restarts a service whose health check fails."""
 
     def broken(*_: object) -> None:
         raise OperationalError("SELECT ...", {}, Exception("canceling statement due to timeout"))

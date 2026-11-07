@@ -1,4 +1,4 @@
-"""Failure-point engine (SPEC section 7). Deterministic code; never calls a model (FE-10).
+"""Failure-point engine. Deterministic code; never calls a model (FE-10).
 Weights and the tie-break priority come from tuning/engine_config.py at call time."""
 
 from __future__ import annotations
@@ -128,7 +128,7 @@ def _facts(s: Signals) -> dict[str, bool]:
 
 
 def _matches(s: Signals, f: dict[str, bool]) -> set[FailurePoint]:
-    """The failure-point rules of SPEC section 7 (FE-01 .. FE-06)."""
+    """The failure-point rules (FE-01 .. FE-06)."""
     not_received = s.claim_reason == ClaimReason.NOT_RECEIVED
     found: set[FailurePoint] = set()
     if not_received and (

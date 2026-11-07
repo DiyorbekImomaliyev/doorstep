@@ -1,4 +1,4 @@
-"""Doorstep MCP server (SPEC section 9, MC-01..03): delivery problems for buyers' AI agents.
+"""Doorstep MCP server (MC-01..03): delivery problems for buyers' AI agents.
 
 Two tools, both keyed by an mcp-scoped signed token for exactly one order:
 - get_delivery_status: where the parcel is (no address, no personal data).

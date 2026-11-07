@@ -178,7 +178,7 @@ class CheckoutService:
         return result
 
     def _ship_to(self, order: Order, address: Address) -> None:
-        """Store where the parcel goes. Its country picks the legal rule (review S3, R24), so the
+        """Store where the parcel goes. Its country picks the legal rule, so the
         country PayPal returns replaces the one the checkout request declared."""
         order.shipping_address = address.model_dump()
         country = address.country.strip().upper()

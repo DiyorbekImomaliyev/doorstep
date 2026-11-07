@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, get_args
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -17,7 +17,7 @@ class ExplanationDraft(BaseModel):
 
 
 class PackingCheckResult(BaseModel):
-    """SPEC section 10 packing check (PK-01)."""
+    """Packing check (PK-01)."""
 
     matches: bool
     item: str = Field(max_length=200)
@@ -26,15 +26,6 @@ class PackingCheckResult(BaseModel):
     reasons: list[str] = Field(default_factory=list, max_length=6)
     confidence: float = Field(ge=0.0, le=1.0)
     mismatch_attribute: Literal["item", "colour", "size", "none"] = "none"
-
-
-class DamageCheckResult(BaseModel):
-    """SPEC section 10 damage check."""
-
-    damage_visible: bool
-    type: str = Field(default="", max_length=60)
-    severity: Literal["none", "minor", "major"] = "none"
-    reasons: list[str] = Field(default_factory=list, max_length=6)
 
 
 class PolicyAnswer(BaseModel):
@@ -108,7 +99,6 @@ InsightPeriod = Literal["all_time", "this_month", "last_30_days", "last_90_days"
 CASE_METRICS: frozenset[str] = frozenset(
     ("net_loss", "paid_out", "recovered", "claimed", "recovery_rate", "case_count", "open_cases")
 )
-ORDER_METRICS: frozenset[str] = frozenset(get_args(InsightMetric)) - CASE_METRICS
 CASE_GROUPS: frozenset[str] = frozenset(
     (
         "none",

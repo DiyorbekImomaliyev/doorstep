@@ -106,8 +106,7 @@ function pick<T>(rnd: () => number, options: [T, number][]): T {
 }
 
 /**
- * 26 weeks of a small shop (~65 orders a week) before the demo orders, at the rates SPEC section 14
- * assumes: a costly problem on 1-3% of home deliveries, far fewer with a locker or signature.
+ * 26 weeks of a small shop (~65 orders a week) before the demo orders, at assumed rates: a costly problem on 1-3% of home deliveries, far fewer with a locker or signature.
  */
 export function simulatedHistory(home: "GBP" | "USD", before: Date): InsightsOut {
   const rnd = mulberry32(20261104);

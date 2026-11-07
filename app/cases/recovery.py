@@ -1,4 +1,4 @@
-"""Carrier recovery (SPEC section 7a.3, RC-01 .. RC-06, ADR-037).
+"""Carrier recovery (RC-01 .. RC-06).
 
 When the seller is liable to the buyer and the failure point is the carrier's (lost or damaged in
 transit), Doorstep prepares a claim the seller can make against the carrier: the amount and the

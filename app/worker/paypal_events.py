@@ -1,4 +1,4 @@
-"""PayPal webhook events, processed from the inbox by the worker (SPEC section 9).
+"""PayPal webhook events, processed from the inbox by the worker.
 
 - PAYMENT.CAPTURE.COMPLETED: backup to the capture job; stores the capture and marks PAID.
 - PAYMENT.CAPTURE.REFUNDED: records refunds made outside Doorstep, so the refundable balance
@@ -124,7 +124,7 @@ def _make_dispute(clock: Clock) -> Handler:
             )
         elif dispute.status != "resolved":
             dispute.status = status
-        else:  # resolved is final for webhooks: a late or reordered event never reopens it (R3)
+        else:  # resolved is final for webhooks: a late or reordered event never reopens it
             log.info("dispute %s already resolved; %s ignored", dispute_id, row.event_type)
         s.flush()
 

@@ -29,10 +29,6 @@ log = logging.getLogger("doorstep.worker")
 QUEUED, DONE, FAILED = "queued", "done", "failed"
 
 
-class RetryableError(Exception):
-    """Handler asks for a retry. PayPalServerError is also retried."""
-
-
 class PermanentError(Exception):
     """Handler gives up at once. PayPalClientError is also permanent, except a 429."""
 

@@ -1,4 +1,4 @@
-"""Possession seal (SPEC section 7a.1, SL-01..06, ADR-035).
+"""Possession seal (SL-01..06).
 
 A QR code (or an NFC sticker holding the same URL) on the packing slip inside the parcel. The
 URL carries a signed token scoped ``seal`` to one order. Scanning it with the buyer's own phone
@@ -9,7 +9,7 @@ A scan counts as possession proof only if the carrier had already handled the pa
 delivered, failure or returned event at or before the scan). That stops a seller scanning the seal
 while packing. A scan that does not count is still recorded, with the reason.
 
-SL-07 (ADR-042): a scan from the seller's own browser never counts. Opening the Control Room or a
+SL-07: a scan from the seller's own browser never counts. Opening the Control Room or a
 seal card sets a signed, HttpOnly cookie scoped ``seller_browser``; a scan that carries a valid
 cookie for the order's own seller is recorded with reason ``seller_browser`` and not counted.
 """

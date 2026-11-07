@@ -1,4 +1,4 @@
-"""R24 (review S3): the country that picks the legal rule is where the parcel goes, per PayPal.
+"""The country that picks the legal rule is where the parcel goes, per PayPal.
 
 buyer_country came from the unauthenticated checkout request, and nothing checked it against the
 shipping address PayPal returned. A US buyer could post GB and get the UK possession rule (seller
@@ -37,7 +37,7 @@ def _country_rows(db, order_id):
     )
 
 
-def test_R24_paypals_shipping_country_replaces_the_declared_one(db, checkout, paypal, clock):
+def test_paypals_shipping_country_replaces_the_declared_one(db, checkout, paypal, clock):
     order, started = _started(db, checkout)  # declared GB
     paypal.approve(started.paypal_order_id, SAM_FIXED.model_copy(update={"country": "us"}))
     checkout.on_approved(order)
@@ -46,7 +46,7 @@ def test_R24_paypals_shipping_country_replaces_the_declared_one(db, checkout, pa
     assert (row.after, row.at) == ({"declared": "GB", "paypal": "US"}, clock.now())
 
 
-def test_R24_a_matching_country_changes_nothing(db, checkout, paypal):
+def test_a_matching_country_changes_nothing(db, checkout, paypal):
     order, started = _started(db, checkout)
     paypal.approve(started.paypal_order_id, SAM_FIXED)  # GB
     checkout.on_approved(order)
@@ -54,7 +54,7 @@ def test_R24_a_matching_country_changes_nothing(db, checkout, paypal):
     assert _country_rows(db, order.id) == []
 
 
-def test_R24_a_corrected_address_also_sets_the_country(db, checkout, paypal):
+def test_a_corrected_address_also_sets_the_country(db, checkout, paypal):
     order, started = _started(db, checkout)
     paypal.approve(started.paypal_order_id, SAM_FIXED)
     checkout.on_approved(order)
@@ -70,7 +70,7 @@ def test_R24_a_corrected_address_also_sets_the_country(db, checkout, paypal):
     assert order.buyer_country == "US"
 
 
-def test_R24_an_unusable_country_keeps_the_declared_one(db, checkout, paypal):
+def test_an_unusable_country_keeps_the_declared_one(db, checkout, paypal):
     order, started = _started(db, checkout)
     paypal.approve(started.paypal_order_id, SAM_FIXED.model_copy(update={"country": " "}))
     checkout.on_approved(order)

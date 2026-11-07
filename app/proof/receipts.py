@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from app.proof.models import Receipt
 
 GENESIS = "0" * 64
-# One transaction-scoped Postgres advisory lock serialises appends to the single chain (ADR-040).
+# One transaction-scoped Postgres advisory lock serialises appends to the single chain.
 CHAIN_LOCK_KEY = 7_316_201_105
 
 
@@ -82,7 +82,7 @@ def _verify(public: Ed25519PublicKey, digest_hex: str, signature_b64: str) -> bo
 
 @functools.lru_cache(maxsize=20_000)  # about 6 MB; a chain longer than this re-checks the rest
 def _signature_ok(public_key_b64: str, digest_hex: str, signature_b64: str) -> bool:
-    """R29 (review S10): an Ed25519 check is a pure function of its three inputs, so its answer is
+    """An Ed25519 check is a pure function of its three inputs, so its answer is
     remembered. A changed byte in any of them is a new key, checked afresh (PR-03 still holds)."""
     public = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64))
     return _verify(public, digest_hex, signature_b64)
@@ -116,7 +116,7 @@ def issue_receipt(
     at: datetime,
 ) -> Receipt:
     """Append one receipt to the chain. Callers hold the DB transaction; appends wait for each
-    other (ADR-040), and `seq` is unique, so the chain can never fork."""
+    other, and `seq` is unique, so the chain can never fork."""
     _lock_chain(session)
     last = session.scalars(select(Receipt).order_by(Receipt.seq.desc()).limit(1)).first()
     seq = 1 if last is None else last.seq + 1

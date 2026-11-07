@@ -1,4 +1,4 @@
-"""R19: a simulated order's tracking never reaches PayPal.
+"""A simulated order's tracking never reaches PayPal.
 
 Simulated demo orders carry `SIM-` capture ids that PayPal has never seen. Refunds already route
 them to the simulator; the tracking job did not, so every simulated shipment sent PayPal a write
@@ -37,7 +37,7 @@ def _run(session_factory, clock, settings, paypal) -> None:
     ).run_due()
 
 
-def test_R19_a_simulated_orders_tracking_is_not_sent_to_paypal(
+def test_a_simulated_orders_tracking_is_not_sent_to_paypal(
     db, session_factory, clock, settings, fake_paypal
 ):
     shipment, job = _shipped(db, clock, capture_id="SIM-CAP-1")
@@ -50,7 +50,7 @@ def test_R19_a_simulated_orders_tracking_is_not_sent_to_paypal(
     assert row.after == {"tracking_number": "SHIPPO_TRANSIT", "paypal": "not called"}
 
 
-def test_R19_a_real_orders_tracking_still_goes_to_paypal(
+def test_a_real_orders_tracking_still_goes_to_paypal(
     db, session_factory, clock, settings, fake_paypal
 ):
     _shipped(db, clock, capture_id="CAP-REAL-1")

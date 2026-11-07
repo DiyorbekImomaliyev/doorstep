@@ -4,7 +4,7 @@ import { DOT_ROWS } from "./worldDots";
 
 /* The problem, world first: a dotted map that zooms from the world to the UK, the EU and the US.
    The tabs and figures are the accessible content; the map is decoration (aria-hidden).
-   Figures and laws are the sourced ones in docs/SPEC.md section 2. */
+   Every figure and law links to its source. */
 
 type Key = "world" | "uk" | "eu" | "us";
 type Figure = { value: string; label: string; source: string; href: string };

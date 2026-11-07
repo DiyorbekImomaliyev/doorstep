@@ -133,7 +133,7 @@ class SellerRuleLimits(_Strict):
 
 
 class MoneyLimits(_RuleBase):
-    """rules/money_limits_v1.yaml (RL-11, ADR-006; AP seller_rules)."""
+    """rules/money_limits_v1.yaml (RL-11; AP seller_rules)."""
 
     kind: Literal["money_limits"]
     auto_approve_limit_minor: dict[Currency, Annotated[StrictInt, Field(ge=0)]]

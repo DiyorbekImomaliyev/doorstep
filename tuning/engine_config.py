@@ -1,4 +1,4 @@
-"""The ONLY file the autoresearch loop may edit (SPEC section 12).
+"""The ONLY file the autoresearch loop may edit.
 
 Holds engine weights, confidence thresholds and FAILURE_POINT_PRIORITY (tie-break order).
 Never holds money limits, caps or legal rules (RL-11); those live in rules/*.yaml.
@@ -77,7 +77,7 @@ FALLBACK_BY_CLAIM: dict[str, str] = {
     "missing_item": "CARRIER_LOST",
 }
 
-# ---- Delivery risk (rule of thumb until the trained risk model, SPEC section 10 fallback) ----
+# ---- Delivery risk (rule of thumb when the trained risk model is missing) ----
 # p_failure = RISK_BASE + RISK_PER_MAJOR_UNIT * order value (major units, capped)
 #             + RISK_HISTORY_WEIGHT * the seller's own smoothed case rate.
 RISK_BASE: float = 0.015

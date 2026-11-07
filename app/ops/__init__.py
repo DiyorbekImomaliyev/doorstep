@@ -1,1 +1,1 @@
-"""Operations: what the running system reports about itself (review R7)."""
+"""Operations: what the running system reports about itself."""

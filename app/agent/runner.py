@@ -1,4 +1,4 @@
-"""The Doorstep case agent (SPEC section 10, AT-01..05): bounded autonomy on one case.
+"""The Doorstep case agent (AT-01..05): bounded autonomy on one case.
 
 It reads the PayPal side of the case through the Agent Toolkit (allowlisted reads only), then
 asks Doorstep's policy for the refund through `request_refund`, the only money tool, and stops.
@@ -123,7 +123,7 @@ def _summarise_dispute(body: Any) -> str:
 
 def simulated_tools(session: Session, order: Order) -> dict[str, ToolFn]:
     """Read tools for seeded demo orders (no real PayPal order exists). Answers come from
-    Doorstep's own records in the toolkit's shape and say "simulated" (ADR-027)."""
+    Doorstep's own records in the toolkit's shape and say "simulated"."""
 
     def order_details(_: dict[str, Any]) -> str:
         value = f"{order.amount_minor / 100:.2f}"

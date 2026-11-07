@@ -1,4 +1,4 @@
-"""Carrier claim pack (SPEC section 7a.3, RC-03): the model writes sentences, code verifies them.
+"""Carrier claim pack (RC-03): the model writes sentences, code verifies them.
 
 Facts are built in code (app.cases.recovery) from tracking events, the scan audit, the PayPal
 capture value, the packing photo result and the carrier's terms. They carry no address beyond the
@@ -111,7 +111,7 @@ class RecoveryDrafter:
                     temperature=0,
                     purpose="recovery",
                 )
-            except Exception as exc:  # any model failure -> template (SPEC section 10)
+            except Exception as exc:  # any model failure -> template
                 log.warning("claim pack model failed (%s); using template", type(exc).__name__)
                 return template(facts, dropped)
             assert isinstance(draft, RecoveryDraft)

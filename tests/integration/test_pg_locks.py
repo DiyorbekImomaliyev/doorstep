@@ -1,7 +1,8 @@
-"""R25 and R27 on real Postgres: the guarantees need real row locks.
+"""Row-lock guarantees on real Postgres, where row locks exist.
 
-R25 (review S9): the daily refund cap holds when two decisions for one seller race.
-R27 (review S7): while the explainer's model call runs, the order row is not locked.
+- The daily refund cap holds when two decisions for one seller race.
+- While the explainer's model call runs, the order row is not locked.
+- A concurrent double tap on Approve signs one receipt.
 Skipped unless a Postgres test URL is set; CI sets REQUIRE_PG=1 so they always run there.
 """
 
@@ -33,7 +34,7 @@ from tests.unit.test_sl_seal import _shipped
 pytestmark = pytest.mark.pg
 
 
-def test_R25_concurrent_decisions_cannot_both_pass_the_daily_cap(pg_session_factory):
+def test_concurrent_decisions_cannot_both_pass_the_daily_cap(pg_session_factory):
     sf, rulebook, clock = pg_session_factory, load_rules(RULES_DIR), FakeClock()
     with sf() as s:
         seller = make_seller(s, daily_refund_caps={"GBP": 6000})
@@ -92,7 +93,7 @@ class LockProbe:
         return _draft()
 
 
-def test_R27_the_order_row_is_free_while_the_model_runs(pg_session_factory, settings):
+def test_the_order_row_is_free_while_the_model_runs(pg_session_factory, settings):
     sf, rulebook, clock = pg_session_factory, load_rules(RULES_DIR), FakeClock()
     with sf() as s:
         _, order, _ = _shipped(s, clock)
@@ -112,7 +113,7 @@ def test_R27_the_order_row_is_free_while_the_model_runs(pg_session_factory, sett
     assert probe.order_was_free == [True]
 
 
-def test_R31_a_concurrent_double_tap_signs_one_approve_receipt(pg_session_factory):
+def test_a_concurrent_double_tap_signs_one_approve_receipt(pg_session_factory):
     from app.cases.actions import CaseActions
     from app.orders.enums import ApproverKind
     from app.policy.service import Approver

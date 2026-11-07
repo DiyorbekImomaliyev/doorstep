@@ -1,4 +1,4 @@
-"""Money: integer minor units + ISO 4217 code. GBP and USD only (PO-10, ADR-003, ADR-008)."""
+"""Money: integer minor units + ISO 4217 code. GBP and USD only (PO-10)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ class Currency(StrEnum):
     USD = "USD"
 
 
-# ISO 4217 minor-unit exponent per supported currency. Never assume 2 silently (ADR-003).
+# ISO 4217 minor-unit exponent per supported currency. Never assume 2 silently.
 MINOR_UNIT_EXPONENT: dict[Currency, int] = {Currency.GBP: 2, Currency.USD: 2}
 
 _PAYPAL_VALUE = re.compile(r"\d+(\.\d+)?")

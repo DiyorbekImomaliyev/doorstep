@@ -10,7 +10,7 @@ from app.policy.rules import load_rules
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"
 # First path segments that belong to the API. A GET under one of them that no route matched is a
-# 404, never the page: an API client must not get HTML with 200 for a mistyped path (review R21).
+# 404, never the page: an API client must not get HTML with 200 for a mistyped path.
 API_PREFIXES = frozenset({"api", "cases", "demo", "healthz", "mcp", "webhooks"})
 IMMUTABLE = "public, max-age=31536000, immutable"
 
@@ -18,7 +18,7 @@ IMMUTABLE = "public, max-age=31536000, immutable"
 def _mount_web(app: FastAPI) -> None:
     """Serve the built React app (web/dist) with a single-page fallback. API routes win.
 
-    Caching (R21): Vite names every asset by its content hash, so an asset never changes under its
+    Caching: Vite names every asset by its content hash, so an asset never changes under its
     name and can be cached for a year. The page is `no-cache`, so a new deploy shows at once.
     """
     index = WEB_DIST / "index.html"

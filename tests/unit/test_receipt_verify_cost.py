@@ -1,4 +1,4 @@
-"""R29 (review S10): the public receipt check stays exact and gets cheaper on repeat calls.
+"""The public receipt check stays exact and gets cheaper on repeat calls.
 
 Every call still recomputes every hash and link from the first receipt (PR-08). Checking an Ed25519
 signature is a pure function of (key, hash, signature) and was 78% of the time (135 us each), so its
@@ -24,7 +24,7 @@ def _chain(db, signer, clock, n=4):
     return case, rows
 
 
-def test_R29_a_repeat_check_verifies_no_signature_twice(db, clock, monkeypatch):
+def test_a_repeat_check_verifies_no_signature_twice(db, clock, monkeypatch):
     signer = ReceiptSigner.generate()
     case, _ = _chain(db, signer, clock)
     assert verify_chain(db, signer.public_key_b64, case_id=case.id).status == "ok"
@@ -35,7 +35,7 @@ def test_R29_a_repeat_check_verifies_no_signature_twice(db, clock, monkeypatch):
     assert (report.status, report.checked, calls) == ("ok", 4, [])
 
 
-def test_R29_a_changed_signature_is_checked_afresh_after_a_good_run(db, clock):
+def test_a_changed_signature_is_checked_afresh_after_a_good_run(db, clock):
     signer = ReceiptSigner.generate()
     case, rows = _chain(db, signer, clock)
     assert verify_chain(db, signer.public_key_b64, case_id=case.id).status == "ok"
@@ -45,7 +45,7 @@ def test_R29_a_changed_signature_is_checked_afresh_after_a_good_run(db, clock):
     assert (report.status, report.first_broken_seq) == ("broken", rows[1].seq)
 
 
-def test_R29_a_changed_payload_still_breaks_after_a_good_run(db, clock):
+def test_a_changed_payload_still_breaks_after_a_good_run(db, clock):
     signer = ReceiptSigner.generate()
     case, rows = _chain(db, signer, clock)
     assert verify_chain(db, signer.public_key_b64, case_id=case.id).status == "ok"
@@ -55,7 +55,7 @@ def test_R29_a_changed_payload_still_breaks_after_a_good_run(db, clock):
     assert (report.status, report.first_broken_seq) == ("broken", rows[2].seq)
 
 
-def test_R29_another_key_never_reuses_a_remembered_answer(db, clock):
+def test_another_key_never_reuses_a_remembered_answer(db, clock):
     signer = ReceiptSigner.generate()
     case, _ = _chain(db, signer, clock)
     assert verify_chain(db, signer.public_key_b64, case_id=case.id).status == "ok"

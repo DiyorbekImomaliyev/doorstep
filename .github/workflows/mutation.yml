@@ -1,4 +1,4 @@
-# Mutation gate for the money path (ADR-023): zero surviving logic mutants in app/policy.
+# Mutation gate for the money path: zero surviving logic mutants in app/policy.
 name: mutation
 
 on:

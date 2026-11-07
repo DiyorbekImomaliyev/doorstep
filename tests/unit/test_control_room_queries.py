@@ -1,4 +1,4 @@
-"""R20: the Control Room rows load in a fixed number of queries, whatever the number of orders.
+"""The Control Room rows load in a fixed number of queries, whatever the number of orders.
 
 The per-order version ran about ten queries per row (an N+1 pattern): 158 queries and 317 ms for a
 16-order shop locally, growing with every order. The batch version must return exactly what the
@@ -45,7 +45,7 @@ def _statements(db) -> Iterator[list[str]]:
         event.remove(engine, "before_cursor_execute", count)
 
 
-def test_R20_batched_rows_equal_the_rows_built_one_order_at_a_time(db, shop):
+def test_batched_rows_equal_the_rows_built_one_order_at_a_time(db, shop):
     batched = order_rows(db, shop)
     single = [order_row(db, o) for o in shop]
     assert batched == single
@@ -55,7 +55,7 @@ def test_R20_batched_rows_equal_the_rows_built_one_order_at_a_time(db, shop):
     assert len({r.evidence.score for r in batched}) > 1
 
 
-def test_R20_rows_never_borrow_another_orders_data(db, shop):
+def test_rows_never_borrow_another_orders_data(db, shop):
     rows = {r.order_id: r for r in order_rows(db, shop)}
     for order in shop:
         assert rows[order.id] == order_rows(db, [order])[0]
@@ -69,7 +69,7 @@ def _fresh(db, orders: list[Order]) -> list[Order]:
     return [by_id[i] for i in ids]
 
 
-def test_R20_the_query_count_does_not_grow_with_the_orders(db, shop):
+def test_the_query_count_does_not_grow_with_the_orders(db, shop):
     first = _fresh(db, shop[:1])
     with _statements(db) as one:
         order_rows(db, first)
@@ -80,19 +80,17 @@ def test_R20_the_query_count_does_not_grow_with_the_orders(db, shop):
     assert len(many) < len(shop)
 
 
-def test_R20_evidence_scores_match_one_at_a_time(db, shop):
+def test_evidence_scores_match_one_at_a_time(db, shop):
     scores = evidence_scores(db, shop)
     assert scores == {o.id: evidence_completeness(db, o) for o in shop}
 
 
-def test_R20_an_empty_list_makes_no_rows(db):
+def test_an_empty_list_makes_no_rows(db):
     assert order_rows(db, []) == []
     assert evidence_scores(db, []) == {}
 
 
-def test_R20_orders_made_at_the_same_moment_keep_one_order(
-    db, shop, session_factory, settings, clock
-):
+def test_orders_made_at_the_same_moment_keep_one_order(db, shop, session_factory, settings, clock):
     """40 of 320 orders in a merged demo shop shared a timestamp; the grid must not reshuffle."""
     from app.api.deps import Services
     from app.security.links import LinkSigner

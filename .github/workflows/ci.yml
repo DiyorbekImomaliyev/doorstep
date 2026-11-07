@@ -1,5 +1,5 @@
-# CI (SPEC section 12): lint + types + import contracts -> unit/property tests -> API fuzz ->
-# acceptance trace -> secrets scan -> web build. Sandbox/test keys are never needed here.
+# CI: lint + types + import contracts -> unit/property tests -> Postgres tests -> API fuzz ->
+# secrets scan -> web build. Sandbox/test keys are never needed here.
 name: ci
 
 on:
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
-      # Concurrency tests need a real server: SQLite ignores FOR UPDATE and SKIP LOCKED (R2).
+      # Concurrency tests need a real server: SQLite ignores FOR UPDATE and SKIP LOCKED.
       postgres:
         image: postgres:16
         env:
@@ -56,8 +56,6 @@ jobs:
         run: make test-pg
       - name: API fuzz (Schemathesis)
         run: make fuzz
-      - name: Acceptance trace (every acceptance ID has a test)
-        run: make trace
 
   secrets:
     runs-on: ubuntu-latest

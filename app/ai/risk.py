@@ -1,4 +1,4 @@
-"""Delivery-failure risk model (SPEC section 10, RK-01..03): XGBoost + exact TreeSHAP reasons.
+"""Delivery-failure risk model (RK-01..03): XGBoost + exact TreeSHAP reasons.
 
 - The model is a small gradient-boosted tree ensemble with monotone constraints (a higher order
   value or a worse shop history can never lower the risk; a locker or a signature can never
@@ -10,7 +10,7 @@
 - Inputs hold no personal data: no name, address or postcode, only order value, buyer country,
   delivery method, the address-check outcome and the shop's own history.
 - No model file, or XGBoost missing: `load_model()` returns None and checkout falls back to the
-  rule of thumb in app/checkout/risk.py (SPEC section 10 fallback).
+  rule of thumb in app/checkout/risk.py.
 """
 
 from __future__ import annotations

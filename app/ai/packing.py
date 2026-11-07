@@ -1,4 +1,4 @@
-"""Packing check (SPEC section 10, PK-01..04): one photo against the order line.
+"""Packing check (PK-01..04): one photo against the order line.
 
 The model only describes what it sees (PackingCheckResult). Code turns that into a verdict:
 - confident and matching -> "match"

@@ -1,4 +1,4 @@
-"""The ONLY place order and case states change (hard rule 6). SPEC section 8 tables.
+"""The ONLY place order and case states change (hard rule 6). Illegal transitions raise.
 
 Every transition:
 1. takes a row lock on the entity (``SELECT ... FOR UPDATE`` on Postgres) and re-reads its state,

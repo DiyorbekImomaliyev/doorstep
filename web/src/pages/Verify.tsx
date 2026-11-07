@@ -3,7 +3,8 @@ import { api } from "../api";
 import { Badge, Brand, ErrorBox, Loading, useAsync } from "../components/ui";
 
 const KIND: Record<string, string> = {
-  decision: "Decision", approval: "Approval", settlement: "Settled", refund: "Refund sent to PayPal", evidence: "Evidence sent to PayPal",
+  decision: "Decision", approval: "Approval", settlement: "Settled", refund: "Refund", evidence: "Dispute evidence",
+  "send-evidence": "Evidence approved", "make-offer": "Refund offer approved", offer: "Refund offered in the PayPal dispute",
 };
 const kindLabel = (k: string) => KIND[k] ?? k.charAt(0).toUpperCase() + k.slice(1);
 

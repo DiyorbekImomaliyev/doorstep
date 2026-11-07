@@ -136,7 +136,7 @@ def _link_secret(environment: str) -> str:
 
 def build_runtime(*, create_tables: bool = True) -> Runtime:
     environment = env("APP_ENV", "development")
-    # Review S1 (R22): development opens /demo/reset and a public signing secret. Render sets
+    # Development opens /demo/reset and a public signing secret. Render sets
     # RENDER=true in every service, so a missing or mistyped APP_ENV there stops startup instead.
     if env("RENDER") and environment != "production":
         raise ConfigError(f"on Render, set APP_ENV=production (got {environment!r})")
@@ -146,8 +146,8 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
     database_url = env("DATABASE_URL", f"sqlite:///{ROOT / 'doorstep.db'}")
     engine = make_engine(database_url)
     if create_tables:
-        Base.metadata.create_all(engine)  # ADR-024: no migrations in the hackathon build
-        ensure_indexes(engine)  # R30: indexes added after a table was made
+        Base.metadata.create_all(engine)  # no migrations in the hackathon build
+        ensure_indexes(engine)  # indexes added after a table was made
     session_factory = make_session_factory(engine)
 
     paypal = None

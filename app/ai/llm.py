@@ -1,12 +1,12 @@
 """The ONE adapter for model calls (CLAUDE.md AI provider rule).
 
 - Every call returns a validated Pydantic model (hard rule 3). Invalid output: one retry on the
-  same provider, then `InvalidModelOutput`; callers use their SPEC section 10 fallback.
+  same provider, then `InvalidModelOutput`; callers use their own fallback.
 - The main provider failing for budget, quota, auth, expiry or outage -> one retry on the
   fallback provider. `last_provider` records which provider answered.
 - User text is redacted before it leaves the process (SE-02, hard rule 9).
 - Claude: official SDK, `messages.parse(output_format=...)` structured outputs. Claude Sonnet 5.5
-  rejects non-default `temperature` and forced tool choice (ADR-025), so determinism there comes
+  rejects non-default `temperature` and forced tool choice, so determinism there comes
   from structured output plus low effort; Gemini calls use temperature 0.
 - Opus models are refused in the app (CLAUDE.md).
 """
@@ -64,7 +64,7 @@ _US_ZIP4 = re.compile(r"\b(\d{5})-\d{4}\b")
 def data_block(tag: str, text: str, *, limit: int) -> str:
     """Untrusted text (a buyer's note, a question, a policy) as data inside one tag pair.
 
-    CLAUDE.md hard rule 8, review S15: <, > and & are escaped, so the text can never close its
+    CLAUDE.md hard rule 8: <, > and & are escaped, so the text can never close its
     block or open another, whatever it says. The limit cuts the text before escaping.
     """
     return f"<{tag}>{html.escape(text[:limit], quote=False)}</{tag}>"

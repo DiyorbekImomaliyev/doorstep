@@ -7,7 +7,8 @@ opens the order's single case and runs it straight through:
     -> PolicyService.decide (code; the only path to money) -> explainer (words only)
     -> signed receipt (PR-01)
 
-The explainer runs after the decision and can never change it (hard rule 5 of SPEC section 4).
+The explainer runs after the decision and can never change it: AI suggests; code and people
+decide money.
 """
 
 from __future__ import annotations
@@ -145,9 +146,9 @@ class CasePipeline:
         return self._decide(order, case, reason, note)
 
     def redecide(self, case: Case, *, actor: str) -> CaseReport:
-        """R23 (review S2): a person asks for a fresh decision on a held case.
+        """A person asks for a fresh decision on a held case.
 
-        HOLD_FOR_REVIEW -> GATHERING_EVIDENCE (SPEC section 8), then the same steps as a report,
+        HOLD_FOR_REVIEW -> GATHERING_EVIDENCE, then the same steps as a report,
         on the evidence as it is now. A refund the pre-refund re-check blocked, or one that
         failed, otherwise has no way forward. The new decision gets its own money action, and that
         action meets the same live PayPal re-check, so a refund that did land is never repeated.
@@ -160,7 +161,7 @@ class CasePipeline:
                 MoneyAction.status == MoneyActionStatus.QUEUED.value,
             )
         )
-        if queued is not None:  # it would land under a newer decision (design review of R23)
+        if queued is not None:  # it would land under a newer decision
             raise PolicyStateError(f"case {case.id}: a refund is on its way; wait for it to land")
         order = self.session.get(Order, case.order_id)
         assert order is not None
@@ -232,7 +233,7 @@ class CasePipeline:
             if rule is not None and rule.disclaimer
             else "Information, not legal advice. The seller decides.",
         )
-        # R27 (review S7): the decision commits with the template wording, so no model call runs
+        # The decision commits with the template wording, so no model call runs
         # while the order, case and seller rows are locked; the model's words replace it after.
         explanation = template(ctx)
         self._store_explanation(decision, explanation)

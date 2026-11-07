@@ -1,7 +1,7 @@
 """Order writes: create, address PATCH, capture, tracking. Importable by app.policy/app.worker.
 
-Bodies are built with the generated SDK's models (paypal-plan.md contract sheet) and sent through
-PayPalClient, so every write carries a PayPal-Request-Id (PP-05).
+Bodies are built with the generated SDK's models and sent
+through PayPalClient, so every write carries a PayPal-Request-Id (PP-05).
 """
 
 from __future__ import annotations

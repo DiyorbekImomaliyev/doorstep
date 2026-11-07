@@ -1,4 +1,4 @@
-"""AP: what the Autopilot tests did not pin, found by mutation testing (review R16).
+"""AP: what the Autopilot tests did not pin, found by mutation testing.
 
 A seller rule refunds money with nobody tapping, so its tenant scoping, its precedents, its window
 edges, its audit trail and its statement are each pinned here. Every test names the mutant
@@ -85,7 +85,7 @@ def shop(db, fake_paypal):
 
 def _decline(db, policy, case, fp=LOST, *, at=None):
     """The seller declines a case. `at` stamps the decline's audit row: state-machine audit rows
-    take the wall clock, not the injected one (review R17); in production the two agree."""
+    take the wall clock, not the injected one; in production the two agree."""
     order, c = case(7000)
     policy.decide(c, engine_result(fp), facts_for(order))
     policy.decline(c, SELLER)

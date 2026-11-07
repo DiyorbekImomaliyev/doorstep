@@ -1,6 +1,6 @@
-"""R27 (review S7): no model call while the case's row locks are held.
+"""No model call while the case's row locks are held.
 
-report() locks the order (open_case) and, for the daily cap, the seller (R25). The explainer's
+report() locks the order (open_case) and, for the daily cap, the seller. The explainer's
 model call can take seconds, so the decision now commits with the template wording first and the
 model's words replace it afterwards, outside any transaction. A model failure or a crash between
 the two steps leaves a decided case with valid template text.
@@ -49,7 +49,7 @@ def _report(db, rulebook, clock, settings, llm):
     return report, decision
 
 
-def test_R27_the_model_is_asked_after_the_decision_commits(db, rulebook, clock, settings):
+def test_the_model_is_asked_after_the_decision_commits(db, rulebook, clock, settings):
     llm = ProbeLLM(db, _draft())
     report, decision = _report(db, rulebook, clock, settings, llm)
     assert llm.in_transaction == [False]
@@ -57,7 +57,7 @@ def test_R27_the_model_is_asked_after_the_decision_commits(db, rulebook, clock, 
     assert decision.explanation == report.explanation == _draft().summary
 
 
-def test_R27_a_failed_model_call_keeps_the_committed_template(db, rulebook, clock, settings):
+def test_a_failed_model_call_keeps_the_committed_template(db, rulebook, clock, settings):
     llm = ProbeLLM(db, RuntimeError("provider down"))
     report, decision = _report(db, rulebook, clock, settings, llm)
     assert llm.in_transaction == [False]
@@ -66,7 +66,7 @@ def test_R27_a_failed_model_call_keeps_the_committed_template(db, rulebook, cloc
 
 
 @pytest.mark.parametrize("llm", [None])
-def test_R27_without_a_model_the_report_is_one_transaction(db, rulebook, clock, settings, llm):
+def test_without_a_model_the_report_is_one_transaction(db, rulebook, clock, settings, llm):
     """Template-only (the demo seed): nothing to wait for, so nothing commits early."""
     _, order, _ = _shipped(db, clock)
     db.commit()

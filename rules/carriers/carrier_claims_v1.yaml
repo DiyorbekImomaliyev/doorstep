@@ -1,4 +1,4 @@
-# Carrier claim terms for carrier recovery (RC-01, RC-02, ADR-037). Code reads this file; it never
+# Carrier claim terms for carrier recovery (RC-01, RC-02). Code reads this file; it never
 # decides who is liable to the buyer (that is rules/*.yaml). Values were checked on each carrier's
 # own published terms on 2026-11-05. Where a carrier publishes several windows, the shortest one
 # for the service named in service_basis is used, so a seller never files late. A carrier whose

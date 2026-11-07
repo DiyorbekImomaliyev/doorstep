@@ -1,4 +1,4 @@
-"""Money decisions (SPEC section 7). The ONLY path to refunds (hard rule 1).
+"""Money decisions. The ONLY path to refunds (hard rule 1).
 
 Order of checks (PO-13): open dispute -> hold conditions -> no rule set -> liability ->
 daily cap -> auto-approve limit -> pre-refund re-check (at execution).
@@ -112,7 +112,7 @@ class PolicyError(Exception):
 
 
 class PolicyStateError(PolicyError, IllegalTransition):
-    """approve/decline asked for in a state that does not allow it (ADR-020): an illegal
+    """approve/decline asked for in a state that does not allow it: an illegal
     transition request, so callers that tolerate IllegalTransition tolerate this too."""
 
 
@@ -166,7 +166,7 @@ def _open_dispute(session: Session, order_id: str) -> bool:
 def _record_dispute_found(
     session: Session, order: Order, found: DisputeSummary, *, at: datetime
 ) -> None:
-    """Record a dispute PayPal reports as open that our table does not (R1): its webhook is late,
+    """Record a dispute PayPal reports as open that our table does not: its webhook is late,
     or PayPal reopened it. The case then sends evidence through it (DE-01)."""
     row = session.scalar(select(Dispute).where(Dispute.paypal_dispute_id == found.dispute_id))
     if row is not None and row.status == "open":
@@ -436,7 +436,7 @@ class PolicyService:
         if self._refunded_today(seller.id, refund.currency) + refund > limits.daily_cap:
             note(Reason.DAILY_CAP_REACHED, cap=limits.daily_cap)
             return CaseState.AWAITING_SELLER
-        # 6. Auto-approve limit, inclusive (ADR-004), or the seller's own autopilot rule (AP-03).
+        # 6. Auto-approve limit, inclusive, or the seller's own autopilot rule (AP-03).
         if refund > limits.auto_approve:
             seller_rule = matching_rule(
                 self.session, self.rulebook, seller.id, result.failure_point, refund
@@ -477,10 +477,10 @@ class PolicyService:
         return int(others) + 1 >= limits.repeat_claims_threshold
 
     def _refunded_today(self, seller_id: str, currency: Currency) -> Money:
-        # R25 (review S9): two decisions for one seller must not both read the same total and
-        # both pass the cap. The seller row lock serialises them until the first commits its
-        # queued refund (report() commits before any model call, R27). Proved on Postgres in
-        # tests/integration/test_pg_r25_r27.py; SQLite has no row locks.
+        # Two decisions for one seller must not both read the same total and both pass the
+        # cap. The seller row lock serialises them until the first commits its queued refund
+        # (report() commits before any model call). Proved on Postgres in
+        # tests/integration/test_pg_locks.py; SQLite has no row locks.
         self.session.execute(
             select(Seller.id).where(Seller.id == seller_id).with_for_update()  # pragma: no mutate
         )
@@ -582,7 +582,7 @@ class PolicyService:
             raise PolicyStateError(f"case {case.id} has no decision to approve")
         existing = self._existing_refund(decision)
         if existing is not None:
-            if existing.status in _STOPPED:  # R23 (review S2): say so, never a silent no-op
+            if existing.status in _STOPPED:  # say so, never a silent no-op
                 raise PolicyStateError(
                     f"case {case.id}: this refund was {existing.status}; decide again with the "
                     "latest evidence"
@@ -712,7 +712,7 @@ class _Verdict(NamedTuple):
         return cls(code, target, text=message(code, **values))
 
 
-# PayPal is asked for disputes created from a day before the order: room for clock skew (R1).
+# PayPal is asked for disputes created from a day before the order: room for clock skew.
 DISPUTE_LOOKBACK_MARGIN = timedelta(days=1)
 
 
@@ -731,14 +731,14 @@ class RefundJobHandler:
         del rulebook  # the re-check needs no rules: the decision already recorded them (PO-12)
         self.gateway = gateway
         self.clock = clock
-        # The live dispute read (R1). The worker always passes one (a test pins that wiring);
+        # The live dispute read. The worker always passes one (a test pins that wiring);
         # unit tests of other re-check steps may leave it out.
         self._disputes = disputes
 
     def _disputes_at_paypal(
         self, session: Session, order: Order, capture_id: str
     ) -> _Verdict | None:
-        """Ask PayPal itself for unresolved disputes on this capture (PO-05, review R1).
+        """Ask PayPal itself for unresolved disputes on this capture (PO-05).
 
         The local table only knows what webhooks delivered. A read error propagates, so the job
         retries and no money moves meanwhile. None: PayPal shows no open dispute on it.
@@ -780,7 +780,7 @@ class RefundJobHandler:
     def _recheck(
         self, session: Session, ma: MoneyAction, order: Order, case: Case, decision: Decision
     ) -> _Verdict:
-        """Decide, right before PayPal, whether this refund may go out (PO-12, ADR-016, ADR-022)."""
+        """Decide, right before PayPal, whether this refund may go out (PO-12)."""
         state = CaseState(case.state)
         if state in FINISHED_CASE_STATES:  # closed or settled another way: never send money
             return _Verdict.block(Reason.CASE_FINISHED, state=state.value)  # terminal: case stays
@@ -796,7 +796,7 @@ class RefundJobHandler:
         known = _refunded_minor(session, order.id, statuses=(MoneyActionStatus.COMPLETED.value,))
         refunded = live.refunded_total.amount_minor
         ours = [r for r in live.refunds if r.custom_id == ma.id]
-        if ours:  # an earlier attempt landed but its commit was lost (ADR-022)
+        if ours:  # an earlier attempt landed but its commit was lost
             landed = ours[0]
             if (
                 len(ours) == 1
@@ -811,7 +811,7 @@ class RefundJobHandler:
             return disputed
         if live.status not in _REFUNDABLE_CAPTURE:
             return _Verdict.block(Reason.CAPTURE_NOT_REFUNDABLE, status=live.status)
-        if refunded != known:  # a refund we cannot identify: never guess (ADR-016)
+        if refunded != known:  # a refund we cannot identify: never guess
             return _Verdict.block(Reason.UNKNOWN_REFUND_AT_PAYPAL)
         # Never more than PayPal captured, nor more than Doorstep's order record says.
         if known + ma.amount_minor > min(live.amount.amount_minor, order.amount_minor):
@@ -903,12 +903,12 @@ class RefundJobHandler:
         )
 
     def _fail_dangling(self, session: Session, job: Job, error: Exception) -> None:
-        """A row behind the job is gone, so no refund is ever sent for it (ADR-021).
+        """A row behind the job is gone, so no refund is ever sent for it.
 
         The job only fails while its money action is queued (a completed refund commits with the
         job's done status), so the money action is marked failed without a status check. The case
         is held if it can still be found. A job whose money action itself is gone is an orphan:
-        logged at ERROR and listed by app.worker.orphans.orphaned_refund_jobs.
+        logged at ERROR, and the job stays failed in the jobs table with its error.
         """
         ma_id = str(job.payload.get("money_action_id", ""))  # pragma: no mutate
         ma = session.get(MoneyAction, ma_id)

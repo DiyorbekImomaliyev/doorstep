@@ -1,4 +1,4 @@
-"""R7: the pipeline's golden signals, read from Postgres. Counts only, never personal data.
+"""The pipeline's golden signals, read from Postgres. Counts only, never personal data.
 
 Handling a failure is not enough; someone has to see it. These are the few numbers that show the
 pipeline has stopped, or that money is waiting for a person:
@@ -13,7 +13,7 @@ pipeline has stopped, or that money is waiting for a person:
 alert on the body of `/healthz`. The HTTP status stays 200: restarting the web service cannot fix a
 stalled worker.
 
-Two kinds of alert, so the status is neither sticky nor forgetful (design review R7-3, R7-4):
+Two kinds of alert, so the status is neither sticky nor forgetful:
 
 - **State** ("money is waiting for a person") has no time window. It degrades until a person
   settles or closes the case, however old it is.
@@ -104,7 +104,7 @@ def pipeline_signals(session: Session, now: datetime) -> PipelineSignals:
     # dispute_opened routes its case to DISPUTE_EVIDENCE by design, so it is not counted here.
     waiting = int(
         session.scalar(
-            select(func.count(func.distinct(MoneyAction.case_id)))  # cases, not rows (R23)
+            select(func.count(func.distinct(MoneyAction.case_id)))  # cases, not rows
             .join(Case, Case.id == MoneyAction.case_id)
             .where(
                 MoneyAction.status.in_(_HELD),
