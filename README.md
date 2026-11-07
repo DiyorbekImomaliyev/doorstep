@@ -184,6 +184,8 @@ cap.
   runs.
 - **Sends the minimum.** Removes emails and phone numbers; cuts UK postcodes to the district and
   US ZIP+4 to ZIP5.
+- **Keeps no photos.** Stores only a packing photo's SHA-256 fingerprint, so there is nothing to
+  leak or delete later.
 - **Treats buyer text as data.** Puts it in an escaped, delimited block that is never an
   instruction.
 - **Calls models through one adapter** (`app/ai/llm.py`): structured output, a 20 s bound, a daily
@@ -278,14 +280,14 @@ the delivery status, one reports a problem. Neither can move money.
 
 | Check | Result |
 | --- | --- |
-| Unit and property tests (`make test`) | 1,562 passed; 9 placeholders for features not built yet |
+| Unit and property tests (`make test`) | 1,562 passed |
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% |
 | Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 2,974; only wording changes may survive |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease |
 | API fuzzing, Schemathesis (`make fuzz`) | 44 API operations fuzzed from the OpenAPI schema, 0 failures |
 | Browser tests, Playwright (`make e2e`) | 18 passed in Chromium |
 | Failure-point accuracy (`make evals`) | 96.7% on 60 labelled cases (target 85%); 95.0% on a 20-case hold-out |
-| Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks: all blocked against hostile stand-in models; 0 failures so far in the live-model run (26 of 64) |
+| Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks in 8 kinds, all blocked: the refund stays the same even when the model obeys the attack |
 
 - **Names tests by requirement**, for example `test_PO_05_…`, so every rule in the code maps to
   the tests that prove it.
@@ -302,6 +304,7 @@ API fuzzing, a secrets scan and the web build on every push
 
 ```
 app/
+  *.py            app factory, ASGI entry, settings, database, money and clock
   api/            FastAPI routes: checkout, buyer, seller, seal, webhooks, verify
   orders/         tables, enums and the two state machines (state.py)
   checkout/       address check, delivery options, risk rule of thumb
@@ -321,9 +324,11 @@ rules/            UK, EU and US liability rules, money limits, carrier claim ter
 tuning/           engine weights: the only file an automated tuning loop may change
 web/              React + Vite app: Control Room (AG Grid), Insights (AG Studio), buyer pages
 tests/            unit, property, integration (Postgres, recorded PayPal), browser
+recordings/       a recorded PayPal reply (declined capture) the integration tests replay
 evals/            failure-point, red-team, RAG and packing-photo evals with their datasets
 scripts/          demo seed, sandbox smoke test, risk-model training, mutation and lock gates
 docs/             architecture diagrams, screenshots, risk model card
+.github/          CI on every push; mutation testing whenever app/policy changes
 render.yaml       Render blueprint: web service, worker, Postgres
 ```
 
@@ -353,11 +358,9 @@ set in the Render dashboard, never in the repository.
 
 ## Licences
 
-- **AG Grid Enterprise and AG Studio** run on trial licences. The keys are injected at build time
-  and never stored in the repository.
-- **AG Studio's built-in AI agents** need the Pro with AI licence. I requested it from AG Grid by
-  email and have not received it yet. Ask Doorstep, the Insights agent built for this project,
-  works without it.
-- **Bryntum Scheduler** is not used in this build.
+- **AG Grid Enterprise and AG Studio** read their licence key from `AG_GRID_LICENSE_KEY` at build
+  time. The key never enters the repository.
+- **Ask Doorstep**, the Insights agent, is my own: it runs on the app's model adapter, so it shares
+  the daily call cap, the strict schemas and the fallbacks of every other AI step.
 
 Doorstep itself is released under the [MIT licence](LICENSE).

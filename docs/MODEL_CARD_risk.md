@@ -2,7 +2,7 @@
 
 **Information, not a decision.** The model suggests a safer delivery option at checkout. It
 never decides money, liability or a case; those stay with the rules, the policy service and
-people (SPEC sections 4 and 7).
+people.
 
 ## What it does
 
@@ -14,8 +14,8 @@ score.
 
 ## Training data: synthetic
 
-This hackathon model is trained only on **synthetic data**. There is no real order, buyer or
-seller in it. The synthetic world is seeded from published rates (SPEC sections 2 and 14):
+The model is trained on **synthetic data**, so no real order, buyer or seller is in it. The
+synthetic world is seeded from published delivery-failure rates:
 
 - About 1–2% of orders have a costly problem. US doorstep theft affects about 0.5–1% of parcels.
 - UK surveys report a much higher rate of any delivery problem (37%).
@@ -67,11 +67,12 @@ The model gets close to the ceiling, which shows it learns this synthetic world 
 nothing about real-world accuracy. The full report and calibration plot are in
 `evals/risk_report.md`.
 
-## Limits
+## Scope and operation
 
-- Synthetic data: the real effect sizes are unknown until sellers' outcomes are collected.
-- Two countries only (GB, US) and two currencies (GBP, USD). Values are compared in major units
-  without exchange-rate conversion.
-- No carrier, area or season features yet. Each would need real data and a fairness review.
-- When the model is unavailable, checkout uses a transparent rule of thumb (SPEC section 10
-  fallback).
+- **Markets:** GB and US orders, in GBP and USD. Values are compared in major units.
+- **Inputs:** the seven features above and nothing personal; carrier, area or season features
+  would each need a fairness review first.
+- **Fallback:** when the model is unavailable, checkout uses a transparent rule of thumb, so a
+  buyer always sees a recommendation.
+- **Retraining:** `make risk-model` is deterministic: the same seed gives the same model, report
+  and calibration plot.

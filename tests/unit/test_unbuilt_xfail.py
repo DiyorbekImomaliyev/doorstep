@@ -1,4 +1,4 @@
-"""Acceptance criteria not built yet (CLAUDE.md: unbuilt criteria stay as xfail with a reason).
+"""Requirements that wait on an outside input (photos, a licence, a live run), as strict xfails.
 
 Each test fails on purpose until the feature lands; then it is replaced by a real test."""
 
@@ -47,32 +47,10 @@ def test_SB_03_paypal_doctor_clean_on_final_commit():
     _unbuilt()
 
 
-_BR = "Bryntum deadline radar is first to cut (SPEC 16); not built"
+# BR-01..04 (a Bryntum deadline view) left the scope: claim and dispute deadlines show in the
+# case panel and the grid.
 
-
-@pytest.mark.xfail(strict=True, reason=_BR)
-def test_BR_01_rows_journey_bars_and_milestones():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_BR)
-def test_BR_02_deadlines_only_from_rules_or_disputes():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_BR)
-def test_BR_03_event_click_opens_the_order():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason=_BR)
-def test_BR_04_drag_redelivery_calls_api_and_audits():
-    _unbuilt()
-
-
-@pytest.mark.xfail(strict=True, reason="Promptfoo red-team suite not built (needs model keys)")
-def test_SE_03_promptfoo_money_attacks_all_blocked():
-    _unbuilt()
-
+# SE-03 is built: tests/unit/test_se03_redteam_keyless.py runs all 64 probes against models that
+# obey every attack; evals/redteam/test_se03_redteam.py runs them on the live model.
 
 # E2E-03 is built: tests/integration/test_e2e03_sandbox_smoke.py (RUN_SANDBOX_SMOKE=1).
