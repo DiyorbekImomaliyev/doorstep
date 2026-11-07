@@ -13,8 +13,10 @@ from app.ai.llm import (
     provider_adapter,
 )
 from app.ai.schemas import PolicyAnswer
+from evals import recording
 from evals.recording import (
     DEFAULT_PAID_PROMPT_LIMIT,
+    PaidBudget,
     PaidFallback,
     PaidKeyRefused,
     Recorder,
@@ -38,6 +40,11 @@ def ask(model) -> str:
     return model.complete_structured(schema=PolicyAnswer, system="s", user="u").answer
 
 
+@pytest.fixture(autouse=True)
+def fresh_run_budget(monkeypatch):
+    monkeypatch.setattr(recording, "_run_budget", None)
+
+
 @pytest.fixture
 def keys(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
@@ -58,7 +65,14 @@ def test_EV_opt_in_wraps_the_free_provider_with_the_paid_one(keys, monkeypatch):
     model = eval_model()
     assert isinstance(model, PaidFallback)
     assert model.free.primary.name == "gemini" and model.paid.primary.name == "anthropic"
-    assert model.limit == DEFAULT_PAID_PROMPT_LIMIT
+    assert model.budget.limit == DEFAULT_PAID_PROMPT_LIMIT
+
+
+def test_EV_every_eval_model_in_a_run_shares_one_paid_budget(keys, monkeypatch):
+    monkeypatch.setenv("EVAL_LLM_FALLBACK_PROVIDER", "anthropic")
+    reader, judge = eval_model(), eval_model()  # a Ragas run builds both
+    assert isinstance(reader, PaidFallback) and isinstance(judge, PaidFallback)
+    assert reader.budget is judge.budget
 
 
 @pytest.mark.parametrize(
@@ -99,28 +113,29 @@ def test_EV_paid_prompt_limit_from_env(monkeypatch, raw, limit):
 
 def test_EV_free_answers_first_and_the_paid_one_is_not_called():
     free, paid = Provider("gemini", "flash"), Provider("anthropic", "sonnet")
-    model = PaidFallback(LLMAdapter(free), LLMAdapter(paid), limit=2)
+    model = PaidFallback(LLMAdapter(free), LLMAdapter(paid), PaidBudget(2))
     assert ask(model) == "from gemini"
     assert (model.last_provider, model.model) == ("gemini", "flash")
-    assert paid.calls == 0 and model.paid_prompts == 0
+    assert paid.calls == 0 and model.budget.used == 0
 
 
 def test_EV_paid_answers_only_while_free_is_down_and_stops_at_the_limit():
     free, paid = Provider("gemini", "flash", down=True), Provider("anthropic", "sonnet")
-    model = PaidFallback(LLMAdapter(free), LLMAdapter(paid), limit=2)
+    model = PaidFallback(LLMAdapter(free), LLMAdapter(paid), PaidBudget(2))
     assert ask(model) == "from anthropic"
     assert (model.last_provider, model.model) == ("anthropic", "sonnet")
     assert ask(model) == "from anthropic"
     with pytest.raises(LLMUnavailable, match="2 prompts"):
         ask(model)
-    assert paid.calls == 2 and model.paid_prompts == 2
+    assert paid.calls == 2 and model.budget.used == 2
     free.down = False  # the free tier is back: it answers again, at no cost
     assert ask(model) == "from gemini" and paid.calls == 2
 
 
 def test_EV_the_recording_names_the_model_that_answered(tmp_path):
     free, paid = Provider("gemini", "flash", down=True), Provider("anthropic", "sonnet")
-    recorder = Recorder(PaidFallback(LLMAdapter(free), LLMAdapter(paid), limit=1), tmp_path / "r")
+    model = PaidFallback(LLMAdapter(free), LLMAdapter(paid), PaidBudget(1))
+    recorder = Recorder(model, tmp_path / "r")
     ask(recorder)
     assert recorder.last_provider == "anthropic/sonnet"
 

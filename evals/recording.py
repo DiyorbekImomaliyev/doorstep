@@ -55,14 +55,38 @@ def paid_prompt_limit() -> int:
     return value if value >= 0 else DEFAULT_PAID_PROMPT_LIMIT
 
 
-class PaidFallback:
-    """The free eval model first; the paid one only when the free one is down, and at most
-    `limit` prompts in this run. Past the limit a prompt is not run, so it is never charged.
-    `last_provider` and `model` name whichever model answered, for the recording."""
+class PaidBudget:
+    """Paid fallback prompts for one run, shared by every eval model in the process (a Ragas run
+    has a reader and a judge; together they get one limit)."""
 
-    def __init__(self, free: LLMAdapter, paid: LLMAdapter, limit: int) -> None:
-        self.free, self.paid, self.limit = free, paid, limit
-        self.paid_prompts = 0
+    def __init__(self, limit: int) -> None:
+        self.limit, self.used = limit, 0
+
+    def take(self) -> bool:
+        if self.used >= self.limit:
+            return False
+        self.used += 1
+        return True
+
+
+_run_budget: PaidBudget | None = None
+
+
+def run_budget() -> PaidBudget:
+    """This process's paid budget, created once from EVAL_PAID_PROMPT_LIMIT."""
+    global _run_budget
+    if _run_budget is None:
+        _run_budget = PaidBudget(paid_prompt_limit())
+    return _run_budget
+
+
+class PaidFallback:
+    """The free eval model first; the paid one only when the free one is down, while the run's
+    PaidBudget lasts. Past it a prompt is not run, so it is never charged. `last_provider` and
+    `model` name whichever model answered, for the recording."""
+
+    def __init__(self, free: LLMAdapter, paid: LLMAdapter, budget: PaidBudget) -> None:
+        self.free, self.paid, self.budget = free, paid, budget
         self.last_provider: str | None = None
         self.model: str | None = None
 
@@ -75,9 +99,9 @@ class PaidFallback:
             self.last_provider, self.model = self.free.last_provider, self.free.primary.model
             return answer
         except LLMUnavailable:
-            if self.paid_prompts >= self.limit:
-                raise LLMUnavailable(f"paid eval fallback used its {self.limit} prompts") from None
-        self.paid_prompts += 1
+            if not self.budget.take():
+                limit = self.budget.limit
+                raise LLMUnavailable(f"paid eval fallback used its {limit} prompts") from None
         answer = self.paid.complete_structured(**kw)
         self.last_provider, self.model = self.paid.last_provider, self.paid.primary.model
         return answer
@@ -95,7 +119,7 @@ def eval_model() -> StructuredLLM | None:
     if free is None or not fallback or fallback == name or limit == 0:
         return free
     paid = provider_adapter(fallback)
-    return PaidFallback(free, paid, limit) if paid else free
+    return PaidFallback(free, paid, run_budget()) if paid else free
 
 
 class Recorder:
