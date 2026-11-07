@@ -280,7 +280,7 @@ the delivery status, one reports a problem. Neither can move money.
 
 | Check | Result |
 | --- | --- |
-| Unit and property tests (`make test`) | 1,562 passed |
+| Unit and property tests (`make test`) | 1,580 passed |
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% |
 | Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 2,974; only wording changes may survive |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease |
@@ -323,8 +323,7 @@ app/
 rules/            UK, EU and US liability rules, money limits, carrier claim terms (YAML)
 tuning/           engine weights: the only file an automated tuning loop may change
 web/              React + Vite app: Control Room (AG Grid), Insights (AG Studio), buyer pages
-tests/            unit, property, integration (Postgres, recorded PayPal), browser
-recordings/       a recorded PayPal reply (declined capture) the integration tests replay
+tests/            unit, property, integration (Postgres, recorded PayPal), browser; fixtures
 evals/            failure-point, red-team, RAG and packing-photo evals with their datasets
 scripts/          demo seed, sandbox smoke test, risk-model training, mutation and lock gates
 docs/             architecture diagrams, screenshots, risk model card
@@ -358,8 +357,8 @@ set in the Render dashboard, never in the repository.
 
 ## Licences
 
-- **AG Grid Enterprise and AG Studio** read their licence key from `AG_GRID_LICENSE_KEY` at build
-  time. The key never enters the repository.
+- **AG Grid Enterprise and AG Studio** read their licence keys from `AG_GRID_LICENSE_KEY` and
+  `AG_STUDIO_LICENSE_KEY` at build time. The keys never enter the repository.
 - **Ask Doorstep**, the Insights agent, is my own: it runs on the app's model adapter, so it shares
   the daily call cap, the strict schemas and the fallbacks of every other AI step.
 
