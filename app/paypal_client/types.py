@@ -27,7 +27,7 @@ class CaptureResult(BaseModel):
 
 
 class RefundInfo(BaseModel):
-    """One refund on a capture, as PayPal reports it (ADR-022)."""
+    """One refund on a capture, as PayPal reports it."""
 
     refund_id: str
     status: str
@@ -57,8 +57,25 @@ class DisputeEvidence(BaseModel):
 
 
 class DisputeSummary(BaseModel):
-    """An unresolved PayPal dispute and the captures it names (review R1)."""
+    """An unresolved PayPal dispute and the captures it names."""
 
     dispute_id: str  # "" when PayPal lists a dispute without an id: never matched to an order
     status: str  # PayPal's status, upper case; anything but RESOLVED counts as open
     capture_ids: list[str] = []  # disputed_transactions[].seller_transaction_id
+
+
+class DisputeDetail(BaseModel):
+    """One dispute as GET /v1/customer/disputes/{id} returns it: what make-offer needs (PP-09).
+
+    Field paths are from PayPal's Disputes API reference: `status`, `dispute_life_cycle_stage`,
+    `dispute_amount`, `disputed_transactions[].seller_transaction_id`,
+    `allowed_response_options.make_offer.offer_types`, `offer.seller_offered_amount` and
+    `offer.history[]`."""
+
+    dispute_id: str
+    status: str  # upper case; RESOLVED means closed
+    stage: str  # INQUIRY | CHARGEBACK | PRE_ARBITRATION | ARBITRATION
+    capture_ids: list[str] = []
+    amount: Money | None = None  # what the buyer disputes; None when PayPal leaves it out
+    offer_types: list[str] = []  # offer types PayPal allows now; empty = no offer allowed
+    seller_offer_made: bool = False  # the seller already has an offer on this dispute

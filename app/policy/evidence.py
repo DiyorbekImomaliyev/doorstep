@@ -1,4 +1,4 @@
-"""PayPal dispute evidence (SPEC section 7a.4, DE-01 .. DE-04, ADR-038).
+"""PayPal dispute evidence (DE-01 .. DE-04).
 
 When a buyer has opened a PayPal dispute, PayPal is the judge in the middle: Doorstep does not
 refund outside it (PO-05), it sends the evidence. The seller taps "Send evidence to PayPal";
@@ -82,6 +82,9 @@ def queue_dispute_evidence(
 ) -> MoneyAction:
     """DE-01, DE-03: one EVIDENCE money action and one job per decision; a second tap returns
     the first action and sends nothing new."""
+    # Concurrent taps queue on the case row lock (as approve does), so the second one sees the
+    # first action instead of failing on the unique (decision, kind) claim.
+    session.refresh(case, with_for_update=True)  # pragma: no mutate - only Postgres locks rows
     if case.state != CaseState.DISPUTE_EVIDENCE.value:
         raise PolicyStateError(f"case {case.id}: evidence is sent only in DISPUTE_EVIDENCE")
     decision = _latest_decision(session, case.id)

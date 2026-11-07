@@ -1,7 +1,7 @@
-"""Read models for the screens (SPEC section 5): buyer tracker, Control Room rows, case page.
+"""Read models for the screens: buyer tracker, Control Room rows, case page.
 
 Views show what a person needs to act, nothing more. Addresses are masked to the postcode
-district in seller views (SPEC section 13). Status words never overclaim (PR-08): a simulated
+district in seller views. Status words never overclaim (PR-08): a simulated
 refund is labelled simulated, a receipt chain that was not checked says not_run.
 """
 
@@ -35,6 +35,7 @@ from app.orders.models import (
     Shipment,
     TrackingEvent,
 )
+from app.policy.offers import OFFER_MAYBE_MADE, offer_amount
 from app.proof.models import Receipt
 from app.proof.seal import AFTER_HANDOVER, BEFORE_HANDOVER, SELLER_BROWSER
 from app.proof.seller_protection import ACTION as SELLER_PROTECTION_ACTION
@@ -119,9 +120,12 @@ def latest_decision(s: Session, case_id: str) -> Decision | None:
 
 
 def money_status(ma: MoneyAction) -> str:
-    """PR-08: a simulated refund never reads as a PayPal refund."""
+    """PR-08: a simulated refund never reads as a PayPal refund. PP-09: a dispute offer that was
+    sent but not confirmed reads as "unconfirmed", not "failed": it may be live at PayPal."""
     if ma.paypal_status == SIMULATED_STATUS:
         return "simulated"
+    if ma.status == MoneyActionStatus.FAILED.value and ma.paypal_status in OFFER_MAYBE_MADE:
+        return "unconfirmed"
     return ma.status
 
 
@@ -570,7 +574,8 @@ def _load_rows(s: Session, orders: Sequence[Order]) -> _RowData:
         )
     )
     evidence = MoneyActionKind.EVIDENCE.value
-    money = _latest_by((a for a in actions if a.kind != evidence), lambda a: a.order_id)
+    not_refunds = (evidence, MoneyActionKind.OFFER.value)  # neither one moves money itself
+    money = _latest_by((a for a in actions if a.kind not in not_refunds), lambda a: a.order_id)
     sent = {a.case_id for a in actions if a.kind == evidence and a.case_id is not None}
     # The shop's history feeds the risk model only, so it is counted only when a row shows a risk.
     at_risk = {o.seller_id for o in orders if o.state in _RISK_STATES}
@@ -781,6 +786,13 @@ def case_recovery(s: Session, case_id: str) -> Recovery | None:
     return s.scalars(select(Recovery).where(Recovery.case_id == case_id)).first()
 
 
+class OfferOption(BaseModel):
+    """The refund offer the seller can make inside an open PayPal dispute (PP-09)."""
+
+    amount_minor: int
+    currency: str
+
+
 class CaseView(BaseModel):
     case_id: str
     state: str
@@ -797,6 +809,7 @@ class CaseView(BaseModel):
     scan_audit: dict[str, Any] | None = None  # SA-01: verdict and checks of the latest decision
     counterfactual: dict[str, Any] | None = None  # CF-01: which proof would have changed it
     recovery: RecoveryView | None = None  # RC-01: the carrier claim, if any
+    offer: OfferOption | None = None  # PP-09: a refund the seller can offer inside the dispute
 
 
 def case_view(s: Session, case: Case) -> CaseView:
@@ -846,7 +859,7 @@ def case_view(s: Session, case: Case) -> CaseView:
     if case.state == CaseState.AWAITING_SELLER.value:
         actions = ["approve", "decline"]
     elif case.state == CaseState.HOLD_FOR_REVIEW.value:
-        # R23: a blocked or failed refund cannot be approved again; a fresh decision can follow.
+        # A blocked or failed refund cannot be approved again; a fresh decision can follow.
         stopped = d is not None and any(
             m.decision_id == d.id
             and m.status in (MoneyActionStatus.BLOCKED.value, MoneyActionStatus.FAILED.value)
@@ -854,13 +867,21 @@ def case_view(s: Session, case: Case) -> CaseView:
         )
         on_its_way = any(m.status == MoneyActionStatus.QUEUED.value for m in actions_rows)
         if on_its_way:
-            actions = []  # the refund job owns the case until it lands (design review of R23)
+            actions = []  # the refund job owns the case until it lands
         else:
             actions = ["re-check"] if stopped else ["approve", "re-check"]
     elif case.state == CaseState.DISPUTE_EVIDENCE.value and not any(
         m.kind == MoneyActionKind.EVIDENCE.value for m in money
     ):
         actions = ["send-evidence"]  # DE-01: once per decision
+    offer = None
+    if (
+        case.state == CaseState.DISPUTE_EVIDENCE.value
+        and d is not None
+        and not any(m.kind == MoneyActionKind.OFFER.value for m in actions_rows)
+        and (amount := offer_amount(s, case)) is not None
+    ):
+        offer = OfferOption(amount_minor=amount.amount_minor, currency=amount.currency.value)
     receipts = len(list(s.scalars(select(Receipt.id).where(Receipt.case_id == case.id))))
     return CaseView(
         case_id=case.id,
@@ -877,4 +898,5 @@ def case_view(s: Session, case: Case) -> CaseView:
         scan_audit=(d.signals.get("scan_audit") if d is not None else None),
         counterfactual=(d.signals.get("counterfactual") if d is not None else None),
         recovery=recovery_view(rec) if (rec := case_recovery(s, case.id)) else None,
+        offer=offer,
     )

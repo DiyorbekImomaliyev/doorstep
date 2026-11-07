@@ -6,7 +6,13 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.money import Money
-from app.paypal_client.types import CaptureState, DisputeEvidence, DisputeSummary, RefundResult
+from app.paypal_client.types import (
+    CaptureState,
+    DisputeDetail,
+    DisputeEvidence,
+    DisputeSummary,
+    RefundResult,
+)
 
 
 class RefundGateway(Protocol):
@@ -28,7 +34,7 @@ class RefundGateway(Protocol):
 
 @runtime_checkable
 class DisputeLookup(Protocol):
-    """Live dispute read for the pre-refund re-check (review R1).
+    """Live dispute read for the pre-refund re-check (webhooks are hints; PayPal decides).
 
     Webhooks fill the local disputes table, but a webhook can be late, so right before money
     moves the re-check asks PayPal itself. Both production gateways implement this, and a test
@@ -36,3 +42,14 @@ class DisputeLookup(Protocol):
     """
 
     def open_disputes_since(self, since: datetime, *, capture_id: str) -> list[DisputeSummary]: ...
+
+
+@runtime_checkable
+class OfferGateway(Protocol):
+    """A refund offer inside an open PayPal dispute (PP-09): read the dispute, make the offer."""
+
+    def get_dispute(self, dispute_id: str) -> DisputeDetail: ...
+
+    def make_dispute_offer(
+        self, dispute_id: str, *, offer: Money, note: str, request_id: str
+    ) -> None: ...

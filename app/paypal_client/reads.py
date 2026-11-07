@@ -11,13 +11,13 @@ from app.money import Money
 from app.paypal_client.client import PayPalClient
 from app.paypal_client.errors import PayPalClientError, PayPalServerError
 from app.paypal_client.sdk_models import captures, decode_order, money_from_sdk, refunds, text
-from app.paypal_client.types import CaptureState, DisputeSummary, RefundInfo
+from app.paypal_client.types import CaptureState, DisputeDetail, DisputeSummary, RefundInfo
 
 # Refund statuses that hold or have moved money. FAILED/CANCELLED refunds don't count (PP-08).
 COUNTED_REFUND_STATUSES = frozenset({"COMPLETED", "PENDING"})
 
 # The disputes list rejects a start_time 180 or more days back (INVALID_START_TIME_RANGE, checked
-# in the sandbox on Nov 6, 2026). Ten days of margin; an older order goes to a person (R1).
+# in the sandbox on Nov 6, 2026). Ten days of margin; an older order goes to a person.
 DISPUTE_LIST_MAX_AGE = timedelta(days=170)
 _DISPUTE_PAGE_SIZE = 50
 _DISPUTE_MAX_PAGES = 10  # 500 disputes: more than that is not something to page through blind
@@ -71,7 +71,7 @@ def get_capture_state(client: PayPalClient, paypal_order_id: str, capture_id: st
 
 
 def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[DisputeSummary]:
-    """Every unresolved dispute created since `since`, with the captures each one names (R1).
+    """Every unresolved dispute created since `since`, with the captures each one names.
 
     The list is filtered by time, not by transaction (the transaction filter answers 400 when
     there is nothing to find). An unresolved dispute the list does not tie to a capture is read
@@ -113,6 +113,32 @@ def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[Disp
             raise PayPalServerError(None, "disputes list: next page without a token")
         query["next_page_token"] = tokens[0]
     raise PayPalServerError(None, f"disputes list: more than {_DISPUTE_MAX_PAGES} pages")
+
+
+def get_dispute(client: PayPalClient, dispute_id: str) -> DisputeDetail:
+    """GET /v1/customer/disputes/{id}, reduced to what a refund offer needs (PP-09).
+
+    Fails closed: a missing stage, offer list or amount reads as "no offer allowed" or "no
+    amount", and any seller entry in the offer history counts as an offer already made."""
+    body = client.request("GET", f"/v1/customer/disputes/{dispute_id}")
+    offer = body.get("offer") or {}
+    allowed = (body.get("allowed_response_options") or {}).get("make_offer") or {}
+    amount = body.get("dispute_amount") or {}
+    history = [h for h in offer.get("history") or [] if isinstance(h, dict)]
+    return DisputeDetail(
+        dispute_id=str(body.get("dispute_id") or dispute_id),
+        status=str(body.get("status") or "").upper(),
+        stage=str(body.get("dispute_life_cycle_stage") or "").upper(),
+        capture_ids=_seller_captures(body),
+        amount=(
+            Money.from_paypal(str(amount["value"]), str(amount["currency_code"]))
+            if amount.get("value") and amount.get("currency_code")
+            else None
+        ),
+        offer_types=[str(t).upper() for t in allowed.get("offer_types") or []],
+        seller_offer_made=bool(offer.get("seller_offered_amount"))
+        or any(str(h.get("actor") or "").upper() == "SELLER" for h in history),
+    )
 
 
 def _seller_captures(dispute: Mapping[str, Any]) -> list[str]:

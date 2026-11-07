@@ -46,7 +46,7 @@ class ProofKind(StrEnum):
     PHOTO_AT_BUYER_ADDRESS = "photo_at_buyer_address"
     DELIVERED_SCAN = "delivered_scan"
     DELIVERY_PHOTO = "delivery_photo"
-    BUYER_SEAL_SCAN = "buyer_seal_scan"  # the buyer scanned the seal inside the parcel (ADR-035)
+    BUYER_SEAL_SCAN = "buyer_seal_scan"  # the buyer scanned the seal inside the parcel
 
 
 class Fix(StrEnum):
@@ -65,6 +65,7 @@ class MoneyActionKind(StrEnum):
     REFUND = "refund"
     PARTIAL_REFUND = "partial_refund"
     EVIDENCE = "evidence"
+    OFFER = "offer"  # PP-09: a refund offer inside an open PayPal dispute; moves no money itself
 
 
 class RecoveryStatus(StrEnum):

@@ -573,15 +573,6 @@ def test_PP_09_provide_dispute_evidence_posts_multipart_evidence(pp, httpserver)
     assert "SHIPPO_DELIVERED" in raw
 
 
-@pytest.mark.xfail(
-    reason="PP-09: limitation — dispute make-offer is not built (ADR-009)",
-    raises=NotImplementedError,
-    strict=True,
-)
-def test_PP_09_make_offer_not_built(pp):
-    money_writes.make_dispute_offer(pp, "D-1", request_id="dispute:D-1:make_offer")
-
-
 # ---------------------------------------------------------------- PP-10
 
 

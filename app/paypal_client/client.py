@@ -1,6 +1,6 @@
 """Thin PayPal REST client: OAuth token cache, one retry on 401, logging (PP-01, PP-06).
 
-Transport is owned here, not by the generated SDK (ADR-015, paypal-plan.md): the token cache
+Transport is owned here, not by the generated SDK: the token cache
 follows the injectable Clock and refresh margin, a 401 is refreshed and retried exactly once,
 errors are mapped by HTTP status even when PayPal's error body is thin, and there are no
 transport-level retries. Retries happen only in the jobs outbox, with the same PayPal-Request-Id.
@@ -25,6 +25,7 @@ from app.clock import Clock
 from app.paypal_client.errors import (
     PayPalAuthError,
     PayPalClientError,
+    PayPalNotSent,
     PayPalServerError,
     PayPalTimeout,
 )
@@ -122,6 +123,9 @@ class PayPalClient:
             response = self._http.request(method, path, headers=dict(headers or {}), **kwargs)
             status = response.status_code
             return response
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            # No connection was opened, so PayPal never saw the request.
+            raise PayPalNotSent(f"{method} {path} not sent: {type(exc).__name__}") from exc
         except httpx.TimeoutException as exc:
             raise PayPalTimeout(f"{method} {path} timed out") from exc
         except httpx.TransportError as exc:
@@ -195,7 +199,12 @@ class PayPalClient:
         if data is not None:
             payload["data"] = data
         for attempt in (1, 2):
-            token = self._fresh_token()
+            try:
+                token = self._fresh_token()
+            except PayPalNotSent:
+                raise
+            except PayPalServerError as exc:  # the token request failed: this one was never sent
+                raise PayPalNotSent(f"{method} {path} not sent: token request failed") from exc
             response = self._send(
                 method,
                 path,

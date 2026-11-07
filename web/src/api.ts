@@ -201,6 +201,7 @@ export type CaseView = {
   scan_audit: ScanAudit | null;
   recovery: RecoveryView | null;
   counterfactual: Counterfactual | null;
+  offer: { amount_minor: number; currency: string } | null;
 };
 
 export type VerifyReport = {
@@ -289,7 +290,7 @@ export type PolicyAnswer = {
   disclaimer: string;
 };
 
-export type CaseAction = "approve" | "decline" | "send-evidence" | "re-check";
+export type CaseAction = "approve" | "decline" | "send-evidence" | "make-offer" | "re-check";
 
 export const api = {
   health: () => call<Health>("GET", "/healthz"),

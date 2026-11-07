@@ -39,3 +39,12 @@ class PayPalServerError(PayPalError):
 class PayPalTimeout(PayPalServerError):
     def __init__(self, message: str = "timeout"):
         super().__init__(None, message)
+
+
+class PayPalNotSent(PayPalServerError):
+    """The request never reached PayPal: the token could not be fetched, or no connection was
+    opened. Retried like a 5xx. A write that must know whether PayPal acted (the dispute offer,
+    PP-09) may treat it as "nothing happened"."""
+
+    def __init__(self, message: str):
+        super().__init__(None, message)

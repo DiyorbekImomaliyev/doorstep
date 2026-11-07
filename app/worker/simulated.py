@@ -15,10 +15,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.money import Currency, Money
-from app.orders.enums import MoneyActionStatus
-from app.orders.models import MoneyAction, Order
-from app.paypal_client.types import CaptureState, DisputeEvidence, DisputeSummary, RefundResult
-from app.policy.ports import DisputeLookup, RefundGateway
+from app.orders.enums import MoneyActionKind, MoneyActionStatus
+from app.orders.models import Dispute, MoneyAction, Order
+from app.paypal_client.types import (
+    CaptureState,
+    DisputeDetail,
+    DisputeEvidence,
+    DisputeSummary,
+    RefundResult,
+)
+from app.policy.ports import DisputeLookup, OfferGateway, RefundGateway
 
 SIM_PREFIX = "SIM-"
 SIMULATED_STATUS = "SIMULATED_COMPLETED"
@@ -69,6 +75,37 @@ class SimulatedRefundGateway:
     ) -> None:
         return None
 
+    def get_dispute(self, dispute_id: str) -> DisputeDetail:
+        """A seeded scratch dispute, read from our own rows: an inquiry that allows a refund
+        offer, with an offer on record once one has completed (PP-09)."""
+        with self.session_factory() as s:
+            dispute = s.scalars(
+                select(Dispute).where(Dispute.paypal_dispute_id == dispute_id)
+            ).one()
+            order = s.get(Order, dispute.order_id)
+            assert order is not None
+            offered = s.scalar(
+                select(func.count()).where(
+                    MoneyAction.order_id == order.id,
+                    MoneyAction.kind == MoneyActionKind.OFFER.value,
+                    MoneyAction.status == MoneyActionStatus.COMPLETED.value,
+                )
+            )
+            return DisputeDetail(
+                dispute_id=dispute_id,
+                status="RESOLVED" if dispute.status != "open" else "WAITING_FOR_SELLER_RESPONSE",
+                stage="INQUIRY",
+                capture_ids=[order.capture_id] if order.capture_id else [],
+                amount=Money(amount_minor=order.amount_minor, currency=Currency(order.currency)),
+                offer_types=["REFUND"],
+                seller_offer_made=bool(offered),
+            )
+
+    def make_dispute_offer(
+        self, dispute_id: str, *, offer: Money, note: str, request_id: str
+    ) -> None:
+        return None
+
 
 class RoutingRefundGateway:
     def __init__(self, real: RefundGateway, simulated: RefundGateway) -> None:
@@ -105,4 +142,21 @@ class RoutingRefundGateway:
         # Seeded scratch disputes (ids starting SIM-) never reach PayPal (PR-05).
         self._for(dispute_id).provide_dispute_evidence(
             dispute_id, evidence=evidence, request_id=request_id
+        )
+
+    def _offers_for(self, dispute_id: str) -> OfferGateway:
+        target = self._for(dispute_id)
+        if not isinstance(target, OfferGateway):  # fail closed: the offer job fails, nothing sent
+            raise TypeError(f"{type(target).__name__} cannot make dispute offers")
+        return target
+
+    def get_dispute(self, dispute_id: str) -> DisputeDetail:
+        return self._offers_for(dispute_id).get_dispute(dispute_id)
+
+    def make_dispute_offer(
+        self, dispute_id: str, *, offer: Money, note: str, request_id: str
+    ) -> None:
+        # Seeded scratch disputes never reach PayPal (PR-05), offers included (PP-09).
+        self._offers_for(dispute_id).make_dispute_offer(
+            dispute_id, offer=offer, note=note, request_id=request_id
         )

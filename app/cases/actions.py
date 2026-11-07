@@ -13,11 +13,12 @@ from app.clock import Clock
 from app.orders.enums import ApproverKind
 from app.orders.models import Approval, Case, MoneyAction, Order
 from app.policy.evidence import existing_evidence, queue_dispute_evidence
+from app.policy.offers import existing_offer, queue_dispute_offer
 from app.policy.rules import RuleBook
 from app.policy.service import Approver, PolicyError, PolicyService, _latest_decision
 from app.proof.receipts import ReceiptSigner, issue_receipt
 
-Action = Literal["approve", "decline", "reship", "send-evidence"]
+Action = Literal["approve", "decline", "reship", "send-evidence", "make-offer"]
 
 
 class CaseActions:
@@ -36,14 +37,16 @@ class CaseActions:
         money: MoneyAction | None = None
         if action == "send-evidence":
             return self.send_evidence(case, approver, verify_url=verify_url)
+        if action == "make-offer":
+            return self.make_offer(case, approver, verify_url=verify_url)
         if action == "approve":
-            # Lock first, so a concurrent second tap reads the state the first one left
-            # (design review of R31); approve() takes the same lock again.
+            # Lock first, so a concurrent second tap reads the state the first one left;
+            # approve() takes the same lock again.
             self.session.refresh(case, with_for_update=True)
             before = (case.state, self._approvals(case.id))
             money = self.policy.approve(case, approver)
             if (case.state, self._approvals(case.id)) == before:
-                return money  # R31 (review S13): a repeated tap changed nothing; sign nothing
+                return money  # a repeated tap changed nothing, so nothing is signed
         elif action == "decline":
             self.policy.decline(case, approver)
         else:
@@ -96,6 +99,36 @@ class CaseActions:
                 "approver_kind": approver.kind.value,
                 "money_action_id": money.id,
                 "request_id": money.request_id,
+                "case_state": case.state,
+            },
+            at=self.clock.now(),
+        )
+        return money
+
+    def make_offer(self, case: Case, approver: Approver, *, verify_url: str) -> MoneyAction:
+        """PP-09: offer the decided refund inside the open PayPal dispute, through app.policy. A
+        second tap returns the first offer and signs nothing new."""
+        decision = _latest_decision(self.session, case.id)
+        if decision is None:
+            raise PolicyError(f"case {case.id}: no decision recorded")
+        already = existing_offer(self.session, decision.id)
+        if already is not None:
+            return already
+        money = queue_dispute_offer(
+            self.session, self.policy, case, approver, verify_url=verify_url
+        )
+        issue_receipt(
+            self.session,
+            self.signer,
+            case_id=case.id,
+            kind="make-offer",
+            payload={
+                "decision_id": decision.id,
+                "approver_kind": approver.kind.value,
+                "money_action_id": money.id,
+                "request_id": money.request_id,
+                "amount_minor": money.amount_minor,
+                "currency": money.currency,
                 "case_state": case.state,
             },
             at=self.clock.now(),

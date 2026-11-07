@@ -53,6 +53,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
       await api.act(token, caseId, action);
       onChanged(action === "approve" ? "Approved. The refund is on its way through PayPal."
         : action === "send-evidence" ? "Evidence is on its way to the PayPal dispute."
+        : action === "make-offer" ? "Your refund offer is on its way to the PayPal dispute."
         : action === "re-check" ? "Decided again with the latest evidence."
         : "Declined. The buyer will be told.");
       reload();
@@ -115,12 +116,20 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
         {c.money.length > 0 && (
           <section className="sec">
             <SectionHead icon={<Wallet aria-hidden />} title="Money" />
+            {c.money.some((m) => m.kind === "offer" && m.status === "unconfirmed") && (
+              <div className="notice warn" role="status">
+                <Info aria-hidden />
+                <span>PayPal did not confirm the refund offer. Check the case in PayPal's Resolution Center. Doorstep never sends an offer twice.</span>
+              </div>
+            )}
             {c.money.map((m, i) => (
               <div key={i} className="money-row">
-                <span>{m.kind === "evidence" ? "Evidence to the PayPal dispute" : `${m.kind.replace("_", " ")} ${money(m.amount_minor, m.currency)}`}</span>
+                <span>{m.kind === "evidence" ? "Evidence to the PayPal dispute"
+                  : m.kind === "offer" ? `Refund offered in the PayPal dispute ${money(m.amount_minor, m.currency)}`
+                  : `${m.kind.replace("_", " ")} ${money(m.amount_minor, m.currency)}`}</span>
                 <span className="row" style={{ gap: 8 }}>
                   {m.refund_id && <span className="mono faint">{m.refund_id}</span>}
-                  <Badge tone={m.status === "completed" ? "good" : m.status === "failed" || m.status === "blocked" ? "warn" : "neutral"}>{m.status}</Badge>
+                  <Badge tone={m.status === "completed" ? "good" : m.status === "failed" || m.status === "blocked" || m.status === "unconfirmed" ? "warn" : "neutral"}>{m.status}</Badge>
                 </span>
               </div>
             ))}
@@ -186,6 +195,11 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
               </button>
             )}
             <div className="grow" />
+            {c.offer && (
+              <button className="btn ghost" disabled={busy} onClick={() => act("make-offer")} title="PayPal shows the buyer this offer inside the dispute; PayPal refunds only if the buyer accepts">
+                <Wallet size={15} />Offer {money(c.offer.amount_minor, c.offer.currency)} refund in the dispute
+              </button>
+            )}
             {c.actions.includes("send-evidence") && (
               <button className="btn primary lg" disabled={busy} onClick={() => act("send-evidence")}><Send size={16} />Send evidence to PayPal</button>
             )}
@@ -570,7 +584,7 @@ function RecoveryPanel({ token, recovery, onChanged }: { token: string; recovery
 
   return (
     <section className="sec" aria-label="Recover from the carrier">
-      <SectionHead icon={<Landmark aria-hidden />} title={`Recover from ${r.carrier_name}`} right={<Badge tone={status.tone}>{status.label}</Badge>} />
+      <SectionHead icon={<Landmark aria-hidden />} title={r.carrier_known ? `Recover from ${r.carrier_name}` : "Recover from the carrier"} right={<Badge tone={status.tone}>{status.label}</Badge>} />
       <div className="kv">
         <span className="k">Claim</span><strong className="num">{money(r.claim_minor, r.currency)}</strong>
         {(r.status === "PREPARED" || r.status === "SUBMITTED") && (
@@ -642,7 +656,9 @@ function DisputeNote({ c }: { c: CaseView }) {
     : stuck ? "Evidence was not sent"
     : "Evidence queued for PayPal";
   const text = !sent
-    ? "PayPal decides. Send the facts; nothing accuses the buyer."
+    ? c.offer
+      ? "PayPal decides. Send the facts, or offer the refund inside the dispute. Nothing accuses the buyer."
+      : "PayPal decides. Send the facts; nothing accuses the buyer."
     : stuck
       ? "PayPal refused it or the dispute closed. Nothing was sent twice."
       : "PayPal decides now. Facts only: tracking, seal scan, receipt.";

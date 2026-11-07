@@ -25,7 +25,7 @@ def refund_capture(
     custom_id: str | None = None,
 ) -> RefundResult:
     """amount=None is a full refund. custom_id carries our money_action id, so a landed refund
-    can be recognised after a crash (ADR-022).
+    can be recognised after a crash.
     4xx -> PayPalClientError; 5xx/timeout -> PayPalServerError."""
     fields: RefundRequestDict = {}
     if custom_id is not None:
@@ -79,6 +79,28 @@ def provide_dispute_evidence(
     )
 
 
-def make_dispute_offer(client: PayPalClient, dispute_id: str, *, request_id: str) -> None:
-    """Not built in the hackathon (ADR-009)."""
-    raise NotImplementedError("make-offer is a documented limitation (PP-09, ADR-009)")
+OFFER_NOTE_MAX = 2000  # PayPal's limit on the make-offer note
+
+
+def make_dispute_offer(
+    client: PayPalClient, dispute_id: str, *, offer: Money, note: str, request_id: str
+) -> None:
+    """POST make-offer with offer_type REFUND (PP-09). PayPal allows it only in the INQUIRY stage
+    and answers 200 with links only. Its docs do not say PayPal-Request-Id dedupes this call, so
+    app.policy.offers keeps its own claim; the header is still sent, as on every write.
+    4xx -> PayPalClientError; 5xx/timeout -> PayPalServerError (the offer may exist)."""
+    if not 0 < len(note) <= OFFER_NOTE_MAX:
+        raise ValueError(f"make-offer note must be 1..{OFFER_NOTE_MAX} characters")
+    client.request(
+        "POST",
+        f"/v1/customer/disputes/{dispute_id}/make-offer",
+        json={
+            "note": note,
+            "offer_type": "REFUND",
+            "offer_amount": {
+                "currency_code": offer.currency.value,
+                "value": offer.to_paypal_value(),
+            },
+        },
+        request_id=request_id,
+    )

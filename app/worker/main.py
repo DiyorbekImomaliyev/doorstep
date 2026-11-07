@@ -21,6 +21,7 @@ from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expir
 from app.orders.enums import MoneyActionStatus
 from app.orders.models import MoneyAction
 from app.policy.evidence import DISPUTE_EVIDENCE_JOB, DisputeEvidenceJobHandler
+from app.policy.offers import DISPUTE_OFFER_JOB, OfferJobHandler
 from app.policy.rules import load_rules
 from app.policy.service import REFUND_JOB, RefundJobHandler
 from app.proof.receipts import ReceiptSigner, issue_receipt
@@ -91,10 +92,11 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     else:
         real = NotConfigured("PayPal refunds", "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET")
     gateway = RoutingRefundGateway(real, sim)
-    refunds = RefundJobHandler(gateway, rulebook, rt.clock, disputes=gateway)  # R1
+    refunds = RefundJobHandler(gateway, rulebook, rt.clock, disputes=gateway)  # live dispute read
     handlers[DISPUTE_EVIDENCE_JOB] = DisputeEvidenceJobHandler(  # DE-01..04
         gateway, rt.clock, rt.services.receipts
     )
+    handlers[DISPUTE_OFFER_JOB] = OfferJobHandler(gateway, rt.clock, rt.services.receipts)  # PP-09
     handlers[REFUND_JOB] = ReceiptingRefundHandler(refunds, rt.services.receipts, rt.clock)
     if rt.shippo is not None:
         handlers[REGISTER_TRACK] = RegisterTrackHandler(rt.shippo)

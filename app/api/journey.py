@@ -1,6 +1,6 @@
-"""Buyer, seller, checkout, proof and demo routes (SPEC section 5 screens).
+"""Buyer, seller, checkout, proof and demo routes.
 
-Auth model (SPEC section 13): buyers act through a signed order-scoped link (scope "buyer"); the
+Auth model: buyers act through a signed order-scoped link (scope "buyer"); the
 seller through a signed seller link (scope "seller", subject = seller id). A bad, expired or
 wrong-scope token, and any id outside the token's scope, answer 404 so nothing leaks (BC-01,
 BC-04). `GET /cases/{id}/verify` is public by design: receipts hold ids and amounts only.
@@ -274,7 +274,7 @@ class Health(BaseModel):
     receipts_public_key: str
     model: str
     webhooks: dict[str, WebhookStat] = {}
-    pipeline: PipelineSignals | None = None  # R7: counts only
+    pipeline: PipelineSignals | None = None  # counts only
 
 
 def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) -> APIRouter:
@@ -373,7 +373,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     # ------------------------------------------------------------ public
 
     def _signals(s: Session) -> PipelineSignals | None:
-        """R7, design review R7-1: the signals can never fail the health check Render restarts on.
+        """The signals can never fail the health check Render restarts on.
 
         A savepoint keeps a failed query from poisoning the request's transaction, and a statement
         timeout bounds a slow one. On failure the field is null, which a monitor can alert on.
@@ -768,11 +768,12 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     def act(
         token: str,
         case_id: str,
-        action: Literal["approve", "decline", "send-evidence", "re-check"],
+        action: Literal["approve", "decline", "send-evidence", "make-offer", "re-check"],
         s: Db,
     ) -> ActionOut:
-        """approve / decline, (DE-01) send the facts-only evidence to the open PayPal dispute, or
-        (R23) re-check: a held case is decided again on the evidence as it is now."""
+        """approve / decline, (DE-01) send the facts-only evidence to the open PayPal dispute,
+        (PP-09) make-offer: offer the decided refund inside that dispute, or decide again: a
+        held case is decided again on the evidence as it is now."""
         seller = _seller(s, token)
         case = _seller_case(s, seller, case_id)
         if action == "re-check":
@@ -812,7 +813,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         assert order is not None
         now = deps.clock.monotonic()
         for stale in [k for k, v in recent_runs.items() if now - v[0] > AGENT_REUSE_S]:
-            del recent_runs[stale]  # review S15: past the reuse window an entry is never read
+            del recent_runs[stale]  # past the reuse window an entry is never read
         last = recent_runs.get(case.id)
         if last is not None and last[1] == case.state and now - last[0] <= AGENT_REUSE_S:
             return last[2]

@@ -1,4 +1,6 @@
-"""Real RefundGateway over app.paypal_client (reads + writes.money). Only app.policy imports it."""
+"""Real RefundGateway and OfferGateway over app.paypal_client (reads + writes.money).
+
+Only app.policy imports it."""
 
 from __future__ import annotations
 
@@ -7,7 +9,13 @@ from datetime import datetime
 from app.money import Money
 from app.paypal_client import reads
 from app.paypal_client.client import PayPalClient
-from app.paypal_client.types import CaptureState, DisputeEvidence, DisputeSummary, RefundResult
+from app.paypal_client.types import (
+    CaptureState,
+    DisputeDetail,
+    DisputeEvidence,
+    DisputeSummary,
+    RefundResult,
+)
 from app.paypal_client.writes import money as money_writes
 
 
@@ -19,7 +27,7 @@ class RestRefundGateway:
         return reads.get_capture_state(self.client, paypal_order_id, capture_id)
 
     def open_disputes_since(self, since: datetime, *, capture_id: str) -> list[DisputeSummary]:
-        del capture_id  # PayPal lists by time; the policy matches the capture (R1)
+        del capture_id  # PayPal lists by time; the policy matches the capture
         return reads.list_open_disputes_since(self.client, since)
 
     def refund_capture(
@@ -39,4 +47,14 @@ class RestRefundGateway:
     ) -> None:
         money_writes.provide_dispute_evidence(
             self.client, dispute_id, evidence=evidence, request_id=request_id
+        )
+
+    def get_dispute(self, dispute_id: str) -> DisputeDetail:
+        return reads.get_dispute(self.client, dispute_id)
+
+    def make_dispute_offer(
+        self, dispute_id: str, *, offer: Money, note: str, request_id: str
+    ) -> None:
+        money_writes.make_dispute_offer(
+            self.client, dispute_id, offer=offer, note=note, request_id=request_id
         )
