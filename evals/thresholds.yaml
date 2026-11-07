@@ -1,4 +1,9 @@
 # Eval targets (config). Read by evals/*; never by app code.
-fe_09_failure_point_accuracy: 0.85  # SPEC section 12, FE-09
+fe_09_failure_point_accuracy: 0.85  # FE-09
 pc_conflict_recall: 0.8  # PC: planted policy conflicts found and verified (target, first run)
 pc_clean_false_flags_max: 1  # PC: issues raised on the clean policies, across the set
+rg_03_faithfulness: 0.9  # RG-03: Ragas faithfulness of the policy reader, 30 questions
+pk_05_mismatch_recall: 0.9  # PK-05: wrong items not passed as a match, labelled photo set (40 rows)
+# PK-05 also: correct items flagged "check" or "mismatch" at most this often. Without it, a model
+# that always answers "check" would score full recall.
+pk_05_false_alarm_max: 0.2

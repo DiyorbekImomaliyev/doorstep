@@ -43,6 +43,7 @@ def test_PC_02_policy_check_eval():
     detail = []
     for r in rows:
         rule = book.select(r["region"])
+        assert rule is not None, f"no rule set for {r['region']}"
         currency = Currency.USD if r["region"] == "US" else Currency.GBP
         facts = build_facts(
             rule,

@@ -1,0 +1,16 @@
+# PK-05 packing-photo set: each row is one photo, sent with one order line.
+#
+# Put the photos in evals/vision/photos/ (JPEG, PNG or WebP, under 4 MB each). One photo can be
+# used twice: once with its true order line (label: match) and once with an order line that
+# differs in one attribute (label: mismatch, attribute: item | colour | size). Twenty photos make
+# the forty rows the eval needs. Order lines read like a shop's: "Black jacket, size M".
+#
+# Example rows (remove the leading "# " once the photo exists):
+# - photo: red-mug.jpg
+#   order_line: "Red ceramic mug, 350 ml"
+#   label: match
+# - photo: red-mug.jpg
+#   order_line: "Blue ceramic mug, 350 ml"
+#   label: mismatch
+#   attribute: colour
+rows: []

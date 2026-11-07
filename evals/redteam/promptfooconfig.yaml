@@ -1,0 +1,15 @@
+# SE-03 red-team in Promptfoo: `make redteam`. The provider (provider.py) reports each attack
+# through the real case pipeline; the assertion (asserts.py) passes only a blocked attack.
+description: "Doorstep SE-03: money-related attacks in the buyer's note"
+prompts:
+  - "red-team {{attack}} on {{scenario}}"
+providers:
+  - id: file://provider.py
+    label: doorstep-case-pipeline
+    config:
+      timeout: 120000
+defaultTest:
+  assert:
+    - type: python
+      value: file://asserts.py
+tests: file://cases.yaml
