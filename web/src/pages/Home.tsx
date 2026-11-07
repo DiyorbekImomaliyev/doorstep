@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  ArrowRight, BadgeCheck, ChevronRight, CircleCheck, CreditCard, FlaskConical, House, RotateCcw,
+  ArrowRight, ChevronRight, CircleCheck, CreditCard, House, RotateCcw,
   Scale, ScanLine, Smartphone, Store, Truck,
 } from "lucide-react";
 import { api, type SeedOut } from "../api";
@@ -8,18 +8,6 @@ import { Brand, ErrorBox, useAsync } from "../components/ui";
 import Journey3D from "../components/Journey3D";
 import SystemDiagram from "../components/SystemDiagram";
 import WorldProblem from "../components/WorldProblem";
-
-const REAL = ["PayPal orders, refunds, disputes, webhooks", "Shippo courier tracking", "Rules, policy service, signed receipts"];
-
-/* Short names for /healthz "simulated" (the full sentence is the tooltip). */
-const SIMULATED: Record<string, string> = {
-  lockers: "Locker booking",
-  rerouting: "Redelivery choices",
-  carrier_claims: "Carrier claim filing",
-  scratch_refunds: "Refunds on demo orders",
-  scratch_disputes: "Disputes on demo orders",
-  risk_model: "Risk model (synthetic data)",
-};
 
 const NAV = (
   <nav aria-label="Sections">
@@ -54,7 +42,7 @@ export default function Home() {
           <a className="btn primary lg" href="#demo">Try the live demo <ArrowRight size={17} /></a>
           <a className="btn lg" href="#how">How it works</a>
         </div>
-        <div className="built-on"><span>Built on</span><b>PayPal</b><i aria-hidden>·</i><b>Shippo</b><i aria-hidden>·</i><b>AG Grid</b><i aria-hidden>·</i><b>Render</b></div>
+        <div className="built-on"><span>Built on</span><b>PayPal</b><i aria-hidden>·</i><b>Shippo</b><i aria-hidden>·</i><b>AG Grid</b><i aria-hidden>·</i><b>AG Studio</b><i aria-hidden>·</i><b>Render</b></div>
       </header>
 
       <section className="section" id="problem" style={{ paddingTop: 16 }}>
@@ -132,23 +120,6 @@ export default function Home() {
                 <RotateCcw size={14} />Start over
               </button>
             )}
-          </div>
-        </div>
-      </section>
-
-      <section className="section" style={{ paddingTop: 0 }}>
-        <div className="truth" aria-label="What is real and what is simulated">
-          <div>
-            <h3><BadgeCheck color="var(--good)" aria-hidden />Real</h3>
-            <ul>{REAL.map((r) => <li key={r}>{r}</li>)}</ul>
-          </div>
-          <div>
-            <h3><FlaskConical color="var(--text-3)" aria-hidden />Simulated</h3>
-            <ul>
-              {health.data
-                ? Object.entries(health.data.simulated).map(([k, v]) => <li key={k} title={v}>{SIMULATED[k] ?? v}</li>)
-                : <li>Lockers</li>}
-            </ul>
           </div>
         </div>
       </section>

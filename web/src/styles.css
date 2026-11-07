@@ -437,14 +437,6 @@ a.demo-item:hover .di-go svg { transform: translateX(3px); }
 @media (max-width: 560px) { .demo-grid { grid-template-columns: 1fr; } .demo-item { border-left: 0; } }
 
 /* Real vs simulated: one quiet card, two columns of short items. */
-.truth { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xl); }
-.truth > div { padding: 20px 24px; }
-.truth > div + div { border-left: 1px solid var(--line); }
-.truth h3 { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 10px; font-family: var(--font); }
-.truth h3 svg { width: 15px; height: 15px; }
-.truth ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
-.truth li { font-size: 12.5px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
-@media (max-width: 760px) { .truth { grid-template-columns: 1fr; } .truth > div + div { border-left: 0; border-top: 1px solid var(--line); } }
 
 /* The problem, in three sourced figures under the hero. */
 .stat-value { font-family: var(--serif); font-size: 40px; line-height: 1; letter-spacing: -0.02em; color: var(--text); }

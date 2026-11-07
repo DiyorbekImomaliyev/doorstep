@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Banknote, Bot, Database, FileCheck2, FileText, Lock, Scale, ScanLine, Send, ShieldCheck, Smartphone, Webhook, Workflow } from "lucide-react";
+import { Banknote, Bot, Database, FileCheck2, FileText, Link2, Lock, Scale, ScanLine, ScanSearch, Send, ShieldCheck, Smartphone, Webhook, Workflow } from "lucide-react";
 
-/* Inside Doorstep: events in, a coded decision, one guarded path to money. The column that is
+/* Inside Doorstep: events in, a coded decision, one guarded path to a refund. The column that is
    "working" lights up in turn so the order of operations is easy to follow. */
 
 type Node = { icon: ReactNode; title: string; text: string; key?: boolean };
@@ -13,19 +13,21 @@ const COLUMNS: Column[] = [
     { icon: <ScanLine />, title: "Courier scans", text: "Via Shippo" },
     { icon: <Smartphone />, title: "Buyer taps", text: "Got it · Not here · seal" },
   ] },
-  { label: "Inbox", nodes: [
-    { icon: <ShieldCheck />, title: "Verified", text: "Signed, stored once" },
-    { icon: <Database />, title: "Job queue", text: "Retries never pay twice" },
+  { label: "Intake", nodes: [
+    { icon: <ShieldCheck />, title: "Verified", text: "Signature checked, stored once" },
+    { icon: <Link2 />, title: "Signed links", text: "No accounts, one order each" },
   ] },
   { label: "Decide", nodes: [
     { icon: <Workflow />, title: "Failure-point engine", text: "Code, not AI" },
+    { icon: <ScanSearch />, title: "Scan audit", text: "The courier's own data" },
     { icon: <Scale />, title: "Rules as files", text: "UK · EU · US, versioned" },
   ] },
   { label: "Money", nodes: [
-    { icon: <Lock />, title: "Policy service", text: "The only path to money", key: true },
+    { icon: <Lock />, title: "Policy service", text: "The only path to refunds", key: true },
+    { icon: <Database />, title: "Outbox", text: "One key: never pays twice" },
   ] },
   { label: "Outcome", nodes: [
-    { icon: <Banknote />, title: "PayPal refund", text: "Or dispute evidence" },
+    { icon: <Banknote />, title: "PayPal refund", text: "Or a dispute offer or evidence" },
     { icon: <FileText />, title: "Claim pack", text: "The seller submits it" },
     { icon: <FileCheck2 />, title: "Signed receipt", text: "Anyone can verify" },
   ] },
@@ -34,10 +36,10 @@ const COLUMNS: Column[] = [
 /* One report followed through the columns above, in step with the lit column. */
 const TRACE = [
   "Sam taps “Not here” on his £60 order",
-  "Stored once, then queued as a job",
+  "Signed link checked · courier scans already stored once",
   "Lost by carrier · uk_possession_v1 → the seller's risk",
-  "£60 is over the £50 auto-refund limit → Maria approves",
-  "PayPal refund sent · receipt signed · claim pack ready",
+  "£60 is over the £50 auto-refund limit → Maria approves → refund job queued",
+  "PayPal refund sent with one idempotency key · receipt signed · claim pack ready",
 ];
 
 export default function SystemDiagram() {
@@ -77,7 +79,7 @@ export default function SystemDiagram() {
         <span className="ni" aria-hidden><Bot /></span>
         <span className="nt" style={{ fontWeight: 600, fontSize: 13 }}>AI explains and drafts. It never moves money.</span>
         <span className="ai-chips">
-          <span>Explanations</span><span>Claim drafts, fact-checked</span><span>Packing photos</span><span>Read-only PayPal agent</span>
+          <span>Explanations, checked</span><span>Claim drafts, fact-checked</span><span>Packing photos</span><span>Ask Doorstep charts</span><span>Read-only PayPal agent</span>
         </span>
       </div>
       <div className="legend">
