@@ -70,12 +70,34 @@ def data_block(tag: str, text: str, *, limit: int) -> str:
     return f"<{tag}>{html.escape(text[:limit], quote=False)}</{tag}>"
 
 
+_DATE_TIME = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?")
+_HELD = re.compile(r"\x00(\d+)\x00")
+_PHONE_MAX_DIGITS = 13  # +44 7700 900123 has 12; a longer run is a tracking number, not a phone
+
+
+def _phone(match: re.Match[str]) -> str:
+    digits = sum(c.isdigit() for c in match.group(0))
+    return "[phone]" if digits <= _PHONE_MAX_DIGITS else match.group(0)
+
+
 def redact(text: str) -> str:
-    """Emails and phone numbers removed; postcodes cut to the district (minimum data)."""
+    """Emails and phone numbers removed; postcodes cut to the district (minimum data).
+
+    Dates, times and tracking numbers are facts a claim or an explanation cites, never personal
+    data: dates are set aside before the phone pattern runs, and a digit run longer than any phone
+    number is left as it is.
+    """
     text = _EMAIL.sub("[email]", text)
     text = _UK_POSTCODE.sub(lambda m: m.group(1).upper(), text)
     text = _US_ZIP4.sub(r"\1", text)
-    return _PHONE.sub("[phone]", text)
+    held: list[str] = []
+
+    def hold(match: re.Match[str]) -> str:
+        held.append(match.group(0))
+        return f"\x00{len(held) - 1}\x00"
+
+    text = _PHONE.sub(_phone, _DATE_TIME.sub(hold, text))
+    return _HELD.sub(lambda m: held[int(m.group(1))], text)
 
 
 # ---------------------------------------------------------------- providers
