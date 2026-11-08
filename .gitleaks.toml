@@ -1,0 +1,8 @@
+# Default gitleaks rules, plus one allowlist: eval recordings are keyed by a 24-character hex
+# hash of the prompt (evals/recording.py), which the generic-api-key rule mistakes for a key.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Eval recordings: prompt-hash keys, not secrets"
+paths = ['''^evals/[a-z_]+/recordings\.jsonl$''']
