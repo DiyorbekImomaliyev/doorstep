@@ -11,7 +11,8 @@ import { studioTheme } from "ag-studio";
 const INTER = "'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
 /** Maroon first, then colours that stay apart from it and from each other in both modes. */
-const PALETTE = ["#7b2d3d", "#c98a97", "#3f6f73", "#c9a46a", "#5a524e", "#a24c5e", "#8fb3a5"];
+// Seven hues that stay apart for colour-blind readers and hold 3:1 against the paper background.
+const PALETTE = ["#7b2d3d", "#2f6f73", "#b7791f", "#4a5a8a", "#6b625e", "#a3573e", "#6a8a5a"];
 
 const shared: Partial<AgStudioThemeParams> = {
   fontFamily: INTER,

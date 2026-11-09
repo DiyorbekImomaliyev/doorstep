@@ -58,14 +58,31 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "calendar::week" }], valueKey: [{ id: "order_count" }], secondaryValueKey: [{ id: "case_rate" }] },
     sort: [{ field: { id: "calendar::week" }, direction: "asc" }],
     format: {
-      ...head("Orders and case rate, week by week", "Bars: orders. Line: case rate. The last week is this week so far."),
+      ...head("Orders and case rate, week by week", "Bars: orders. Line: case rate. Complete weeks only."),
       style: { theme: { ...legendBottom, line: { series: { marker: { enabled: false }, interpolation: { type: "smooth" } } } } },
     },
   },
+  journey: {
+    type: "doorstep-journey",
+    dataMapping: {
+      orders: [{ id: "order_count" }], shipped: [{ id: "stage_shipped" }], delivered: [{ id: "stage_delivered" }],
+      onWay: [{ id: "stage_on_way" }], cases: [{ id: "orders_with_case" }], refunded: [{ id: "stage_refunded" }],
+      recovered: [{ id: "stage_recovered" }],
+    },
+    format: head("Every order, from payment to who paid", "Widths follow the number of orders; orders with a problem are zoomed in"),
+  },
   moneyFlow: {
     type: "doorstep-money-flow",
-    dataMapping: { refunded: [{ id: "paid_out" }], recovered: [{ id: "recovered" }] },
+    dataMapping: { refunded: [{ id: "paid_out" }], recovered: [{ id: "recovered" }], pending: [{ id: "claims_pending" }] },
     format: head("Where the money went", "Refunded, recovered, net loss"),
+  },
+  claimClock: {
+    type: "doorstep-claim-clock",
+    dataMapping: {
+      carrier: [{ id: "recoveries.carrier" }], deadline: [{ id: "recoveries.deadline_at" }],
+      amount: [{ id: "recoveries.claimed" }], step: [{ id: "recoveries.next_step" }],
+    },
+    format: head("Claim deadlines", "Open carrier claims, soonest first. Doorstep prepares; you file"),
   },
   methodMix: {
     type: "donut-chart",
@@ -220,30 +237,45 @@ export const W = {
 
 const KPI_H = 11;
 
+/** The trend stops at the start of this week, so a week in progress never reads as a collapse. */
+const weekStart = (() => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.toISOString();
+})();
+
+/** Filter widgets as part of the page header: no card around them. */
+const bare = <T extends NonNullable<Widget>>(w: T): T => ({ ...w, format: { ...w.format, widget: { borderEnabled: false, backgroundColor: "transparent" } } }) as T;
+
 export const overviewPage: Page = {
   id: "overview",
   widgets: {
     t: title("Overview"),
-    period: W.filterQuarter,
-    src: W.filterSource,
+    period: bare(W.filterQuarter),
+    src: bare(W.filterSource),
     k1: kpi("order_count", "Every order in the period"),
     k2: kpi("case_rate", "Orders with a reported problem"),
     k3: kpi("prevention_rate", "Locker, signature or fixed address"),
     k4: kpi("net_loss", "Refunds minus carrier payments"),
+    journey: W.journey,
     trend: W.ordersAndCaseRate, flow: W.moneyFlow,
-    fp: W.failurePoints, ev: W.evidenceByMethod,
-    mix: W.methodMix, byMethod: W.caseRateByMethod,
+    fp: W.failurePoints, mix: W.methodMix,
+    ev: W.evidenceByMethod, byMethod: W.caseRateByMethod,
   },
   widgetLayout: {
     t: { xTrack: 0, yTrack: 0, xSpan: 7, ySpan: 6 }, period: { xTrack: 7, yTrack: 0, xSpan: 10, ySpan: 6 },
     src: { xTrack: 17, yTrack: 0, xSpan: 7, ySpan: 6 },
     k1: { xTrack: 0, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k2: { xTrack: 6, yTrack: 6, xSpan: 6, ySpan: KPI_H },
     k3: { xTrack: 12, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k4: { xTrack: 18, yTrack: 6, xSpan: 6, ySpan: KPI_H },
-    trend: { xTrack: 0, yTrack: 17, xSpan: 16, ySpan: 19 }, flow: { xTrack: 16, yTrack: 17, xSpan: 8, ySpan: 19 },
-    fp: { xTrack: 0, yTrack: 36, xSpan: 13, ySpan: 21 }, ev: { xTrack: 13, yTrack: 36, xSpan: 11, ySpan: 21 },
-    mix: { xTrack: 0, yTrack: 57, xSpan: 10, ySpan: 18 }, byMethod: { xTrack: 10, yTrack: 57, xSpan: 14, ySpan: 18 },
+    journey: { xTrack: 0, yTrack: 17, xSpan: 24, ySpan: 20 },
+    trend: { xTrack: 0, yTrack: 37, xSpan: 15, ySpan: 20 }, flow: { xTrack: 15, yTrack: 37, xSpan: 9, ySpan: 20 },
+    fp: { xTrack: 0, yTrack: 57, xSpan: 13, ySpan: 20 }, mix: { xTrack: 13, yTrack: 57, xSpan: 11, ySpan: 20 },
+    ev: { xTrack: 0, yTrack: 77, xSpan: 10, ySpan: 14 }, byMethod: { xTrack: 10, yTrack: 77, xSpan: 14, ySpan: 14 },
   },
-  filter: {},
+  filter: {
+    widget: { trend: [{ field: { id: "orders.created_at" }, model: { operator: "lessThan", value: weekStart } }] },
+  },
 };
 
 export const carriersPage: Page = {
@@ -254,6 +286,7 @@ export const carriersPage: Page = {
     k2: kpi("recovered", "What carriers actually paid"),
     k3: kpi("recovery_rate", "Recovered ÷ claimed"),
     k4: kpi("transit_days", "From label to delivered, on average"),
+    clock: W.claimClock,
     cost: W.costByCarrier, rate: W.failuresByCarrier,
     money: W.moneyByCarrier,
     score: W.carrierScorecard,
@@ -264,11 +297,12 @@ export const carriersPage: Page = {
     t: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 4 },
     k1: { xTrack: 0, yTrack: 4, xSpan: 6, ySpan: KPI_H }, k2: { xTrack: 6, yTrack: 4, xSpan: 6, ySpan: KPI_H },
     k3: { xTrack: 12, yTrack: 4, xSpan: 6, ySpan: KPI_H }, k4: { xTrack: 18, yTrack: 4, xSpan: 6, ySpan: KPI_H },
-    cost: { xTrack: 0, yTrack: 15, xSpan: 11, ySpan: 19 }, rate: { xTrack: 11, yTrack: 15, xSpan: 13, ySpan: 19 },
-    money: { xTrack: 0, yTrack: 34, xSpan: 24, ySpan: 15 },
-    score: { xTrack: 0, yTrack: 49, xSpan: 24, ySpan: 16 },
-    pivot: { xTrack: 0, yTrack: 65, xSpan: 12, ySpan: 16 }, ev: { xTrack: 12, yTrack: 65, xSpan: 12, ySpan: 16 },
-    claims: { xTrack: 0, yTrack: 81, xSpan: 24, ySpan: 20 },
+    clock: { xTrack: 0, yTrack: 15, xSpan: 24, ySpan: 15 },
+    cost: { xTrack: 0, yTrack: 30, xSpan: 11, ySpan: 19 }, rate: { xTrack: 11, yTrack: 30, xSpan: 13, ySpan: 19 },
+    money: { xTrack: 0, yTrack: 49, xSpan: 24, ySpan: 15 },
+    score: { xTrack: 0, yTrack: 64, xSpan: 24, ySpan: 16 },
+    pivot: { xTrack: 0, yTrack: 80, xSpan: 12, ySpan: 16 }, ev: { xTrack: 12, yTrack: 80, xSpan: 12, ySpan: 16 },
+    claims: { xTrack: 0, yTrack: 96, xSpan: 24, ySpan: 20 },
   },
   filter: {},
 };

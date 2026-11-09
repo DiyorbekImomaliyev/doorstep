@@ -65,6 +65,25 @@ test("AS-04 Doorstep's custom widgets show evidence, failure points and the mone
   if (shots) await page.screenshot({ path: `${shots}/12-insights.png` });
 });
 
+test("AS-04 the parcel journey, claim clock and click-to-filter widgets work like built-in ones", async ({ page }) => {
+  await openInsights(page);
+  // The journey reads every order from payment to who paid, as one sentence for screen readers.
+  await expect(page.getByRole("img", { name: /^[\d,]+ paid orders: [\d,]+ delivered with no problem/ })).toBeVisible();
+
+  // Clicking a meter row cross-filters the page; clicking it again clears the filter.
+  const all = await kpiNumber(page, "Orders");
+  const locker = page.locator(".ds-meter-row", { hasText: "Locker" }).first();
+  await locker.click();
+  await expect.poll(() => kpiNumber(page, "Orders")).toBeLessThan(all);
+  await expect(locker).toHaveAttribute("data-picked", "true");
+  await locker.click();
+  await expect.poll(() => kpiNumber(page, "Orders")).toBe(all);
+
+  // Open carrier claims count down to their deadlines on the Carriers report.
+  await report(page, "Carriers").click();
+  await expect(page.locator(".ds-clock li").first()).toContainText(/\d+\s*days?/);
+});
+
 test("AS-05 the Overview, Carriers and Cases reports load from state; a seller can add one", async ({ page }) => {
   await openInsights(page);
   await expect(kpiValue(page, "Net delivery loss")).toHaveText(/^\s*[£$][\d,]+\s*$/);

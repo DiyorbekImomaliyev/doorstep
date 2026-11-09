@@ -240,6 +240,14 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
   const claimOf = new Map(recoveries.map((r) => [r.case_id, r]));
   const orderOf = new Map(orders.map((o) => [o.order_id, o]));
   const caseOrders = new Set(cases.map((c) => c.order_id));
+  // The parcel journey, as 0/1 flags on the order row: every stage then counts on one table, so
+  // the journey widget never joins (Studio's fan-out guard). Outcomes after shipping are exclusive:
+  // a case, else delivered, else still on the way.
+  const shippedOrders = new Set(shipments.map((x) => x.order_id));
+  const deliveredOrders = new Set(shipments.filter((x) => x.delivered_at).map((x) => x.order_id));
+  const orderOfCase = new Map(cases.map((c) => [c.case_id, c.order_id]));
+  const refundedOrders = new Set(cases.filter((c) => (refundedBy.get(c.case_id) ?? 0) > 0).map((c) => c.order_id));
+  const recoveredOrders = new Set(recoveries.filter((r) => (r.recovered_minor ?? 0) > 0).map((r) => orderOfCase.get(r.case_id)));
 
   const ordersRows = orders.map((o) => ({
     order_id: o.order_id,
@@ -261,6 +269,11 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
     evidence: o.evidence_score,
     // On the order too, so a carrier scorecard reads one table (no join repeats a row).
     transit_days: transitOf.get(o.order_id) ?? null,
+    shipped: shippedOrders.has(o.order_id) || caseOrders.has(o.order_id) ? 1 : 0,
+    delivered_ok: !caseOrders.has(o.order_id) && deliveredOrders.has(o.order_id) ? 1 : 0,
+    on_way: !caseOrders.has(o.order_id) && shippedOrders.has(o.order_id) && !deliveredOrders.has(o.order_id) ? 1 : 0,
+    refunded_flag: refundedOrders.has(o.order_id) ? 1 : 0,
+    recovered_flag: recoveredOrders.has(o.order_id) ? 1 : 0,
     source: source(o.order_id),
   }));
   const shipmentRows = shipments.map((x) => ({
@@ -312,6 +325,8 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
     // A claim closed without payment recovered nothing (0); one still open has no amount yet.
     recovered: r.recovered_minor != null ? homeMajor(r.recovered_minor, r.currency, home) : closed(r.status) ? 0 : null,
     deadline_at: new Date(r.deadline_at),
+    // Still claimable: an open claim's amount (prepared or filed, not yet paid or closed).
+    open_value: r.status === "PREPARED" || r.status === "SUBMITTED" ? homeMajor(r.claim_minor, r.currency, home) : 0,
     // What the seller does next, so open claims can lead the list.
     next_step: r.status === "PREPARED" ? "File it with the carrier" : r.status === "SUBMITTED" ? "Waiting for the carrier" : "Done",
     // One sort key (a Studio grid sorts by one field): open claims by soonest deadline, then
@@ -350,6 +365,12 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
     measure("claim_paid", "Recovered", { operator: "coalesce", inputs: [{ id: "recoveries.recovered", aggregation: "sum" }, num(0)] }, MONEY),
     measure("recovery_rate", "Carrier recovery rate", ratio("recovered", "claimed"), PCT),
     measure("net_loss", "Net delivery loss", { operator: "subtract", inputs: [{ operator: "coalesce", inputs: [{ id: "paid_out" }, num(0)] }, { operator: "coalesce", inputs: [{ id: "recovered" }, num(0)] }] }, MONEY),
+    measure("stage_shipped", "Shipped", { id: "orders.shipped", aggregation: "sum" }, INT),
+    measure("stage_delivered", "Delivered, no problem", { id: "orders.delivered_ok", aggregation: "sum" }, INT),
+    measure("stage_on_way", "On the way", { id: "orders.on_way", aggregation: "sum" }, INT),
+    measure("stage_refunded", "Refunded", { id: "orders.refunded_flag", aggregation: "sum" }, INT),
+    measure("stage_recovered", "Recovered from carrier", { id: "orders.recovered_flag", aggregation: "sum" }, INT),
+    measure("claims_pending", "Still claimable", { id: "recoveries.open_value", aggregation: "sum" }, MONEY),
     measure("evidence_avg", "Evidence on file", { id: "orders.evidence", aggregation: "avg" }, { format: "percentageFormat", formatOptions: { format: "#,##0%" } }),
     measure("transit_days", "Days in transit", { id: "orders.transit_days", aggregation: "avg" }, { format: "decimalFormat", formatOptions: { format: "#,##0.0" } }),
   ];
@@ -364,6 +385,9 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
           f("district", "Area"), f("method", "Delivery method"), f("carrier", "Carrier"), f("address_check", "Address check"),
           f("protected", "Protected", { ...INT, hide: true }), f("had_case", "Had a case", { ...INT, hide: true }), f("evidence", "Evidence on file", PCT),
           f("transit_days", "Days in transit", { format: "decimalFormat", formatOptions: { format: "#,##0.0" } }), f("source", "Source"),
+          f("shipped", "Shipped", { ...INT, hide: true }), f("delivered_ok", "Delivered, no problem", { ...INT, hide: true }),
+          f("on_way", "On the way", { ...INT, hide: true }), f("refunded_flag", "Refunded", { ...INT, hide: true }),
+          f("recovered_flag", "Recovered from carrier", { ...INT, hide: true }),
         ],
       },
       {
@@ -397,7 +421,7 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
           f("recovery_id", "Claim ID", { hide: true }), f("case_id", "Case ID", { hide: true }), f("carrier", "Carrier"),
           f("failure_point", "Failure point"), f("status", "Claim status"), f("claimed", "Claimed", MONEY),
           f("recovered", "Recovered", MONEY), f("deadline_at", "Claim deadline", DATE), f("next_step", "Next step"),
-          f("queue", "Queue", { ...INT, hide: true }),
+          f("queue", "Queue", { ...INT, hide: true }), f("open_value", "Still claimable", { ...MONEY, hide: true }),
         ],
       },
     ],
