@@ -28,6 +28,7 @@ from app.ai.llm import Image
 from app.ai.packing import PackingChecker
 from app.ai.policy_reader import PolicyReader, ReaderAnswer
 from app.ai.recovery import RecoveryDrafter
+from app.ai.studio_agent import StudioAgent, StudioTurnIn, StudioTurnOut
 from app.api.agent import MCP_MOUNT, MCP_PATH
 from app.api.deps import SIMULATED_COMPONENTS, AppDeps, Services
 from app.api.insights import InsightsOut, insights
@@ -301,12 +302,15 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     explainer: Explainer = services.explainer or Explainer()
     # AS-06: one per app, so its model budget and answer cache are shared by every seller.
     ask_doorstep = InsightsAgent(services.agent_llm)
+    # AS-07: the turns of the AG Studio agents (Doorstep's lead, Studio's widget and page agents).
+    studio_agent = StudioAgent(services.agent_llm)
     # SE-05: caps on the routes that create data or spend model calls (per client, and in total).
     hour, ten_min = 3600.0, 600.0
     seed_cap = Depends(limited(RateLimiter(per_client=12, total=150, window_s=hour)))
     checkout_cap = Depends(limited(RateLimiter(per_client=30, total=300, window_s=ten_min)))
     report_cap = Depends(limited(RateLimiter(per_client=20, total=200, window_s=hour)))
     model_cap = Depends(limited(RateLimiter(per_client=60, total=400, window_s=hour)))
+    agent_cap = Depends(limited(RateLimiter(per_client=90, total=600, window_s=hour)))
     verify_cap = Depends(limited(RateLimiter(per_client=120, total=1200, window_s=hour)))
 
     def _subject(token: str, scope: str) -> str:
@@ -856,6 +860,16 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         _seller(s, token)
         s.commit()  # end the read: no connection is held while the model reads the question
         return ask_doorstep.ask(body.question)
+
+    @router.post(
+        "/api/seller/{token}/insights/agent", response_model=StudioTurnOut, dependencies=[agent_cap]
+    )
+    def studio_agent_turn(token: str, body: StudioTurnIn, s: Db) -> StudioTurnOut:
+        """AS-07: one model turn for an AG Studio agent. Studio runs the tools in the browser, on
+        the seller's own report; this reads nothing from the database and moves nothing."""
+        _seller(s, token)
+        s.commit()  # end the read: no connection is held while the model thinks
+        return studio_agent.turn(body)
 
     @router.get("/api/seller/{token}/prevention", response_model=list[PreventionSuggestion])
     def prevention_tips(token: str, s: Db) -> list[PreventionSuggestion]:

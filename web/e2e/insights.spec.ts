@@ -84,6 +84,38 @@ test("AS-04 the parcel journey, claim clock and click-to-filter widgets work lik
   await expect(page.locator(".ds-clock li").first()).toContainText(/\d+\s*days?/);
 });
 
+test("AS-07 the Doorstep agent runs on Studio's Agent Framework: scans in code, no data rows to a model", async ({ page }) => {
+  // The model's turns are played by this test (the backend half is tests/unit/test_as07_studio_agent.py),
+  // so the run is the same every time and spends no model call.
+  const sent: { agent: string; tools: { name: string }[]; items: { kind: string; text: string }[] }[] = [];
+  await page.route("**/insights/agent", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    sent.push(body);
+    const last = body.items[body.items.length - 1];
+    const out = last.kind === "user"
+      ? { message: "", calls: [{ call_id: "call_scan", name: "scan_for_anomalies", arguments: {} }], mode: "model" }
+      : { message: "Your case rate rose in the last four weeks.", calls: [], mode: "model" };
+    await route.fulfill({ json: out });
+  });
+  await openInsights(page);
+  await page.getByRole("button", { name: "Agent" }).click();
+  await page.getByText("What changed in the last four weeks?").first().click();
+  await expect(page.getByText("Your case rate rose in the last four weeks.")).toBeVisible();
+
+  // The scan ran in the browser and its findings went back to the agent as text, never as rows.
+  await expect(page.getByText("Scanned the last 4 weeks")).toBeVisible();
+  expect(sent).toHaveLength(2);
+  const result = sent[1].items.find((i) => i.kind === "result")!;
+  expect(result.text).toContain("Window:");
+  expect(result.text).not.toMatch(/order_id|"district"|hist-\d/);
+  // Doorstep's lead offers its own tools and delegation; no agent is offered execute_query.
+  expect(sent[0].agent).toBe("doorstep");
+  const names = (i: number) => sent[i].tools.map((t) => t.name);
+  expect(names(0)).toEqual(expect.arrayContaining(["scan_for_anomalies", "answer_question", "delegate_to"]));
+  for (let i = 0; i < sent.length; i++) expect(names(i)).not.toContain("execute_query");
+  if (shots) await page.screenshot({ path: `${shots}/14-insights-agent.png` });
+});
+
 test("AS-05 the Overview, Carriers and Cases reports load from state; a seller can add one", async ({ page }) => {
   await openInsights(page);
   await expect(kpiValue(page, "Net delivery loss")).toHaveText(/^\s*[£$][\d,]+\s*$/);

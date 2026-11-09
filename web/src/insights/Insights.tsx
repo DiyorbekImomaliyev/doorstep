@@ -17,9 +17,11 @@ import type {
   AgConditionDefinition, AgContextMenuItem, AgFilterDefinition, AgGetContextMenuParams, AgResponsiveLayoutBreakpoint,
   AgStudioApi, AgStudioProperties, AgWidgetLayoutState,
 } from "ag-studio";
-import { AgStudioLicenseManager, enableStudioDevValidations } from "ag-studio";
+import { AgStudioAiModule, AgStudioLicenseManager, enableStudioDevValidations } from "ag-studio";
 import { AgStudio, createWidgets } from "ag-studio-react";
-import { BarChart3, Eye, FilePlus2, Pause, Pencil, Play, Sparkles, X } from "lucide-react";
+import { BarChart3, Bot, Eye, FilePlus2, Pause, Pencil, Play, Sparkles, X } from "lucide-react";
+import { doorstepHarness, type AgentActions } from "./agent";
+import { OPEN_EVENT, doorstepToolDisplay, type OpenDetail } from "./agentDisplay";
 import { ANSWERS_PAGE, withAnswer, withoutAnswer, type Asked } from "./ask";
 import { AskPanel } from "./AskPanel";
 import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
@@ -35,7 +37,14 @@ type Props = AgStudioProperties<DoorstepRegistry>;
 
 /** Studio's own widgets plus Doorstep's three, filed under "Doorstep" in the widget menu. */
 const widgets = createWidgets<DoorstepRegistry>({ additionalTypes: doorstepWidgetTypes });
-const LOCALE = { widgetPanelWidgetCategoryUncategorized: "Doorstep" };
+const LOCALE = {
+  widgetPanelWidgetCategoryUncategorized: "Doorstep",
+  panelTitleAi: "Doorstep agent",
+  aiMessageInputPlaceholder: "Ask what changed, ask for a figure, or ask to change a chart…",
+};
+/** AS-07: Studio's Agent Framework, on the main board only (the carrier pop-up has no agent). */
+const AI_MODULES = [AgStudioAiModule];
+type Mode = "view" | "edit" | "agent";
 const LIVE_MS = 10_000;
 
 // On a phone-width canvas every widget takes the full width, one under another in reading order
@@ -100,7 +109,8 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const [api, setApi] = useState<AgStudioApi<DoorstepRegistry>>();
   const [reports, setReports] = useState(REPORTS);
   const [selected, setSelected] = useState(REPORTS[0].id);
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<Mode>("view");
+  const editing = mode === "edit";
   const [asking, setAsking] = useState(false);
   const [live, setLive] = useState(true);
   const [synced, setSynced] = useState(() => new Date());
@@ -109,6 +119,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const current = useRef(prepared);
   const seq = useRef(0);
   const canvas = useRef<HTMLDivElement>(null);
+  const actions = useRef<AgentActions>(null as unknown as AgentActions);
 
   const menu = useCallback(({ filter }: AgGetContextMenuParams): AgContextMenuItem[] => {
     const c = carrierCondition(filter);
@@ -131,6 +142,9 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     // On a phone the filter rail would cover the report; the report's own filters stay on it.
     panels: { edit: { right: ["filters", "edit", "data"] }, view: { right: PHONE ? [] : ["filters"] } },
     getContextMenuItems: menu,
+    // AS-07: Doorstep's lead agent and Studio's widget and page agents, every turn through the backend.
+    ai: ({ api: a }) => doorstepHarness(a as unknown as AgStudioApi, actions),
+    aiToolDisplay: doorstepToolDisplay,
     onApiReady: ({ api: a }) => setApi(a as AgStudioApi<DoorstepRegistry>),
     onStudioPreDestroyed: () => setApi(undefined),
   }), [prepared, menu]);
@@ -142,7 +156,14 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     // A new report opens at its top, not at the last report's scroll position.
     canvas.current?.querySelector(".ag-studio-layout")?.scrollTo({ top: 0 });
   }, [api, selected]);
-  useEffect(() => { api?.setProperty("mode", editing ? "edit" : "view"); }, [api, editing]);
+  useEffect(() => {
+    if (!api) return;
+    // The agent works in edit mode with its panel alone, so the report keeps the width.
+    api.setProperty("panels", mode === "agent"
+      ? { edit: { right: ["ai"] }, view: { right: PHONE ? [] : ["filters"] } }
+      : { edit: { right: ["filters", "edit", "data"] }, view: { right: PHONE ? [] : ["filters"] } });
+    api.setProperty("mode", mode === "view" ? "view" : "edit");
+  }, [api, mode, PHONE]);
 
   // Live: fetch, rebuild the same tables, apply only what changed (add, update, remove).
   useEffect(() => {
@@ -170,7 +191,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     api.setState({ ...s, pages: [...s.pages, { id, widgets: {}, widgetLayout: {}, filter: {} }], selectedPageId: id });
     setReports((r) => [...r, { id, name: `My report ${seq.current}`, hint: "Your own report: add widgets from the panel" }]);
     setSelected(id);
-    setEditing(true);
+    setMode("edit");
   };
 
   // AS-06: each answer is a widget at the top of the Answers report, which appears on the first.
@@ -193,6 +214,23 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   }, [api]);
   const showAnswers = useCallback(() => setSelected(ANSWERS_PAGE), []);
   const latest = useCallback(() => current.current, []);
+  // The agent's tools read the newest rows and act on this board through one ref, since Studio
+  // builds the harness once.
+  // A finding card's button in the agent panel opens the report (or the carrier's report).
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent<OpenDetail>).detail;
+      if (d.carrier && d.report === "carriers") setDrill({ field: { id: "orders.carrier" }, operator: "equals", value: d.carrier } as AgConditionDefinition);
+      else setSelected(d.report);
+    };
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_EVENT, onOpen);
+  }, []);
+  actions.current = {
+    token, prepared: latest, addAnswer,
+    openReport: (id) => setSelected(id),
+    openCarrier: (c) => setDrill(c),
+  };
 
   return (
     <>
@@ -208,7 +246,11 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
           <button className={`btn ask-toggle ${asking ? "on" : ""}`} onClick={() => setAsking((a) => !a)} aria-pressed={asking}>
             <Sparkles size={15} aria-hidden />Ask Doorstep
           </button>
-          <button className={`btn ins-edit ${editing ? "primary" : ""}`} onClick={() => setEditing((e) => !e)} aria-pressed={editing}>
+          <button className={`btn ask-toggle ${mode === "agent" ? "on" : ""}`} onClick={() => setMode((m) => (m === "agent" ? "view" : "agent"))} aria-pressed={mode === "agent"}
+            title="Doorstep's agent finds what changed and edits charts with AG Studio's own agents">
+            <Bot size={15} aria-hidden />Agent
+          </button>
+          <button className={`btn ins-edit ${editing ? "primary" : ""}`} onClick={() => setMode((m) => (m === "edit" ? "view" : "edit"))} aria-pressed={editing}>
             {editing ? <><Eye size={15} aria-hidden />Done editing</> : <><Pencil size={15} aria-hidden />Edit report</>}
           </button>
         </div>
@@ -232,7 +274,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
               </ul>
             </div>
           </nav>
-          <div className="rb-canvas" ref={canvas}><AgStudio<DoorstepRegistry> studioProperties={props} className="studio-fill" /></div>
+          <div className="rb-canvas" ref={canvas}><AgStudio<DoorstepRegistry> studioProperties={props} modules={AI_MODULES} className="studio-fill" /></div>
           {asking && (
             <AskPanel token={token} prepared={latest} onAnswer={addAnswer} onShow={showAnswers} onRemove={removeAnswer} onClose={() => setAsking(false)} />
           )}

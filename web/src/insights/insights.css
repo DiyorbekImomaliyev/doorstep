@@ -215,3 +215,19 @@ button.ds-meter-row:hover, .ds-fp li > button:hover { background: color-mix(in s
 .ds-fp-bar i { position: absolute; left: 0; top: 0; bottom: 0; transition: width .5s cubic-bezier(.2, .7, .2, 1); }
 .ds-fp-bar i.ds-fp-ghost { background: color-mix(in srgb, var(--ag-accent-color, #7b2d3d) 18%, transparent) !important; }
 @media (prefers-reduced-motion: reduce) { .ds-journey svg, .ds-wf-col b { animation: none; } }
+
+/* ---------------------------------------------------------------- AS-07: the agent's cards in Studio's chat panel */
+.ag-find { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+.ag-find-window, .ag-find-none { margin: 0; color: #736b67; font-size: 11.5px; }
+.ag-find ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ag-find li { display: grid; grid-template-columns: 14px 1fr; column-gap: 8px; row-gap: 6px; align-items: start; padding: 8px 10px; border: 1px solid #ece5df; border-radius: 9px; background: #fff; }
+.ag-find li[data-severity="high"] { border-color: #ecc9c4; background: #fdf6f4; }
+.ag-find li > svg { margin-top: 2px; color: #8b827d; }
+.ag-find li[data-severity="high"] > svg { color: #a3302a; }
+.ag-find li strong { display: block; font-weight: 600; color: #1f1a18; }
+.ag-find li span { display: block; color: #5f5753; line-height: 1.4; margin-top: 2px; }
+.ag-find li button { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; gap: 3px; border: 1px solid #e3dbd4; background: #fff; border-radius: 999px; padding: 3px 9px; font: inherit; font-size: 11.5px; font-weight: 600; color: #7b2d3d; cursor: pointer; white-space: nowrap; }
+.ag-find li button:hover { background: #f7eef0; border-color: #d9b9c0; }
+.ag-answer { font-size: 12.5px; line-height: 1.45; }
+.ag-answer p { margin: 0 0 4px; }
+.ag-answer-more { color: #5f5753; }
