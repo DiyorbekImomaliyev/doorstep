@@ -80,6 +80,7 @@ from app.proof.seal import (
     seller_browser_for,
 )
 from app.security.links import InvalidLink
+from app.security.ratelimit import RateLimiter, limited
 from app.shipping.packing import PackingError, PackingService
 from app.shipping.service import ShippingError, ShippingService
 from app.worker.models import WebhookInbox
@@ -283,6 +284,13 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     explainer: Explainer = services.explainer or Explainer()
     # AS-06: one per app, so its model budget and answer cache are shared by every seller.
     ask_doorstep = InsightsAgent(services.agent_llm)
+    # SE-05: caps on the routes that create data or spend model calls (per client, and in total).
+    hour, ten_min = 3600.0, 600.0
+    seed_cap = Depends(limited(RateLimiter(per_client=12, total=150, window_s=hour)))
+    checkout_cap = Depends(limited(RateLimiter(per_client=30, total=300, window_s=ten_min)))
+    report_cap = Depends(limited(RateLimiter(per_client=20, total=200, window_s=hour)))
+    model_cap = Depends(limited(RateLimiter(per_client=60, total=400, window_s=hour)))
+    verify_cap = Depends(limited(RateLimiter(per_client=120, total=1200, window_s=hour)))
 
     def _subject(token: str, scope: str) -> str:
         try:
@@ -418,7 +426,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             model="configured" if services.explainer and services.explainer.llm else "template",
         )
 
-    @router.get("/cases/{case_id}/verify", response_model=VerifyReport)
+    @router.get("/cases/{case_id}/verify", response_model=VerifyReport, dependencies=[verify_cap])
     def verify(case_id: str, s: Db) -> VerifyReport:
         """PR-02: public; recomputes the chain up to this case's last receipt."""
         return verify_chain(s, services.receipts.public_key_b64, case_id=case_id)
@@ -432,7 +440,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         amount = Money(amount_minor=body.amount_minor, currency=body.currency)
         return _checkout(s).quote(body.seller_id, amount, buyer_country=body.buyer_country)
 
-    @router.post("/api/checkout/start", response_model=StartOut)
+    @router.post("/api/checkout/start", response_model=StartOut, dependencies=[checkout_cap])
     def start(body: StartIn, s: Db) -> StartOut:
         amount = Money(amount_minor=body.amount_minor, currency=body.currency)
         try:
@@ -526,7 +534,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         s.commit()
         return buyer_view(s, order)
 
-    @router.post("/api/buyer/{token}/not-here", response_model=ReportOut)
+    @router.post("/api/buyer/{token}/not-here", response_model=ReportOut, dependencies=[report_cap])
     def not_here(token: str, body: ReportIn, s: Db) -> ReportOut:
         order = _order(s, token)
         try:
@@ -698,7 +706,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     # RC-08: one per process, so two opens at once make one model call.
     claim_drafts = ClaimDraftOnOpen(RecoveryDrafter(services.agent_llm), deps.clock)
 
-    @router.post("/api/seller/{token}/cases/{case_id}/recovery/draft", response_model=RecoveryView)
+    @router.post(
+        "/api/seller/{token}/cases/{case_id}/recovery/draft",
+        response_model=RecoveryView,
+        dependencies=[model_cap],
+    )
     def recovery_draft(token: str, case_id: str, s: Db) -> RecoveryView:
         """RC-08: the model drafts the claim pack when the seller first opens it, then saved.
         Registered before the {mark} route, so "draft" is never read as a seller mark."""
@@ -755,11 +767,14 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         """AS-01: orders, shipments, cases, money actions and carrier claims for AG Studio."""
         return insights(s, _seller(s, token))
 
-    @router.post("/api/seller/{token}/insights/ask", response_model=InsightAnswer)
+    @router.post(
+        "/api/seller/{token}/insights/ask", response_model=InsightAnswer, dependencies=[model_cap]
+    )
     def ask_insights(token: str, body: InsightQuestionIn, s: Db) -> InsightAnswer:
         """AS-06: Ask Doorstep reads one question into a chart plan. Reads nothing else; moves
         nothing. The browser builds the Studio widget and computes the figures from its rows."""
         _seller(s, token)
+        s.commit()  # end the read: no connection is held while the model reads the question
         return ask_doorstep.ask(body.question)
 
     @router.get("/api/seller/{token}/prevention", response_model=list[PreventionSuggestion])
@@ -804,7 +819,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
 
     recent_runs: dict[str, tuple[float, str, AgentRun]] = {}  # case id -> (when, state, run)
 
-    @router.post("/api/seller/{token}/agent/cases/{case_id}", response_model=AgentRun)
+    @router.post(
+        "/api/seller/{token}/agent/cases/{case_id}",
+        response_model=AgentRun,
+        dependencies=[model_cap],
+    )
     def run_agent(token: str, case_id: str, s: Db) -> AgentRun:
         """AT-01..05: the Doorstep agent reads the PayPal side and asks the policy; it stops
         at the seller's limit. Seeded demo orders use simulated reads. AT-06: a run on the same
@@ -828,7 +847,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         recent_runs[case.id] = (now, case.state, run)
         return run
 
-    @router.post("/api/seller/{token}/policy/cases/{case_id}", response_model=ReaderAnswer)
+    @router.post(
+        "/api/seller/{token}/policy/cases/{case_id}",
+        response_model=ReaderAnswer,
+        dependencies=[model_cap],
+    )
     def policy_answer(
         token: str, case_id: str, s: Db, body: PolicyQuestionIn | None = None
     ) -> ReaderAnswer:
@@ -842,6 +865,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             case.reason, "What does the delivery policy say?"
         )
         reader = PolicyReader(services.agent_llm)
+        s.commit()  # end the read: no connection is held while the model answers
         return reader.answer(
             question, seller_policy=seller.policy_text, rule=rulebook.select(order.buyer_country)
         )
@@ -864,7 +888,11 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     def _packing(s: Session) -> PackingService:
         return PackingService(s, deps.clock, services.packing or PackingChecker(None))
 
-    @router.post("/api/seller/{token}/orders/{order_id}/packing-check", response_model=PackingOut)
+    @router.post(
+        "/api/seller/{token}/orders/{order_id}/packing-check",
+        response_model=PackingOut,
+        dependencies=[model_cap],
+    )
     def packing_check(token: str, order_id: str, body: PackingIn, s: Db) -> PackingOut:
         """PK-01..04: compare one packing photo with the order line before shipping."""
         order = _seller_order(s, _seller(s, token), order_id)
@@ -876,6 +904,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             raise HTTPException(422, "image_b64 is not valid base64") from None
         if not data or len(data) > MAX_PHOTO_BYTES:
             raise HTTPException(413, "the photo must be under 5 MB")
+        s.commit()  # end the read: no connection is held while the model looks at the photo
         try:
             verdict = _packing(s).check(
                 order, Image(media_type=body.media_type, data=data), actor="seller"
@@ -925,7 +954,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             summary=summary,
         )
 
-    @router.post("/demo/seed", response_model=SeedOut)
+    @router.post("/demo/seed", response_model=SeedOut, dependencies=[seed_cap])
     def demo_seed(s: Db, scratch: Annotated[int, Query(ge=0, le=1)] = 1) -> SeedOut:
         """PR-06: scratch=1 gives a fresh isolated copy; scratch=0 returns the filmed demo."""
         import uuid
