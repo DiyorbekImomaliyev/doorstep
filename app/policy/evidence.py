@@ -53,6 +53,7 @@ class EvidenceSubmission(BaseModel):
     evidence_type: Literal["PROOF_OF_FULFILLMENT"] = "PROOF_OF_FULFILLMENT"
     notes: str = Field(min_length=1, max_length=NOTES_MAX)
     carrier: str | None = None  # PayPal carrier code, e.g. ROYAL_MAIL; None -> OTHER
+    carrier_other: str | None = None  # the carrier's own name when PayPal has no code (DE-04)
     tracking_number: str | None = None
 
 

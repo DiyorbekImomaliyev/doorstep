@@ -74,5 +74,6 @@ def build_submission(
     return EvidenceSubmission(
         notes=notes,
         carrier=carrier,
+        carrier_other=shipment.carrier if shipment and carrier is None else None,
         tracking_number=shipment.tracking_number if shipment else None,
     )

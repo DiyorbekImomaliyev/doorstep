@@ -68,6 +68,7 @@ class DisputeEvidence(BaseModel):
     evidence_type: str  # e.g. PROOF_OF_FULFILLMENT
     notes: str
     carrier: str | None = None
+    carrier_other: str | None = None  # the carrier's own name, sent when carrier is OTHER (DE-04)
     tracking_number: str | None = None
 
 

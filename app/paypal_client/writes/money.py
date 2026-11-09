@@ -56,12 +56,11 @@ def provide_dispute_evidence(
     """POST provide-evidence as multipart/form-data with the JSON `input` part (PP-09)."""
     info: dict[str, object] = {}
     if evidence.tracking_number:
-        info["tracking_info"] = [
-            {
-                "carrier_name": evidence.carrier or "OTHER",
-                "tracking_number": evidence.tracking_number,
-            }
-        ]
+        carrier = evidence.carrier or "OTHER"
+        row = {"carrier_name": carrier, "tracking_number": evidence.tracking_number}
+        if carrier == "OTHER":  # DE-04: PayPal requires the carrier's name with OTHER
+            row["carrier_name_other"] = evidence.carrier_other or "Other carrier"
+        info["tracking_info"] = [row]
     payload = {
         "evidences": [
             {
