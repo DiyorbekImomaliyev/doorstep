@@ -146,6 +146,17 @@ function useExpanded(node: IRowNode | undefined): boolean {
   return open;
 }
 
+/** Re-render on every model update: a group row's count must follow the rows under it (the grid
+ * keeps group rows mounted when their children change). */
+function useModelTick(api: CustomCellRendererProps<OrderRow>["api"]) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTick((t) => t + 1);
+    api.addEventListener("modelUpdated", bump);
+    return () => { if (!api.isDestroyed()) api.removeEventListener("modelUpdated", bump); };
+  }, [api]);
+}
+
 // ---------- cells ----------
 
 function OrderCell(p: CustomCellRendererProps<OrderRow>) {
@@ -243,6 +254,7 @@ function RiskTip({ data: r }: CustomTooltipProps<OrderRow>) {
 /** A lane: who acts next. Count and money at stake per currency (never summed across currencies). */
 function LaneRow(p: CustomCellRendererProps<OrderRow>) {
   const open = useExpanded(p.node);
+  useModelTick(p.api);
   const key = String(p.node.key) as Lane;
   const meta = LANES[key];
   const rows = (p.node.childrenAfterFilter ?? []).map((n) => n.data).filter((d): d is OrderRow => !!d);

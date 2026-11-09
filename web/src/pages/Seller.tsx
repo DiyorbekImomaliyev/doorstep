@@ -399,9 +399,9 @@ function RecoveredKpi({ s, onClick }: { s: RecoverySummary | null; onClick: () =
   const open = s ? sumBy(s.open_claim_minor) : "";
   return (
     <button className="kpi" onClick={onClick} title="Open Insights">
-      <span className="label"><Landmark aria-hidden />Recovered from carriers<Hint text="What carriers paid back on claims Doorstep prepared and you submitted." /></span>
+      <span className="label"><Landmark aria-hidden />Recovered from carriers<Hint text="What carriers paid back on claims Doorstep prepared and you submitted, in this shop only. Insights adds 26 weeks of simulated history to the demo shop." /></span>
       <span className="value" style={{ fontSize: 22 }}>{s ? sumBy(s.recovered_minor) : "—"}</span>
-      <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "from claims you filed"}</span>
+      <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "this shop, from claims you filed"}</span>
     </button>
   );
 }

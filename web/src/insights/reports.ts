@@ -58,7 +58,7 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "calendar::week" }], valueKey: [{ id: "order_count" }], secondaryValueKey: [{ id: "case_rate" }] },
     sort: [{ field: { id: "calendar::week" }, direction: "asc" }],
     format: {
-      ...head("Orders and case rate, week by week", "Bars: orders. Line: case rate"),
+      ...head("Orders and case rate, week by week", "Bars: orders. Line: case rate. The last week is this week so far."),
       style: { theme: { ...legendBottom, line: { series: { marker: { enabled: false }, interpolation: { type: "smooth" } } } } },
     },
   },
