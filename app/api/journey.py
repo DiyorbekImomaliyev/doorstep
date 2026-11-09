@@ -654,7 +654,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         s.commit()
         return _seal_view(s, order)
 
-    @router.post("/api/seal/{token}/report", response_model=ReportOut)
+    @router.post("/api/seal/{token}/report", response_model=ReportOut, dependencies=[report_cap])
     def seal_report(token: str, body: SealReportIn, request: Request, s: Db) -> ReportOut:
         """SL-06: "Something's wrong" from the same scan: the buyer holds the parcel.
 
