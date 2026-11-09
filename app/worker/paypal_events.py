@@ -6,6 +6,12 @@
 - PAYMENT.CAPTURE.REFUNDED: records refunds made outside Doorstep, so the refundable balance
   stays right (PO-06). Doorstep's own refunds are recognised by their PayPal refund id or their
   custom_id; a pending one of ours is confirmed by PayPal's status here (PO-13).
+- PAYMENT.CAPTURE.REVERSED: PayPal returned the money to the buyer (a refund resource, like
+  REFUNDED). Recorded the same way, so Doorstep never pays it twice, and a case that could still
+  pay out goes to a person (PO-15).
+- PAYMENT.CAPTURE.DECLINED / DENIED: a pending capture did not go through. The order stays unpaid
+  and is marked declined, so the buyer can pay another way; a completed capture is never un-paid
+  by an event (CK-11).
 - CUSTOMER.DISPUTE.CREATED/UPDATED/RESOLVED: keeps the disputes table current, so the policy
   routes to DISPUTE_EVIDENCE instead of refunding outside the dispute (PO-05). RESOLVED closes the
   case that was waiting on the dispute, since PayPal decided it (PO-14).
@@ -24,7 +30,7 @@ from sqlalchemy.orm import Session
 from app.clock import Clock
 from app.money import Money
 from app.orders.enums import CaseState, OrderState
-from app.orders.models import Case, Dispute, Order
+from app.orders.models import AuditLog, Case, Dispute, MoneyAction, Order
 from app.orders.state import transition_case, transition_order
 from app.policy.rules import RuleBook
 from app.policy.service import PolicyService
@@ -112,6 +118,76 @@ def _make_refunded(rulebook: RuleBook, clock: Clock, receipts: ReceiptSigner | N
     return handle
 
 
+# PO-15: the cases a reversal could still pay out on. A case in a PayPal dispute is PayPal's to
+# decide; a settled, closed or held one has nothing left to pay.
+_PAYABLE = frozenset(
+    {CaseState.DECIDED.value, CaseState.AUTO_REFUND.value, CaseState.AWAITING_SELLER.value}
+)
+DECLINED = "DECLINED"  # the capture status the buyer's "pay another way" reads (CK-09)
+
+
+def _audit(s: Session, order: Order, action: str, after: dict[str, Any], clock: Clock) -> None:
+    s.add(
+        AuditLog(
+            actor="paypal",
+            action=action,
+            entity_type="order",
+            entity_id=order.id,
+            before={},
+            after=after,
+            at=clock.now(),
+        )
+    )
+
+
+def _make_reversed(rulebook: RuleBook, clock: Clock, receipts: ReceiptSigner | None) -> Handler:
+    """PO-15: PayPal reversed a capture, so the money is back with the buyer."""
+    record = _make_refunded(rulebook, clock, receipts)
+
+    def handle(s: Session, row: WebhookInbox) -> None:
+        res = _resource(row)
+        order = _order_by_capture(s, _capture_id_from_links(res))
+        refund_id = str(res.get("id") or "")
+        if order is None or not refund_id:
+            log.info("reversal event %s not matched to an order; skipped", row.event_id)
+            return
+        seen = s.scalars(
+            select(MoneyAction.id).where(MoneyAction.paypal_refund_id == refund_id)
+        ).first()
+        record(s, row)
+        if seen is not None:
+            return  # already recorded: a redelivery, or a refund Doorstep made itself
+        _audit(s, order, "paypal.capture_reversed", {"refund_id": refund_id}, clock)
+        for case in s.scalars(
+            select(Case).where(Case.order_id == order.id, Case.state.in_(_PAYABLE))
+        ).all():
+            transition_case(
+                s, case, CaseState.HOLD_FOR_REVIEW, actor="paypal", reason="PayPal reversed it"
+            )
+
+    return handle
+
+
+def _make_capture_declined(clock: Clock) -> Handler:
+    """CK-11: a pending capture PayPal declined. Only an unpaid order changes."""
+
+    def handle(s: Session, row: WebhookInbox) -> None:
+        res = _resource(row)
+        capture_id = str(res.get("id") or "")
+        order = _order_by_capture(s, capture_id)
+        if order is None:
+            log.info("declined capture event %s not matched to an order; skipped", row.event_id)
+            return
+        facts = {"capture_id": capture_id, "event": row.event_type}
+        if order.state != OrderState.CREATED.value or order.capture_status == "COMPLETED":
+            _audit(s, order, "paypal.capture_declined_ignored", facts, clock)
+            return
+        order.capture_status = DECLINED
+        _audit(s, order, "paypal.capture_declined", facts, clock)
+
+    return handle
+
+
 def _make_dispute(clock: Clock) -> Handler:
     def handle(s: Session, row: WebhookInbox) -> None:
         res = _resource(row)
@@ -186,6 +262,9 @@ def paypal_inbox_handlers(
         ("paypal", "CHECKOUT.ORDER.APPROVED"): _make_order_approved(clock),
         ("paypal", "PAYMENT.CAPTURE.COMPLETED"): _make_capture_completed(clock),
         ("paypal", "PAYMENT.CAPTURE.REFUNDED"): _make_refunded(rulebook, clock, receipts),
+        ("paypal", "PAYMENT.CAPTURE.REVERSED"): _make_reversed(rulebook, clock, receipts),
+        ("paypal", "PAYMENT.CAPTURE.DECLINED"): _make_capture_declined(clock),
+        ("paypal", "PAYMENT.CAPTURE.DENIED"): _make_capture_declined(clock),
         ("paypal", "CUSTOMER.DISPUTE.CREATED"): dispute,
         ("paypal", "CUSTOMER.DISPUTE.UPDATED"): dispute,
         ("paypal", "CUSTOMER.DISPUTE.RESOLVED"): dispute,
