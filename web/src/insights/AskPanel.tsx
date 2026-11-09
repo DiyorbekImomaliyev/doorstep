@@ -118,7 +118,7 @@ export function AskPanel({ token, prepared, onAnswer, onShow, onRemove, onClose 
                 )}
                 {t.removed && <p className="ask-muted">Chart removed from Answers.</p>}
                 <p className="ask-source">
-                  {t.asked?.mode === "model" ? "Read by the model" : "Read by keywords (model busy)"}; figures from your data at{" "}
+                  {t.asked?.mode === "model" ? "Question read by AI" : "Question read by keyword match"}; figures from your data at{" "}
                   {t.at?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. The chart stays live.
                 </p>
               </div>

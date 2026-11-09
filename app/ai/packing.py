@@ -67,7 +67,7 @@ def decide(result: PackingCheckResult, order_line: str) -> PackingVerdict:
     )
 
 
-_FALLBACK = "The automatic check is unavailable right now. Look at the item and confirm it matches."
+_FALLBACK = "Check the item by eye and confirm it matches the order."
 
 
 class PackingChecker:

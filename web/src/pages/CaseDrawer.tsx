@@ -511,7 +511,7 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
         <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => go()}>{busy ? "Checking PayPal…" : run ? "Run the agent again" : "Run the agent"}</button>
         {run && (
           <span className="faint" title={run.planner}>
-            {run.planner.startsWith("model") ? "Planned by AI, within code checks." : "Standard checklist (the AI planner was unavailable)."} Every step is in the timeline.
+            {run.planner.startsWith("model") ? "Planned by AI, within code checks." : "Ran the standard checklist."} Every step is in the timeline.
           </span>
         )}
       </div>
@@ -633,7 +633,7 @@ function RecoveryPanel({ token, recovery, onChanged }: { token: string; recovery
           )}
           {!drafting && (
             <p className="faint">
-              {r.pack_source === "model" ? "AI draft; every sentence checked against the facts." : tried ? "AI unavailable right now; built from the facts only." : "Built from the facts only."} Terms: {r.terms_rule}.
+              {r.pack_source === "model" ? "AI draft; every sentence checked against the facts." : "Built from the facts only."} Terms: {r.terms_rule}.
             </p>
           )}
           <div className="row">

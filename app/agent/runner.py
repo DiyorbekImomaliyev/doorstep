@@ -109,6 +109,37 @@ def _summarise_disputes(body: Any) -> tuple[str, set[str]]:
     return f"{len(items)} PayPal dispute(s): {listed}.", ids
 
 
+_DISPUTE_PAGE = 50  # PayPal's largest page
+
+
+def read_disputes(tool: ToolFn, capture_id: str | None) -> tuple[str, set[str]]:
+    """AT-06: the disputes on this payment, as PayPal states them, and the ids it listed.
+
+    PayPal answers 400 to the transaction filter when nothing matches (checked in the sandbox on
+    Nov 6 and Nov 9, 2026). So a failed filtered read lists the account's disputes and matches the
+    capture here. A dispute the list does not tie to any payment may be this one, so it can be
+    read. A read that fails both ways says so: it never reads as "no disputes".
+    """
+    body = _json(tool({"disputed_transaction_id": capture_id}))
+    if isinstance(body, dict):
+        return _summarise_disputes(body)
+    listed = _json(tool({"page_size": _DISPUTE_PAGE}))
+    if not isinstance(listed, dict):
+        return "PayPal could not read the disputes just now; continuing without them.", set()
+    mine, untied = [], []
+    for item in listed.get("items") or []:
+        named = item.get("disputed_transactions")
+        if named is None:
+            untied.append(item)
+        elif any(t.get("seller_transaction_id") == capture_id for t in named):
+            mine.append(item)
+    summary, ids = _summarise_disputes({"items": mine})
+    if untied:
+        ids |= {str(i.get("dispute_id")) for i in untied if i.get("dispute_id")}
+        summary += f" {len(untied)} more not tied to a payment in the list."
+    return summary, ids
+
+
 def _summarise_dispute(body: Any) -> str:
     if not isinstance(body, dict):
         return "PayPal answered without dispute details."
@@ -272,6 +303,10 @@ class DoorstepAgent:
         tool = self.tools.get(step.tool)
         if tool is None:
             return "This PayPal read is not available here."
+        if step.tool == "list_disputes":
+            summary, ids = read_disputes(tool, order.capture_id)
+            seen_disputes.update(ids)
+            return summary
         try:
             body = _json(tool(args))
         except Exception as exc:  # a PayPal error must not stop the agent
@@ -281,10 +316,6 @@ class DoorstepAgent:
             return _summarise_order(body)
         if step.tool == "get_shipment_tracking":
             return _summarise_tracking(body)
-        if step.tool == "list_disputes":
-            summary, ids = _summarise_disputes(body)
-            seen_disputes.update(ids)
-            return summary
         return _summarise_dispute(body)
 
     def _record(
