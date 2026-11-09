@@ -3,9 +3,11 @@ import type { GridApi } from "ag-grid-community";
 import { ArrowRight, BarChart3, BookOpen, Check, ReceiptText, Columns3, Copy, Download, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
 import { api, type Autopilot, type AutopilotStatement, type Economics, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
+import CommandBar, { type Command } from "../components/CommandBar";
+import { itemKind } from "../components/gridCells";
 import { money } from "../format";
 import CaseDrawer from "./CaseDrawer";
-import OrdersGrid, { exportExcel, sumStake, toggleColumnsPanel } from "./OrdersGrid";
+import OrdersGrid, { exportExcel, revealRows, sumStake, toggleColumnsPanel } from "./OrdersGrid";
 
 // AG Studio is large: it loads only when the seller opens Insights.
 const Insights = lazy(() => import("../insights/Insights"));
@@ -34,6 +36,10 @@ function sumBy(by: Record<string, number>): string {
 }
 
 const LIVE_MS = 10_000;
+
+/** What the seller would notice changing on a row: where it is, its case, its proof and money. */
+const rowSig = (r: OrderRow) =>
+  [r.state, r.case_state, r.status, r.evidence.score, r.money_at_stake_minor, r.needs_action, r.delivery_risk].join("|");
 
 const METHOD_TEXT: Record<string, string> = { home: "home delivery", locker: "locker pickup", signature: "signature" };
 
@@ -226,9 +232,33 @@ export default function Seller({ token }: { token: string }) {
   const [filter, setFilter] = useState<Filter | null>(null);
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Live diff: orders whose journey, case, proof or money changed since the last poll. Compared
+  // across all orders (not just the visible list), so switching views never counts as a change.
+  const seen = useRef<Map<string, string> | null>(null);
+  const [changed, setChanged] = useState<{ ids: Set<string>; at: Date } | null>(null);
+  useEffect(() => {
+    if (!rows) return;
+    const next = new Map(rows.map((r) => [r.order_id, rowSig(r)]));
+    const prev = seen.current;
+    seen.current = next;
+    if (!prev) return;
+    const ids = rows.filter((r) => prev.get(r.order_id) !== next.get(r.order_id)).map((r) => r.order_id);
+    if (ids.length) setChanged({ ids: new Set(ids), at: new Date() });
+  }, [rows]);
   const [search, setSearch] = useState("");
+  const searchBox = useRef<HTMLInputElement>(null);
+  const [cmd, setCmd] = useState(false);
+  // ⌘K / Ctrl+K opens the command bar anywhere; "/" jumps to the search box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCmd((v) => !v); return; }
+      const typing = (e.target as HTMLElement | null)?.closest("input, textarea, select, [contenteditable]");
+      if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); searchBox.current?.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const gridApi = useRef<GridApi | null>(null);
-  const [inView, setInView] = useState<OrderRow[] | null>(null);
   const [page, setPage] = useState<"orders" | "insights">(() => (location.hash === "#insights" ? "insights" : "orders"));
   const go = (p: "orders" | "insights") => { setPage(p); history.replaceState(null, "", p === "insights" ? "#insights" : location.pathname + location.search); };
 
@@ -241,11 +271,6 @@ export default function Seller({ token }: { token: string }) {
 
   const onOpen = useCallback((r: OrderRow) => setOpen(r), []);
   const onReady = useCallback((a: GridApi) => { gridApi.current = a; }, []);
-  // Footer numbers follow the grid's own filters; only update when the set of rows really changed.
-  const onShown = useCallback((list: OrderRow[]) => setInView((prev) => {
-    const same = prev && prev.length === list.length && prev.every((r, i) => r === list[i]);
-    return same ? prev : list;
-  }), []);
 
   const counts = useMemo(() => {
     const r = rows ?? [];
@@ -277,6 +302,27 @@ export default function Seller({ token }: { token: string }) {
   }, [rows]);
   const pick = (f: Filter) => { setFilter(f); go("orders"); };
   const shown = useMemo(() => filterRows(rows ?? [], active), [rows, active]);
+  const commands = useMemo((): Command[] => {
+    const views: Command[] = FILTERS.map((f) => ({
+      id: `view-${f.key}`, group: "Go to", label: f.label, hint: rows ? `${counts[f.key]}` : undefined, icon: f.icon,
+      keywords: "view list filter", run: () => { setFilter(f.key); go("orders"); },
+    }));
+    views.push({ id: "view-insights", group: "Go to", label: "Insights", hint: "AG Studio reports", icon: <BarChart3 />, keywords: "analytics dashboard reports charts", run: () => go("insights") });
+    const actions: Command[] = [
+      { id: "act-excel", group: "Actions", label: "Export to Excel", hint: "What you see", icon: <Download />, keywords: "xlsx download", run: () => { go("orders"); window.setTimeout(() => gridApi.current && exportExcel(gridApi.current), 50); } },
+      { id: "act-columns", group: "Actions", label: "Columns and filters", icon: <Columns3 />, keywords: "side bar panel hide show", run: () => { go("orders"); window.setTimeout(() => gridApi.current && toggleColumnsPanel(gridApi.current), 50); } },
+      { id: "act-refresh", group: "Actions", label: "Refresh now", icon: <RefreshCw />, keywords: "reload update", run: () => reload() },
+      { id: "act-search", group: "Actions", label: "Search this list", hint: "/", icon: <Search />, keywords: "find filter", run: () => { go("orders"); window.setTimeout(() => searchBox.current?.focus(), 50); } },
+    ];
+    const orders: Command[] = (rows ?? []).map((r) => ({
+      id: `order-${r.order_id}`, group: "Orders", label: r.item, hint: `${r.order_ref} · ${r.status}`,
+      icon: itemKind(r.item).icon, keywords: `${r.buyer_area} ${r.method ?? ""} ${r.case_state ?? ""} ${money(r.amount_minor, r.currency)}`,
+      run: () => setOpen(r),
+    }));
+    return [...views, ...actions, ...orders];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, counts]);
+  const changedHere = useMemo(() => (changed ? shown.filter((r) => changed.ids.has(r.order_id)) : []), [changed, shown]);
   const activeMeta = FILTERS.find((f) => f.key === active)!;
 
   return (
@@ -377,12 +423,19 @@ export default function Seller({ token }: { token: string }) {
                   <div className="row" style={{ gap: 10 }}>
                     <h2 style={{ fontSize: 15 }}>{activeMeta.label}</h2>
                     <span className="count-chip num">{shown.length}</span>
+                    {changedHere.length > 0 && changed && (
+                      <button className="changed-chip" onClick={() => { gridApi.current && revealRows(gridApi.current, changedHere.map((r) => r.order_id)); setChanged(null); }}
+                        title="Show the orders that changed">
+                        {changedHere.length} updated · {changed.at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </button>
+                    )}
                   </div>
                   <div className="row" style={{ gap: 8 }}>
                     <label className="grid-search">
                       <Search aria-hidden />
-                      <input type="search" placeholder="Search orders, areas, status" aria-label="Search orders"
+                      <input ref={searchBox} type="search" placeholder="Search orders, areas, status" aria-label="Search orders"
                         value={search} onChange={(e) => setSearch(e.target.value)} />
+                      <button type="button" className="kbd-hint" onClick={() => setCmd(true)} title="Command bar" aria-label="Open the command bar">⌘K</button>
                     </label>
                     <button className="btn icon-btn" title="Columns and filters" aria-label="Columns and filters"
                       onClick={() => gridApi.current && toggleColumnsPanel(gridApi.current)}>
@@ -394,14 +447,8 @@ export default function Seller({ token }: { token: string }) {
                     </button>
                   </div>
                 </div>
-                <OrdersGrid rows={shown} search={search} empty={activeMeta.empty} onOpen={onOpen} onReady={onReady} onShown={onShown} />
-                <div className="grid-foot">
-                  <span className="faint">{rows.some((r) => r.simulated) ? "Demo orders · refunds simulated" : "PayPal sandbox orders"}</span>
-                  <span className="foot-stats num">
-                    <span>Rows <strong>{inView?.length ?? shown.length}</strong> of {shown.length}</span>
-                    <span>At stake <strong>{sumStake(inView ?? shown)}</strong></span>
-                  </span>
-                </div>
+                <OrdersGrid rows={shown} search={search} empty={activeMeta.empty} onOpen={onOpen} onReady={onReady} changed={changed}
+                  source={rows.some((r) => r.simulated) ? "Demo orders · refunds simulated" : "PayPal sandbox orders"} />
               </div>
               {costs.data && <PlanStrip e={costs.data} />}
             </>
@@ -418,6 +465,7 @@ export default function Seller({ token }: { token: string }) {
           onChanged={(msg) => { setToast(msg); reload(); }}
         />
       )}
+      {cmd && <CommandBar commands={commands} onClose={() => setCmd(false)} />}
       <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );

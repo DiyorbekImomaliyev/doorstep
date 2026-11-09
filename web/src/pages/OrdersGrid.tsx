@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps,
-  type CustomTooltipProps,
+  type CustomNoRowsOverlayProps, type CustomStatusPanelProps, type CustomTooltipProps,
 } from "ag-grid-react";
 import {
   AllCommunityModule, ModuleRegistry, themeQuartz,
   type ColDef, type DefaultMenuItem, type ExcelStyle, type GetContextMenuItemsParams, type GridApi, type IRowNode,
-  type MenuItemDef, type RowClickedEvent, type SideBarDef,
+  type MenuItemDef, type RowClickedEvent, type SideBarDef, type StatusPanelDef,
 } from "ag-grid-community";
 import {
   ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
-  MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
+  MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
 } from "ag-grid-enterprise";
-import { ArrowUpRight, Check, ChevronDown, ChevronRight, Circle } from "lucide-react";
+import { ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, CircleCheck, SearchX } from "lucide-react";
 import type { OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind } from "../components/gridCells";
 import { FAILURE_POINT, METHOD, ROUTE, ago, money, pct, riskTone, stateTone, type Tone } from "../format";
@@ -31,6 +31,7 @@ if (__AG_GRID_LICENSE_KEY__) LicenseManager.setLicenseKey(__AG_GRID_LICENSE_KEY_
 ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
   ColumnsToolPanelModule, FiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
+  StatusBarModule,
 ]);
 
 const theme = themeQuartz.withParams({
@@ -42,11 +43,13 @@ const theme = themeQuartz.withParams({
   headerFontSize: 11,
   headerBackgroundColor: "#ffffff",
   headerTextColor: "#8b827d",
-  headerColumnResizeHandleColor: "#e8e2dc",
+  // Hairlines only: one rule under the header and between rows, no column lines or resize ticks
+  // (columns still resize from their edge).
+  headerColumnResizeHandleColor: "transparent",
   headerColumnBorder: false,
   borderColor: "#ede8e3",
   rowBorder: { color: "#f3eee9" },
-  columnBorder: { color: "#f3eee9" },
+  columnBorder: false,
   rowHoverColor: "#fbf7f6",
   selectedRowBackgroundColor: "#f6ecee",
   accentColor: "#7b2d3d",
@@ -64,6 +67,10 @@ const theme = themeQuartz.withParams({
   menuBackgroundColor: "#ffffff",
   menuBorder: { color: "#e8e2dc" },
   menuShadow: "0 12px 32px rgba(31, 26, 24, .14)",
+  statusBarLabelColor: "#736b67",
+  statusBarLabelFontWeight: 500,
+  statusBarValueColor: "#1f1a18",
+  statusBarValueFontWeight: 600,
 });
 
 // ---------- vocabulary ----------
@@ -90,14 +97,20 @@ export function sumStake(rows: OrderRow[]): string {
   return parts.length ? parts.join(" + ") : money(0, "GBP");
 }
 
-/** The one thing the seller would do next on this order, as a verb. */
-function nextAction(r: OrderRow): { label: string; urgent: boolean } {
-  if (r.case_state === "DISPUTE_EVIDENCE") return { label: "Send evidence", urgent: r.needs_action };
-  if (r.case_state === "AWAITING_SELLER") return { label: "Review refund", urgent: true };
-  if (r.case_state === "HOLD_FOR_REVIEW") return { label: "Review case", urgent: true };
-  if (r.state === "PAID") return { label: r.packing_verdict && r.packing_verdict !== "match" ? "Check packing" : "Pack it", urgent: true };
-  if (r.state === "PACKED") return { label: "Ship it", urgent: true };
-  return { label: "Open", urgent: false };
+/**
+ * The one thing the seller would do next on this order, as a verb, and how loudly to ask.
+ * Solid ("primary") is kept for what costs money if it waits: a PayPal dispute has a deadline and
+ * a refund is waiting on the seller. Everything else the seller does is a quiet tint, so the one
+ * solid button in a list is the one to press first.
+ */
+type Level = "primary" | "tint" | "quiet";
+function nextAction(r: OrderRow): { label: string; urgent: boolean; level: Level } {
+  if (r.case_state === "DISPUTE_EVIDENCE") return { label: "Send evidence", urgent: r.needs_action, level: r.needs_action ? "primary" : "quiet" };
+  if (r.case_state === "AWAITING_SELLER") return { label: "Review refund", urgent: true, level: "primary" };
+  if (r.case_state === "HOLD_FOR_REVIEW") return { label: "Review case", urgent: true, level: "tint" };
+  if (r.state === "PAID") return { label: r.packing_verdict && r.packing_verdict !== "match" ? "Check packing" : "Pack it", urgent: true, level: "tint" };
+  if (r.state === "PACKED") return { label: "Ship it", urgent: true, level: "tint" };
+  return { label: "Open", urgent: false, level: "quiet" };
 }
 
 function routeLabel(r: OrderRow): string {
@@ -214,8 +227,8 @@ function ActionCell(p: CustomCellRendererProps<OrderRow> & { onOpen: (r: OrderRo
   if (!r) return null;
   const a = nextAction(r);
   return (
-    <button data-own-click className={`row-action ${a.urgent ? "urgent" : ""}`} onClick={() => p.onOpen(r)}>
-      {a.label}{!a.urgent && <ArrowUpRight aria-hidden />}
+    <button data-own-click className={`row-action ${a.level}`} onClick={() => p.onOpen(r)}>
+      {a.label}{a.level === "quiet" && <ArrowUpRight aria-hidden />}
     </button>
   );
 }
@@ -325,6 +338,40 @@ function DetailPanel(p: CustomDetailCellRendererProps<OrderRow> & { onOpen: (r: 
   );
 }
 
+// ---------- status bar ----------
+
+/** Status bar: money at stake in the rows the seller can see, per currency (never summed across). */
+function StakePanel({ api }: CustomStatusPanelProps<OrderRow>) {
+  useModelTick(api);
+  const shown: OrderRow[] = [];
+  api.forEachNodeAfterFilter((n) => { if (n.data && !n.group) shown.push(n.data); });
+  return (
+    <div className="ag-status-name-value stake-panel">
+      <span className="ag-status-name-value-label">At stake</span>
+      <span className="ag-status-name-value-value num">{sumStake(shown)}</span>
+    </div>
+  );
+}
+
+/** Status bar, left: where these orders come from. */
+function SourcePanel({ text }: CustomStatusPanelProps<OrderRow> & { text: string }) {
+  return <div className="ag-status-name-value source-panel">{text}</div>;
+}
+
+/** Both "no rows" and "nothing matches the search" get the same calm empty state. */
+const emptySelector = (p: { overlayType: string }) =>
+  (p.overlayType === "noRows" || p.overlayType === "noMatchingRows" ? { component: EmptyOverlay } : undefined);
+
+/** Empty list: a calm line with an icon, not a bare sentence. */
+function EmptyOverlay({ text, searching }: CustomNoRowsOverlayProps<OrderRow> & { text?: string; searching?: boolean }) {
+  return (
+    <div className="grid-empty">
+      <span className="grid-empty-icon" aria-hidden>{searching ? <SearchX /> : <CircleCheck />}</span>
+      <span>{text}</span>
+    </div>
+  );
+}
+
 // ---------- export ----------
 
 const EXPORT_COLUMNS = ["item", "buyer", "status", "next", "risk", "proof", "money", "method", "updated"];
@@ -369,6 +416,14 @@ function exportCsv(api: GridApi) {
   api.exportDataAsCsv({ ...p, fileName: `${p.fileName}.csv` });
 }
 
+/** Scroll to the given orders and flash them once (the "N updated" chip). */
+export function revealRows(api: GridApi, ids: string[]) {
+  const nodes = ids.map((id) => api.getRowNode(id)).filter((n): n is IRowNode => !!n && n.displayed);
+  if (!nodes.length) return;
+  api.ensureNodeVisible(nodes[0], "middle");
+  api.flashCells({ rowNodes: nodes, flashDuration: 700, fadeDuration: 1400 });
+}
+
 export function toggleColumnsPanel(api: GridApi) {
   if (api.isSideBarVisible()) api.setSideBarVisible(false);
   else { api.setSideBarVisible(true); api.openToolPanel("columns"); }
@@ -392,7 +447,8 @@ const isRowMaster = (d: OrderRow | undefined) => !!d;
 const getRowHeight = (p: { node: IRowNode }) => (p.node.group ? 44 : undefined);
 const laneOrder = (p: { nodeA: IRowNode; nodeB: IRowNode }) =>
   (LANES[p.nodeA.key as Lane]?.rank ?? 9) - (LANES[p.nodeB.key as Lane]?.rank ?? 9);
-const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true };
+// Column filters live in the Filters panel and the right-click menu, not as icons on every header.
+const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true };
 const rowStyle = { cursor: "pointer" };
 
 export type OrdersGridProps = {
@@ -401,11 +457,38 @@ export type OrdersGridProps = {
   empty: string;
   onOpen: (r: OrderRow) => void;
   onReady: (api: GridApi) => void;
-  /** The orders left after search and filters, for the footer (count and money at stake). */
-  onShown: (rows: OrderRow[]) => void;
+  /** Where the orders come from (demo or sandbox), on the left of the status bar. */
+  source: string;
+  /** Orders the last poll changed: they flash once and keep a thin rail for a few seconds. */
+  changed?: { ids: Set<string>; at: Date } | null;
 };
 
-export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onShown }: OrdersGridProps) {
+const RAIL_MS = 8000;
+
+export default function OrdersGrid({ rows, search, empty, onOpen, onReady, source, changed }: OrdersGridProps) {
+  const api = useRef<GridApi | null>(null);
+  const railed = useRef<Set<string>>(new Set());
+  const rowClassRules = useMemo(() => ({ "row-changed": (p: { data?: OrderRow }) => !!p.data && railed.current.has(p.data.order_id) }), []);
+  useEffect(() => {
+    const a = api.current;
+    if (!a || !changed) return;
+    const nodes = () => [...changed.ids].map((id) => a.getRowNode(id)).filter((n): n is IRowNode => !!n);
+    // After the grid has taken the new rows: mark them, then flash once; the rail fades after a while.
+    const start = window.setTimeout(() => {
+      if (a.isDestroyed()) return;
+      railed.current = new Set(changed.ids);
+      a.redrawRows({ rowNodes: nodes() });
+      // Flash on the next frame, once the redrawn rows are in the page.
+      window.requestAnimationFrame(() => { if (!a.isDestroyed()) a.flashCells({ rowNodes: nodes(), flashDuration: 700, fadeDuration: 1400 }); });
+    }, 60);
+    const end = window.setTimeout(() => {
+      if (a.isDestroyed()) return;
+      const was = nodes();
+      railed.current = new Set();
+      a.redrawRows({ rowNodes: was });
+    }, RAIL_MS);
+    return () => { window.clearTimeout(start); window.clearTimeout(end); };
+  }, [changed]);
   // Lanes only when they add something: a list with one lane (e.g. "Needs you") stays flat.
   const grouped = useMemo(() => new Set(rows.map(laneOf)).size > 1, [rows]);
   // Risk is scored only before delivery, so a list of delivered orders (e.g. "Needs you") would
@@ -496,12 +579,17 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onSho
     if ((e.event?.target as HTMLElement | null)?.closest("[data-own-click]")) return;
     if (e.data) onOpen(e.data);
   }, [onOpen]);
-  const onModelUpdated = useCallback((e: { api: GridApi }) => {
-    const shown: OrderRow[] = [];
-    e.api.forEachNodeAfterFilter((n) => { if (n.data && !n.group) shown.push(n.data); });
-    onShown(shown);
-  }, [onShown]);
   const detailParams = useMemo(() => ({ onOpen }), [onOpen]);
+  const emptyParams = useMemo(() => ({ text: search ? "No orders match your search." : empty, searching: !!search }), [search, empty]);
+  // AG Grid's status bar: where the orders come from, then the row count and money at stake, both
+  // following search and filters.
+  const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
+    statusPanels: [
+      { statusPanel: SourcePanel, statusPanelParams: { text: source }, align: "left" },
+      { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" },
+      { statusPanel: StakePanel, align: "right" },
+    ],
+  }), [source]);
 
   return (
     <div className="orders-grid">
@@ -512,8 +600,8 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onSho
         getRowId={getRowId}
         defaultColDef={defaultColDef}
         quickFilterText={search}
-        onGridReady={(e) => onReady(e.api)}
-        onModelUpdated={onModelUpdated}
+        onGridReady={(e) => { api.current = e.api; onReady(e.api); }}
+        rowClassRules={rowClassRules}
         onRowClicked={onRowClicked}
         rowStyle={rowStyle}
         // Row grouping: lanes in a fixed order, open by default, drawn as one full-width row.
@@ -534,9 +622,11 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onSho
         sideBar={sideBar}
         getContextMenuItems={getContextMenuItems}
         excelStyles={excelStyles}
+        statusBar={statusBar}
         tooltipShowDelay={250}
         tooltipHideDelay={8000}
-        overlayNoRowsTemplate={`<span style='color:#8b827d'>${search ? "No orders match your search." : empty}</span>`}
+        overlayComponentSelector={emptySelector}
+        overlayComponentParams={emptyParams}
         animateRows
         suppressCellFocus
         domLayout="autoHeight"

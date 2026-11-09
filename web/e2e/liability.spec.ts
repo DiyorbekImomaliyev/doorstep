@@ -77,7 +77,7 @@ test("DE-01 possession proven, PayPal dispute open: Maria sends the facts once",
   const { seller } = await demoShop(page);
   await page.goto(seller);
   await page.getByText("Wireless headphones").click();  // in "Needs you": PayPal waits for Maria
-  await expect(page.getByText("The buyer opened a PayPal dispute")).toBeVisible();
+  await expect(page.getByText("The buyer opened a PayPal dispute", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Delivered-scan audit").getByText("Consistent")).toBeVisible();
   await expect(page.getByLabel("What would have changed this")).toContainText("Possession was proven");
   await page.getByRole("button", { name: "Send evidence to PayPal" }).click();

@@ -38,7 +38,8 @@ test("AS-07 the case queue shows every open case, Approve shows the PayPal resul
   // Approve: one tap, the policy service decides, and the PayPal result shows in the drawer.
   await page.getByText("Black jacket, size M").first().click();
   await page.getByRole("button", { name: /Approve refund/ }).click();
-  await expect(page.getByRole("status")).toContainText("Approved");
+  // The grid's status bar is a status region too: look for the message that says Approved.
+  await expect(page.getByRole("status").filter({ hasText: "Approved" })).toBeVisible();
   await expect(page.getByText(/refund/i).filter({ hasText: /£|\$/ }).first()).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/\b\d{1,4}\s+[A-Z][a-z]+\s+(Street|Road|Lane|Avenue)\b/);
 });
