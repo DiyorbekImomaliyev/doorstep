@@ -3,13 +3,16 @@ id: uk_possession_v1
 kind: liability
 region: GB
 source: "Consumer Rights Act 2015 s.29 — https://www.legislation.gov.uk/ukpga/2015/15/section/29"
-version: "2026-11-06"  # added buyer_seal_scan
+version: "2026-11-09"  # a doorstep photo is not possession (RL-08); 2026-11-06 added buyer_seal_scan
 applies_if:
   buyer_country: [GB]
   buyer_type: consumer
 # Any one of these proves the buyer (or a person they chose) physically holds the goods.
 # buyer_seal_scan: the seal inside the parcel was scanned after carrier handover.
-possession_proof: [signature, locker_pickup_code, photo_at_buyer_address, buyer_seal_scan]
+# A carrier's photo of the parcel at the door is not physical possession: it shows where the
+# carrier left it. Only a place the buyer chose could count, and Doorstep offers no safe-place
+# delivery, so the photo is evidence of where the parcel was left, never possession proof (RL-08).
+possession_proof: [signature, locker_pickup_code, buyer_seal_scan]
 when_no_possession_proof:
   liable_party: seller
   recommended_fix: [refund, reship]

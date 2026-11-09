@@ -90,7 +90,10 @@ _SIGNAL_TEXT = {
     "no_delivered_scan_and_stale": "no delivered scan and tracking went stale",
     "delivered_scan_without_possession_proof": "delivered scan but no proof of possession",
     "delivered_scan": "carrier scanned the parcel as delivered",
-    "possession_proof": "proof of possession (signature, locker code, doorstep photo or seal scan)",
+    # The cause engine asks where the parcel went; who holds the risk is the rule's question, and
+    # in the UK and EU a doorstep photo is not possession (RL-08).
+    "possession_proof": "proof it reached the buyer or their door (signature, locker code, "
+    "doorstep photo or seal scan)",
     "buyer_photo_shows_damage": "buyer photo shows damage",
     "buyer_photo_shows_no_damage": "buyer photo shows no damage",
     "packing_match": "packing photo matched the order",

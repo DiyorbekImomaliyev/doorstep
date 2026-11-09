@@ -30,7 +30,7 @@ from tuning import engine_config as cfg
 PROOF_TEXT: dict[ProofKind, str] = {
     ProofKind.SIGNATURE: "a signature",
     ProofKind.LOCKER_PICKUP_CODE: "a locker pickup with the buyer's code",
-    ProofKind.PHOTO_AT_BUYER_ADDRESS: "a safe-place photo at the buyer's address",
+    ProofKind.PHOTO_AT_BUYER_ADDRESS: "a carrier photo at the buyer's address",
     ProofKind.BUYER_SEAL_SCAN: "a scan of the seal packed inside the parcel",
     ProofKind.DELIVERED_SCAN: "a delivered scan",
     ProofKind.DELIVERY_PHOTO: "a delivery photo",
