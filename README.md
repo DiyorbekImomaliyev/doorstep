@@ -187,7 +187,11 @@ signed delivery proof the assistant can check (see below).
 
 ### Signed receipts
 
-<img src="docs/img/screens/receipts.png" alt="Public receipt check: every receipt in the chain verified" width="440">
+<p>
+  <img src="docs/img/screens/receipts.png" alt="Public receipt check: every receipt in the chain verified" width="440">
+  &nbsp;
+  <img src="docs/img/screens/proof.png" alt="Public proof check: a signed delivery record shown as genuine, with its facts" width="220">
+</p>
 
 - **Signs** every money decision with Ed25519 and chains it to the previous receipt by hash.
 - **Re-checks** the whole chain on a public page, `/verify/{case}`. Any edit breaks it.
