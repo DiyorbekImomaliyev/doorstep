@@ -56,6 +56,7 @@ from app.db import Base
 from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
 from app.mcp.server import MCP_SCOPE
 from app.money import Currency, Money
+from app.ops.economics import EconomicsView, load_economics, seller_economics
 from app.ops.signals import PipelineSignals, pipeline_signals
 from app.orders.enums import OrderState, ShippingMethod
 from app.orders.models import AuditLog, Case, MoneyAction, Order, Recovery, Seller
@@ -761,6 +762,13 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         return RecoverySummary(
             recovered_minor=recovered, open_claims=open_claims, open_claim_minor=open_minor
         )
+
+    economics = load_economics(deps.rules_dir)
+
+    @router.get("/api/seller/{token}/economics", response_model=EconomicsView)
+    def seller_costs(token: str, s: Db) -> EconomicsView:
+        """EC-01: what Doorstep costs this month and the problems settled before a dispute."""
+        return seller_economics(s, _seller(s, token), economics, deps.clock.now())
 
     @router.get("/api/seller/{token}/insights", response_model=InsightsOut)
     def insight_tables(token: str, s: Db) -> InsightsOut:

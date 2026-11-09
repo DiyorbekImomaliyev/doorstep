@@ -1,0 +1,22 @@
+# What Doorstep costs a seller, and the PayPal fee a problem settled before a dispute does not
+# incur (EC-01). Code reads this file; it never decides who is liable (that is rules/*.yaml).
+# The fees are PayPal's own published figures; the price is Doorstep's.
+id: economics_v1
+kind: economics
+version: "2026-11-09"
+source: "PayPal business fees pages (UK, US), checked 2026-11-08; Doorstep price list"
+paypal_dispute_fee:
+  GBP:
+    amount_minor: 1200
+    source: "https://www.paypal.com/uk/business/paypal-business-fees"
+  USD:
+    amount_minor: 1500
+    source: "https://www.paypal.com/us/business/paypal-business-fees"
+price:
+  free_orders_per_month: 100
+  per_order_minor:
+    GBP: 8
+    USD: 10
+  monthly_cap_minor:
+    GBP: 4900
+    USD: 5900

@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { ArrowRight, BarChart3, BookOpen, Check, Columns3, Copy, Download, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
-import { api, type Autopilot, type AutopilotStatement, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
+import { ArrowRight, BarChart3, BookOpen, Check, ReceiptText, Columns3, Copy, Download, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
+import { api, type Autopilot, type AutopilotStatement, type Economics, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import { money } from "../format";
 import CaseDrawer from "./CaseDrawer";
@@ -38,6 +38,32 @@ const LIVE_MS = 10_000;
 const METHOD_TEXT: Record<string, string> = { home: "home delivery", locker: "locker pickup", signature: "signature" };
 
 /** CF-02, in one line: computed in code from the seller's own seller-liable cases. */
+/** EC-01: the seller's plan this month, and the problems settled before a PayPal dispute. Only
+ * measured counts and published figures: no "saved" total, since not every problem would have
+ * become a dispute. */
+function PlanStrip({ e }: { e: Economics }) {
+  const month = new Date(`${e.month}-01T12:00:00`).toLocaleString("en-GB", { month: "long" });
+  const price = e.price_minor === 0 ? "Free" : `${money(e.price_minor, e.currency)} so far`;
+  const fee = money(e.dispute_fee_minor, e.currency);
+  return (
+    <section className="plan-strip" aria-label="Your Doorstep plan">
+      <span className="tip-icon" aria-hidden><ReceiptText size={16} /></span>
+      <div className="col grow" style={{ gap: 2 }}>
+        <span><strong>Your plan in {month}:</strong> {e.orders_this_month} order{e.orders_this_month === 1 ? "" : "s"} · {price}</span>
+        <span className="muted" style={{ fontSize: 13 }}>
+          First {e.free_orders_per_month} orders a month free, then {money(e.per_order_minor, e.currency)} an order, at most {money(e.monthly_cap_minor, e.currency)} a month.
+        </span>
+      </div>
+      <div className="col plan-side" style={{ gap: 2 }}>
+        <span><strong className="num">{e.settled_before_dispute}</strong> problem{e.settled_before_dispute === 1 ? "" : "s"} settled with no PayPal dispute</span>
+        <span className="muted" style={{ fontSize: 13 }}>
+          A dispute costs {fee} in PayPal fees, win or lose (<a href={e.fee_source} target="_blank" rel="noreferrer">PayPal's fees page</a>).
+        </span>
+      </div>
+    </section>
+  );
+}
+
 function Tip({ t }: { t: PreventionTip }) {
   return (
     <div className="tip">
@@ -185,11 +211,12 @@ export default function Seller({ token }: { token: string }) {
   const me = useAsync(() => api.me(token), [token]);
   const { data: rows, error, reload: reloadOrders } = useAsync(() => api.orders(token), [token]);
   const recovered = useAsync(() => api.recoveries(token), [token]);
+  const costs = useAsync(() => api.economics(token), [token]);
   const tips = useAsync(() => api.prevention(token), [token]);
   const auto = useAsync(() => api.autopilot(token), [token]);
   const spent = useAsync(() => api.autopilotStatement(token), [token]);
   const policy = useAsync(() => api.policyCheck(token), [token]);
-  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); auto.reload(); spent.reload(); policy.reload(); };
+  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); auto.reload(); spent.reload(); policy.reload(); costs.reload(); };
   const [filter, setFilter] = useState<Filter | null>(null);
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -356,6 +383,7 @@ export default function Seller({ token }: { token: string }) {
                   </span>
                 </div>
               </div>
+              {costs.data && <PlanStrip e={costs.data} />}
             </>
           )}
           </>)}

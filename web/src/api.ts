@@ -79,6 +79,21 @@ export type RecoveryView = {
   actions: ("submitted" | "withdraw" | "paid" | "refused")[];
 };
 
+/** EC-01: what Doorstep costs this month, and problems settled before a PayPal dispute. */
+export type Economics = {
+  currency: string;
+  month: string;
+  orders_this_month: number;
+  free_orders_per_month: number;
+  price_minor: number;
+  per_order_minor: number;
+  monthly_cap_minor: number;
+  settled_before_dispute: number;
+  dispute_fee_minor: number;
+  fee_source: string;
+  rule: string;
+};
+
 export type RecoverySummary = {
   recovered_minor: Record<string, number>;
   open_claims: number;
@@ -370,5 +385,6 @@ export const api = {
       amountMinor === undefined ? undefined : { amount_minor: amountMinor },
     ),
   recoveries: (t: string) => call<RecoverySummary>("GET", `/api/seller/${t}/recoveries`),
+  economics: (t: string) => call<Economics>("GET", `/api/seller/${t}/economics`),
   prevention: (t: string) => call<PreventionTip[]>("GET", `/api/seller/${t}/prevention`),
 };
