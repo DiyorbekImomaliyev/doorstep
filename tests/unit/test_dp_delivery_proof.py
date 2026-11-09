@@ -216,7 +216,11 @@ def test_DP_03_anyone_can_check_a_proof(db, clock, web, signer):
     token = sign_proof(signer, build_claims(db, _delivered(db, clock), issuer=ISS, now=clock.now()))
     ok = api.post("/api/proof/verify", json={"proof": token}).json()
     assert ok["valid"] is True and ok["claims"]["iss"] == ISS and ok["reason"] is None
-    bad = api.post("/api/proof/verify", json={"proof": token[:-2] + "AA"}).json()
+    # Change a character inside the signature: the last one carries only 2 data bits, so
+    # swapping it can leave the decoded signature unchanged (a flaky "tamper").
+    i = len(token) - 20
+    tampered = token[:i] + ("B" if token[i] == "A" else "A") + token[i + 1 :]
+    bad = api.post("/api/proof/verify", json={"proof": tampered}).json()
     assert bad["valid"] is False and bad["claims"] is None and bad["reason"]
     assert api.post("/api/proof/verify", json={"proof": "x" * 9000}).status_code == 422
 
