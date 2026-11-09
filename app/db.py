@@ -43,6 +43,10 @@ class UTCDateTime(TypeDecorator[datetime]):
 def make_engine(url: str) -> Engine:
     if url.startswith("postgresql://"):
         url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    if url.startswith("postgresql"):
+        # A hosted Postgres drops idle connections; check each one before use and recycle it
+        # before the host does, so the first request after a quiet spell never fails.
+        return create_engine(url, pool_pre_ping=True, pool_recycle=1800)
     return create_engine(url)
 
 

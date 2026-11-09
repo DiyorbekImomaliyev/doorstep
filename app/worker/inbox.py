@@ -40,7 +40,11 @@ class InboxProcessor:
 
     def run_pending(self) -> int:
         """Process each pending row once. A raising handler increments attempts; at
-        settings.max_attempts the row is marked "failed" (never deleted)."""
+        settings.max_attempts the row is marked "failed" (never deleted).
+
+        Returns the rows that reached a final state (processed or ignored). A failed attempt is not
+        counted, so the worker loop sleeps before the next try instead of spending every attempt
+        within milliseconds on a passing outage."""
         with self.session_factory() as session:
             ids = list(
                 session.scalars(
@@ -74,7 +78,7 @@ class InboxProcessor:
             except Exception as error:  # every failure is recorded on the row
                 session.rollback()
                 self._record_failure(row_id, error)
-                return True
+                return False
             row.attempts += 1
             row.status = PROCESSED
             row.processed_at = self.clock.now()

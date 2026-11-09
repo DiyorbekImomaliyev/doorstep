@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import AppDeps, VerifierUnavailable
@@ -96,16 +97,20 @@ def build_router(deps: AppDeps) -> APIRouter:
         event_id, event_type = event.get("id"), event.get("event_type")
         if not isinstance(event_id, str) or not event_id or not isinstance(event_type, str):
             raise HTTPException(status_code=400, detail="missing id or event_type")
+        # The verify call and the inbox write block (HTTP to PayPal, a DB commit), so they run in
+        # the thread pool: a slow PayPal never stalls the event loop for every other request.
         try:
-            verified = deps.paypal_verifier.verify(dict(request.headers), event)
+            verified = await run_in_threadpool(
+                deps.paypal_verifier.verify, dict(request.headers), event
+            )
         except VerifierUnavailable:
             log.warning("PayPal verify endpoint unavailable; event %s not stored", event_id)
             raise HTTPException(status_code=503, detail="verification unavailable") from None
         if not verified:
             log.warning("PayPal webhook %s failed signature verification", event_id)
             raise HTTPException(status_code=400, detail="invalid signature")
-        stored = _store(
-            deps, event_id=event_id, source="paypal", event_type=event_type, payload=event
+        stored = await run_in_threadpool(
+            _store, deps, event_id=event_id, source="paypal", event_type=event_type, payload=event
         )
         return {"status": "stored" if stored else "duplicate"}
 
@@ -119,8 +124,8 @@ def build_router(deps: AppDeps) -> APIRouter:
         raw_id = payload.get("id") or payload.get("event_id")
         event_id = raw_id if isinstance(raw_id, str) and raw_id else shippo_event_id(payload)
         event_type = str(payload.get("event") or "unknown")
-        stored = _store(
-            deps, event_id=event_id, source="shippo", event_type=event_type, payload=payload
+        stored = await run_in_threadpool(
+            _store, deps, event_id=event_id, source="shippo", event_type=event_type, payload=payload
         )
         return {"status": "stored" if stored else "duplicate"}
 

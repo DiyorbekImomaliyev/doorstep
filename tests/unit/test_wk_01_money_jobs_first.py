@@ -81,3 +81,34 @@ def test_WK_01_model_jobs_run_in_their_own_lane():
     assert DRAFT in MODEL_JOBS
     assert set(money.handlers) == {REFUND, "paypal.add_tracking"}
     assert set(models.handlers) == {DRAFT}
+
+
+def test_WK_01_a_failed_webhook_attempt_is_not_counted_as_work(session_factory, clock, settings):
+    """The worker loop sleeps when a pass did no work; a failing row must not keep it spinning."""
+    from app.worker.inbox import InboxProcessor
+    from app.worker.models import WebhookInbox
+
+    with session_factory() as s:
+        s.add(
+            WebhookInbox(
+                event_id="E-1",
+                source="paypal",
+                event_type="PAYMENT.CAPTURE.COMPLETED",
+                payload={},
+                status="pending",
+                attempts=0,
+                received_at=clock.now(),
+            )
+        )
+        s.commit()
+
+    def explode(session, row):
+        raise RuntimeError("PayPal read timed out")
+
+    inbox = InboxProcessor(
+        session_factory, {("paypal", "PAYMENT.CAPTURE.COMPLETED"): explode}, clock, settings
+    )
+    assert inbox.run_pending() == 0
+    with session_factory() as s:
+        row = s.query(WebhookInbox).one()
+        assert (row.attempts, row.status) == (1, "pending")

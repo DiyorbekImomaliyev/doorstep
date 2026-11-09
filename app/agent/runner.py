@@ -235,6 +235,7 @@ class DoorstepAgent:
         for _ in range(self.max_steps):
             step: AgentStep | None = None
             if use_model:
+                session.commit()  # the steps so far are saved; no connection waits on the model
                 step = self._plan(case, order, run)
                 if step is None:  # the model failed: the fixed plan finishes the job
                     use_model = False
