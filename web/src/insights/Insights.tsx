@@ -14,7 +14,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  AgConditionDefinition, AgContextMenuItem, AgFilterDefinition, AgGetContextMenuParams, AgStudioApi, AgStudioProperties,
+  AgConditionDefinition, AgContextMenuItem, AgFilterDefinition, AgGetContextMenuParams, AgResponsiveLayoutBreakpoint,
+  AgStudioApi, AgStudioProperties, AgWidgetLayoutState,
 } from "ag-studio";
 import { AgStudioLicenseManager, enableStudioDevValidations } from "ag-studio";
 import { AgStudio, createWidgets } from "ag-studio-react";
@@ -36,6 +37,26 @@ type Props = AgStudioProperties<DoorstepRegistry>;
 const widgets = createWidgets<DoorstepRegistry>({ additionalTypes: doorstepWidgetTypes });
 const LOCALE = { widgetPanelWidgetCategoryUncategorized: "Doorstep" };
 const LIVE_MS = 10_000;
+
+// On a phone-width canvas every widget takes the full width, one under another in reading order
+// (top to bottom, then left to right), keeping its authored height: a KPI card stays short, a
+// chart stays tall. Wider canvases keep the layout each report was authored with.
+const PHONE_CANVAS = 640;
+const STACKED: AgResponsiveLayoutBreakpoint[] = [{
+  maxWidth: PHONE_CANVAS,
+  layout: (items, { columns }) => {
+    const order = items.map((_, i) => i).sort((a, b) =>
+      items[a].layout.yTrack - items[b].layout.yTrack || items[a].layout.xTrack - items[b].layout.xTrack);
+    const out: AgWidgetLayoutState[] = new Array(items.length);
+    let y = 0;
+    for (const i of order) {
+      const ySpan = Math.max(items[i].layout.ySpan, items[i].minSize.ySpan);
+      out[i] = { xTrack: 0, yTrack: y, xSpan: columns, ySpan };
+      y += ySpan;
+    }
+    return out;
+  },
+}];
 
 export default function Insights({ token }: { token: string }) {
   const [prepared, setPrepared] = useState<Prepared | null>(null);
@@ -95,15 +116,20 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   }, []);
 
   // Built once: Studio reads its initial properties once and owns its state from then on.
+  const PHONE = useMemo(() => window.matchMedia("(max-width: 640px)").matches, []);
   const props = useMemo((): Props => ({
     data: prepared.sources as Props["data"],
     theme: paperTheme,
     mode: "view",
-    layout: { widgetBorderEnabled: true },
+    // A phone's canvas is narrower than Studio's default 720px minimum; lowering it lets the
+    // stacked breakpoint below take over instead of drawing the desktop layout off-screen.
+    layout: PHONE ? { widgetBorderEnabled: true, minWidth: 300 } : { widgetBorderEnabled: true },
+    responsiveLayoutBreakpoints: STACKED,
     initialState: reportState,
     widgets,
     localeText: LOCALE,
-    panels: { edit: { right: ["filters", "edit", "data"] }, view: { right: ["filters"] } },
+    // On a phone the filter rail would cover the report; the report's own filters stay on it.
+    panels: { edit: { right: ["filters", "edit", "data"] }, view: { right: PHONE ? [] : ["filters"] } },
     getContextMenuItems: menu,
     onApiReady: ({ api: a }) => setApi(a as AgStudioApi<DoorstepRegistry>),
     onStudioPreDestroyed: () => setApi(undefined),
@@ -182,7 +208,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
           <button className={`btn ask-toggle ${asking ? "on" : ""}`} onClick={() => setAsking((a) => !a)} aria-pressed={asking}>
             <Sparkles size={15} aria-hidden />Ask Doorstep
           </button>
-          <button className={`btn ${editing ? "primary" : ""}`} onClick={() => setEditing((e) => !e)} aria-pressed={editing}>
+          <button className={`btn ins-edit ${editing ? "primary" : ""}`} onClick={() => setEditing((e) => !e)} aria-pressed={editing}>
             {editing ? <><Eye size={15} aria-hidden />Done editing</> : <><Pencil size={15} aria-hidden />Edit report</>}
           </button>
         </div>

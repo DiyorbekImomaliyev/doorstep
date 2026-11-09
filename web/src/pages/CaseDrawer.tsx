@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import {
   Bot, Camera, CircleCheck, CircleHelp, CircleX, Copy, ExternalLink, FileText, Info, Landmark, Link2,
   Lightbulb, ListChecks, MessageSquare, QrCode, RefreshCw, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
@@ -9,9 +9,30 @@ import { FAILURE_POINT, METHOD, ROUTE, money, pct, riskTone, stateTone, when, ty
 
 const TEST_TRACKING = ["SHIPPO_DELIVERED", "SHIPPO_TRANSIT", "SHIPPO_FAILURE", "SHIPPO_PRE_TRANSIT", "SHIPPO_RETURNED"];
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export default function CaseDrawer({ token, row, onClose, onChanged }: { token: string; row: OrderRow; onClose: () => void; onChanged: (msg: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  // A modal dialog: focus moves into it on open and back to where it was on close.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ref.current?.focus();
+    return () => { if (before?.isConnected) before.focus(); };
+  }, []);
+  // Escape closes; Tab and Shift+Tab cycle inside the drawer, never to the page behind it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      const box = ref.current;
+      if (e.key !== "Tab" || !box) return;
+      const items = [...box.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0);
+      const active = document.activeElement;
+      if (items.length === 0) { e.preventDefault(); box.focus(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (!box.contains(active)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && (active === first || active === box)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -19,7 +40,7 @@ export default function CaseDrawer({ token, row, onClose, onChanged }: { token: 
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={`Order ${row.order_ref}`}>
+      <aside ref={ref} tabIndex={-1} className="drawer" role="dialog" aria-modal="true" aria-label={`Order ${row.order_ref}`}>
         {row.case_id ? <CaseBody token={token} caseId={row.case_id} protection={row.seller_protection} onClose={onClose} onChanged={onChanged} /> : <OrderBody token={token} row={row} onClose={onClose} onChanged={onChanged} />}
       </aside>
     </>

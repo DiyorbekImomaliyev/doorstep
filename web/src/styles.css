@@ -14,7 +14,7 @@
   --line-2: #d8d0c8;
   --text: #1f1a18;
   --text-2: #5a524e;
-  --text-3: #8b827d;
+  --text-3: #736b67; /* 4.9:1 on --bg, 5.2:1 on --surface (WCAG AA) */
 
   --accent: #7b2d3d;        /* maroon */
   --accent-hover: #64222f;
@@ -261,6 +261,9 @@ details.fold > :not(summary) { padding: 0 14px 14px; }
 .seal-print { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); background: #fff; }
 .seal-print svg { width: 168px; height: 168px; }
 
+.skel-chip { height: 44px; width: 100%; } .skel-nav { height: 150px; width: 100%; }
+@media (max-width: 900px) { .skel-chip { display: none; } .skel-nav { height: 36px; } }
+.drawer:focus { outline: none; } /* the dialog takes focus on open; its controls keep their rings */
 .skeleton { background: linear-gradient(90deg, var(--surface-2), #efeae5, var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: var(--r-lg); }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 16px; border-radius: 10px; z-index: 60; box-shadow: var(--shadow-lg); font-size: 13.5px; display: flex; gap: 8px; align-items: center; animation: rise .2s var(--ease); }

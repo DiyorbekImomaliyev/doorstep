@@ -248,6 +248,20 @@ export default function Seller({ token }: { token: string }) {
   const active: Filter = filter ?? (counts.action > 0 ? "action" : "all");
   const [updated, setUpdated] = useState<Date | null>(null);
   useEffect(() => { if (rows) setUpdated(new Date()); }, [rows]);
+  // Insights (AG Studio) is the largest download: fetch it in idle time once the grid is up, so the
+  // tab opens at once. Skipped when the browser asks to save data.
+  const gridReady = !!rows;
+  useEffect(() => {
+    const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
+    if (!gridReady || saveData) return;
+    const load = () => void import("../insights/Insights");
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(load, { timeout: 5000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(load, 2500); // Safari has no requestIdleCallback
+    return () => window.clearTimeout(t);
+  }, [gridReady]);
   // The one thing to do first: a PayPal dispute (it has a deadline), then a refund to approve, then a review.
   const next = useMemo(() => {
     const rank: Record<string, number> = { DISPUTE_EVIDENCE: 0, AWAITING_SELLER: 1, HOLD_FOR_REVIEW: 2 };

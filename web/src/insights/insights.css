@@ -117,6 +117,11 @@
   .rb-foot { display: none; }
   .rb-canvas { height: 760px; }
   .ins-sync { display: none; }
+  .rb-label { width: 100%; padding-bottom: 2px; }
+  .rb-item[aria-current="true"]::before { display: none; } /* the side marker has no side in a row */
+}
+@media (max-width: 640px) {
+  .ins-edit { display: none; } /* building reports is a desk task; reading them works on a phone */
 }
 
 .ds-flow { display: flex; flex-direction: column; gap: 14px; padding: 6px 4px; height: 100%; font-size: 13px; color: var(--ag-foreground-color, #1f1a18); }
