@@ -7,6 +7,7 @@ refund is labelled simulated, a receipt chain that was not checked says not_run.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.ai.explainer import money_text
+from app.ai.explainer import money_text, source_name
 from app.ai.risk import RiskFeatures, load_model
 from app.cases.signals import EvidenceKind
 from app.checkout.risk import seller_case_rate, seller_order_count
@@ -278,12 +279,33 @@ _AGENT_TITLES = {
 }
 
 
+def rule_label(source: str) -> str:
+    """The law or policy a rule encodes, short enough for a sentence: "Consumer Rights Act 2015
+    s.29", "Directive 2011/83/EU Art. 20", "Seller written delivery policy"."""
+    name = source_name(source)
+    return re.split(r";|\s\(|,\s+via\s", name, maxsplit=1)[0].strip()
+
+
+# A case state in the seller's words, for the timeline.
+_CASE_TITLE = {
+    CaseState.OPEN.value: "Problem reported",
+    CaseState.GATHERING_EVIDENCE.value: "Gathering the evidence",
+    CaseState.DECIDED.value: "Decided",
+    CaseState.AUTO_REFUND.value: "Refunded by your rule",
+    CaseState.AWAITING_SELLER.value: "Waiting for your decision",
+    CaseState.HOLD_FOR_REVIEW.value: "Held for a person to check",
+    CaseState.DISPUTE_EVIDENCE.value: "PayPal dispute: evidence needed",
+    CaseState.SETTLED.value: "Settled",
+    CaseState.CLOSED.value: "Closed",
+}
+
+
 def _state_title(entity: str, after: dict[str, Any], action: str) -> str:
     state = after.get("state")
     if entity == "order" and isinstance(state, str):
         return BUYER_STATUS.get(state, state)
     if entity == "case" and isinstance(state, str):
-        return "Case " + state.replace("_", " ").lower()
+        return _CASE_TITLE.get(state, "Case " + state.replace("_", " ").lower())
     return action.replace(".", " ").replace("_", " ")
 
 
@@ -731,6 +753,8 @@ class DecisionView(BaseModel):
     currency: str | None
     rule_id: str | None
     rule_version: str | None
+    # The law or policy the rule encodes, in plain words ("Consumer Rights Act 2015 s.29").
+    rule_name: str | None = None
     reasons: list[str]
     reason_codes: list[str]
     explanation: str
@@ -853,7 +877,7 @@ class CaseView(BaseModel):
     offer: OfferOption | None = None  # PP-09: a refund the seller can offer inside the dispute
 
 
-def case_view(s: Session, case: Case) -> CaseView:
+def case_view(s: Session, case: Case, rule_names: dict[str, str] | None = None) -> CaseView:
     order = s.get(Order, case.order_id)
     assert order is not None
     d = latest_decision(s, case.id)
@@ -871,6 +895,7 @@ def case_view(s: Session, case: Case) -> CaseView:
             currency=d.currency,
             rule_id=d.rule_id,
             rule_version=d.rule_version,
+            rule_name=(rule_names or {}).get(d.rule_id or ""),
             reasons=list(d.reasons),
             reason_codes=list(d.reason_codes),
             explanation=d.explanation,
@@ -899,8 +924,7 @@ def case_view(s: Session, case: Case) -> CaseView:
     actions: list[str] = []
     # UI-01: an approved refund owns the case until it lands, so nothing is offered twice.
     on_its_way = any(
-        m.kind in _REFUND_KINDS and m.status == MoneyActionStatus.QUEUED.value
-        for m in actions_rows
+        m.kind in _REFUND_KINDS and m.status == MoneyActionStatus.QUEUED.value for m in actions_rows
     )
     if on_its_way:
         pass

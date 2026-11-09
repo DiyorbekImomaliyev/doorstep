@@ -100,7 +100,7 @@ def _location(inp: AuditInput, scan: CarrierScan) -> AuditCheck:
         return AuditCheck(id=CheckId.LOCATION, result=r, finding=finding)
 
     if inp.carrier == TEST_CARRIER:
-        return result(CheckResult.UNKNOWN, "Shippo test carrier: event locations are sample data")
+        return result(CheckResult.UNKNOWN, "Demo carrier: scan locations are sample data")
     if scan.area is None:
         return result(CheckResult.UNKNOWN, "the delivered scan has no location")
     if inp.destination_area is None:
@@ -133,7 +133,7 @@ def _batch(inp: AuditInput, scan: CarrierScan) -> AuditCheck:
         return AuditCheck(id=CheckId.BATCH, result=r, finding=finding)
 
     if inp.carrier == TEST_CARRIER:
-        return result(CheckResult.UNKNOWN, "Shippo test carrier: scan times are sample data")
+        return result(CheckResult.UNKNOWN, "Demo carrier: scan times are sample data")
     window_s = engine_config.SCAN_AUDIT_BATCH_WINDOW_S
     window = timedelta(seconds=window_s)
     nearby = [d for d in inp.seller_deliveries if abs(d.occurred_at - scan.occurred_at) <= window]

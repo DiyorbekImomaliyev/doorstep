@@ -42,6 +42,7 @@ from app.api.views import (
     order_row,
     order_rows,
     recovery_view,
+    rule_label,
 )
 from app.cases.actions import CaseActions, seller_approver
 from app.cases.counterfactual import PreventionSuggestion, prevention
@@ -682,7 +683,9 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
 
     @router.get("/api/seller/{token}/cases/{case_id}", response_model=CaseView)
     def case_page(token: str, case_id: str, s: Db) -> CaseView:
-        return case_view(s, _seller_case(s, _seller(s, token), case_id))
+        case = _seller_case(s, _seller(s, token), case_id)
+        names = {r.id: rule_label(r.source) for r in rulebook.liability}
+        return case_view(s, case, rule_names=names)
 
     @router.get("/api/seller/{token}/cases/{case_id}/recovery", response_model=RecoveryView)
     def recovery_page(token: str, case_id: str, s: Db) -> RecoveryView:

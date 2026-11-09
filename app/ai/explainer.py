@@ -192,7 +192,7 @@ def money_text(m: Money) -> str:
     return f"{symbol}{major}" if symbol else f"{major} {m.currency.value}"
 
 
-def _source_name(source: str) -> str:
+def source_name(source: str) -> str:
     """'Consumer Rights Act 2015 s.29 — https://...' -> 'Consumer Rights Act 2015 s.29'."""
     return re.split(r"\s+[—-]\s+https?://|\s+https?://", source, maxsplit=1)[0].strip()
 
@@ -227,7 +227,7 @@ def _fix_text(ctx: ExplainContext) -> str:
 
 def template(ctx: ExplainContext, blocked_reason: str | None = None) -> Explanation:
     rule = f"{ctx.rule_id} ({ctx.rule_version})" if ctx.rule_id else "no matching rule set"
-    basis = f", {_source_name(ctx.rule_source)}" if ctx.rule_source else ""
+    basis = f", {source_name(ctx.rule_source)}" if ctx.rule_source else ""
     # Names where the risk sits, as the law does (CRA s.29); never blames the buyer (EX-02).
     liable = (
         f" Under this rule the risk sits with the {ctx.liable_party}." if ctx.liable_party else ""

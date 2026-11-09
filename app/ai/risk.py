@@ -89,7 +89,7 @@ def reason_text(feature: str, value: float, raises: bool, f: RiskFeatures) -> st
         return (
             f"An order value of {amount} raises the risk"
             if raises
-            else f"A modest order value ({amount}) lowers the risk"
+            else f"A lower order value ({amount}) lowers the risk"
         )
     if feature == "buyer_in_us":
         if value:

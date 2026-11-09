@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react";
 import {
   Bot, Camera, CircleCheck, CircleHelp, CircleX, Copy, ExternalLink, FileText, Info, Landmark, Link2,
-  ListChecks, MessageSquare, QrCode, RefreshCw, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
+  Lightbulb, ListChecks, MessageSquare, QrCode, RefreshCw, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
 } from "lucide-react";
 import { api, type AgentRun, type CaseAction, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
 import { Badge, Bar, ErrorBox, Loading, SectionHead, Timeline, useAsync, usePoll } from "../components/ui";
@@ -75,16 +75,17 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
     <>
       <Header title={c.order.item} over={reported} onClose={onClose} right={route && <Badge tone={route.tone}>{route.label}</Badge>} />
       <div className="body">
+        <Recommendation c={c} refund={refund} queued={!!queued} />
         {d && (
           <section className="sec">
             <div className="facts">
               <div><span className="k">Likely cause</span><span className="v">{FAILURE_POINT[d.failure_point ?? ""] ?? d.failure_point ?? "—"}</span></div>
               <div><span className="k">Confidence</span><span className="v" style={{ textTransform: "capitalize" }}>{d.confidence ?? "—"}</span></div>
-              <div><span className="k">Refund</span><span className="v num">{refund ?? "—"}</span></div>
+              <div><span className="k">Refund</span><span className="v num">{c.state === "DISPUTE_EVIDENCE" ? "PayPal decides" : refund ?? "—"}</span></div>
             </div>
             <div className="row wrap" style={{ gap: 8 }}>
-              <span className="rule-line" title="The rule file and version this decision used">
-                <Scale aria-hidden /><span className="mono">{d.rule_id ?? "no matching rule set"}{d.rule_version ? ` · ${d.rule_version}` : ""}</span>
+              <span className="rule-line" title={d.rule_id ? `Rule file ${d.rule_id}, version ${d.rule_version ?? "?"}` : undefined}>
+                <Scale aria-hidden /><span>{d.rule_name ? `Decided under ${d.rule_name}` : d.rule_id ? `Decided under rule ${d.rule_id}` : "No rule matched this country"}</span>
               </span>
               {protection && (
                 <span className="rule-line" title="PayPal's own verdict on this payment. Information only; it does not change Doorstep's decision.">
@@ -102,11 +103,11 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
               </div>
             )}
             {c.counterfactual && (
-              <div className="notice accent" aria-label="What would have changed this">
+              <div className="notice" aria-label="What would have changed this">
                 <Info aria-hidden />
                 <div className="col" style={{ gap: 2 }}>
                   <strong>{c.counterfactual.possession_proven ? "Possession proof" : "What would have changed this"}</strong>
-                  <span className="muted">{c.counterfactual.text}</span>
+                  <span className="muted">{d.rule_id && d.rule_name ? c.counterfactual.text.replaceAll(d.rule_id, d.rule_name) : c.counterfactual.text}</span>
                 </div>
               </div>
             )}
@@ -115,7 +116,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
 
         {c.state === "DISPUTE_EVIDENCE" && <section className="sec"><DisputeNote c={c} /></section>}
         {c.scan_audit && <ScanAuditPanel audit={c.scan_audit} />}
-        {c.recovery && <RecoveryPanel token={token} recovery={c.recovery} onChanged={(m) => { onChanged(m); reload(); }} />}
+        {c.recovery && <RecoveryPanel token={token} recovery={c.recovery} primary={c.actions.length === 0} onChanged={(m) => { onChanged(m); reload(); }} />}
 
         {c.money.length > 0 && (
           <section className="sec">
@@ -217,7 +218,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
               <button className="btn primary lg" disabled={busy} onClick={() => act("send-evidence")}><Send size={16} />Send evidence to PayPal</button>
             )}
             {c.actions.includes("approve") && (
-              <button className="btn primary lg" disabled={busy} onClick={() => act("approve")}>
+              <button className={c.state === "HOLD_FOR_REVIEW" ? "btn lg" : "btn primary lg"} disabled={busy} onClick={() => act("approve")}>
                 Approve {refund ? `refund ${refund}` : ""}
               </button>
             )}
@@ -236,6 +237,44 @@ const MONEY_STATUS: Record<string, string> = {
   queued: "On its way", completed: "Sent", simulated: "Simulated", failed: "Failed",
   blocked: "Held for review", unconfirmed: "Not confirmed",
 };
+
+/** One line at the top of every case: what Doorstep recommends, and why, before any detail. */
+function Recommendation({ c, refund, queued }: { c: CaseView; refund: string | null; queued: boolean }) {
+  const d = c.decision;
+  const cause = d ? (FAILURE_POINT[d.failure_point ?? ""] ?? "Cause unclear") : null;
+  const law = d?.rule_name ?? d?.rule_id ?? null;
+  const why = [cause && `${cause}${d?.confidence ? ` (${d.confidence} confidence)` : ""}`, law && `under ${law}`].filter(Boolean).join(", ");
+  const demo = c.order.simulated ? " This is a demo order, so the refund is simulated." : "";
+  let tone = "accent";
+  let title: string;
+  let text: string;
+  if (queued) {
+    [title, text] = [`Refund ${refund ?? ""} on its way`, `Nothing else to do.${demo}`];
+  } else if (c.state === "AWAITING_SELLER") {
+    title = d?.fix === "reship" ? "Recommended: send a replacement" : refund ? `Recommended: refund ${refund}` : "Your decision";
+    text = `${why}.`;
+  } else if (c.state === "HOLD_FOR_REVIEW") {
+    [title, text] = ["Recommended: check the evidence first", "The evidence disagrees, so Doorstep decided nothing on its own. Nothing has been refused."];
+  } else if (c.state === "DISPUTE_EVIDENCE") {
+    [title, text] = ["Recommended: send the evidence to PayPal", "The buyer opened a PayPal dispute, so PayPal decides. The proof is ready below."];
+  } else if (c.state === "AUTO_REFUND") {
+    [title, text] = [`Refunding ${refund ?? ""} under your rule`, `${why}.${demo}`];
+  } else {
+    const sent = c.money.find((m) => (m.kind === "refund" || m.kind === "partial_refund") && (m.status === "completed" || m.status === "simulated"));
+    tone = "good";
+    title = sent ? `Done: ${money(sent.amount_minor, sent.currency)} refunded${sent.status === "simulated" ? " (simulated)" : ""}` : "Done";
+    text = c.recovery && c.recovery.status === "PREPARED" ? "Next, optional: claim it back from the courier below." : why ? `${why}.` : "";
+  }
+  return (
+    <div className={`notice ${tone} recommend`} role="status">
+      {tone === "good" ? <CircleCheck aria-hidden /> : <Lightbulb aria-hidden />}
+      <div className="col" style={{ gap: 2 }}>
+        <strong>{title}</strong>
+        {text && <span className="muted">{text}</span>}
+      </div>
+    </div>
+  );
+}
 
 const PROTECTION: Record<string, string> = {
   ELIGIBLE: "Eligible",
@@ -570,7 +609,9 @@ function daysLeft(iso: string): number {
 
 /** RC-01..05: claim the loss back from the carrier. AI drafts the sentences, code checks every
  * one against the facts; the seller submits on the carrier's own site. */
-function RecoveryPanel({ token, recovery, onChanged }: { token: string; recovery: RecoveryView; onChanged: (m: string) => void }) {
+/** `primary`: only when the case has no money decision waiting, so a drawer has one main button. */
+function RecoveryPanel({ token, recovery, primary, onChanged }: { token: string; recovery: RecoveryView; primary: boolean; onChanged: (m: string) => void }) {
+  const main = primary ? "btn primary" : "btn";
   // RC-08: a claim pack built from the facts is drafted by AI the first time it is opened.
   const [r, setR] = useState(recovery);
   useEffect(() => setR(recovery), [recovery]);
@@ -656,8 +697,8 @@ function RecoveryPanel({ token, recovery, onChanged }: { token: string; recovery
           {r.actions.includes("withdraw") && <button className="btn ghost" disabled={busy} onClick={() => mark("withdraw")}>Withdraw</button>}
           {r.actions.includes("refused") && <button className="btn" disabled={busy} onClick={() => mark("refused")}>Carrier refused</button>}
           <div className="grow" />
-          {r.actions.includes("submitted") && <button className="btn primary" disabled={busy} onClick={() => mark("submitted")}>I submitted it</button>}
-          {r.actions.includes("paid") && <button className="btn primary" disabled={busy} onClick={() => setPaying(true)}>Carrier paid</button>}
+          {r.actions.includes("submitted") && <button className={main} disabled={busy} onClick={() => mark("submitted")}>I submitted it</button>}
+          {r.actions.includes("paid") && <button className={main} disabled={busy} onClick={() => setPaying(true)}>Carrier paid</button>}
         </div>
       )}
     </section>

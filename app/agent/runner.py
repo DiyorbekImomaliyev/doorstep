@@ -76,20 +76,27 @@ def _json(text: str) -> Any:
         return None
 
 
+_ORDER_WORDS = {"COMPLETED": "paid", "APPROVED": "approved, not yet paid", "CREATED": "not paid"}
+_CAPTURE_WORDS = {"COMPLETED": "received", "PENDING": "pending", "DECLINED": "declined"}
+
+
 def _summarise_order(body: Any) -> str:
     if not isinstance(body, dict):
         return "PayPal answered without order details."
-    parts = [f"Order {body.get('status', 'status unknown')}"]
+    status = str(body.get("status", ""))
+    # PayPal's own status word stays beside the plain one: the planner reasons on it (AT-02).
+    word = _ORDER_WORDS.get(status)
+    parts = [f"Order {word} (PayPal: {status})" if word else f"Order {status or 'status unknown'}"]
     for unit in body.get("purchase_units") or []:
         for cap in (unit.get("payments") or {}).get("captures") or []:
             amount = cap.get("amount") or {}
+            word = str(cap.get("status", "?"))
             parts.append(
-                f"capture {cap.get('status', '?')} "
-                f"{amount.get('value', '?')} {amount.get('currency_code', '')}".strip()
+                f"{amount.get('value', '?')} {amount.get('currency_code', '')} "
+                f"{_CAPTURE_WORDS.get(word, word.lower())}"
             )
-    if body.get("simulated"):
-        parts.append("(simulated demo order)")
-    return "; ".join(parts) + "."
+    text = "; ".join(parts) + "."
+    return text + " (Demo order: PayPal is simulated.)" if body.get("simulated") else text
 
 
 def _summarise_tracking(body: Any) -> str:
@@ -97,7 +104,7 @@ def _summarise_tracking(body: Any) -> str:
     if not trackers:
         return "No tracking recorded on the PayPal payment yet."
     numbers = ", ".join(str(t.get("tracking_number", "?")) for t in trackers[:3])
-    return f"{len(trackers)} tracking record(s) on the PayPal payment: {numbers}."
+    return f"PayPal has the tracking number ({numbers}), so the buyer sees it too."
 
 
 def _summarise_disputes(body: Any) -> tuple[str, set[str]]:

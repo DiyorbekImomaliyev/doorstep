@@ -176,6 +176,7 @@ export type DecisionView = {
   currency: string | null;
   rule_id: string | null;
   rule_version: string | null;
+  rule_name?: string | null;
   reasons: string[];
   reason_codes: string[];
   explanation: string;

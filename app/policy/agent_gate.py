@@ -37,8 +37,8 @@ _MESSAGES = {
     "escalated to the seller, who decides with one tap. No refund was created.",
     RefundRequest.HELD: "Held for human review (contradicting or missing evidence). "
     "No refund was created; nobody is denied automatically.",
-    RefundRequest.DISPUTE: "A PayPal dispute is open: evidence goes through the Disputes API, "
-    "not a refund outside it.",
+    RefundRequest.DISPUTE: "A PayPal dispute is open, so PayPal decides: Doorstep sends the "
+    "evidence to the dispute instead of refunding outside it.",
     RefundRequest.NOT_REFUNDABLE: "This case cannot be refunded now.",
 }
 
