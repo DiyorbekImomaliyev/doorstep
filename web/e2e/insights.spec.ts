@@ -87,7 +87,7 @@ test("AS-04 the parcel journey, claim clock and click-to-filter widgets work lik
 test("AS-07 the Doorstep agent runs on Studio's Agent Framework: scans in code, no data rows to a model", async ({ page }) => {
   // The model's turns are played by this test (the backend half is tests/unit/test_as07_studio_agent.py),
   // so the run is the same every time and spends no model call.
-  const sent: { agent: string; tools: { name: string }[]; items: { kind: string; text: string }[] }[] = [];
+  const sent: { agent: string; tools: { name: string; parameters: unknown }[]; items: { kind: string; text: string }[] }[] = [];
   await page.route("**/insights/agent", async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");
     sent.push(body);
@@ -113,6 +113,10 @@ test("AS-07 the Doorstep agent runs on Studio's Agent Framework: scans in code, 
   const names = (i: number) => sent[i].tools.map((t) => t.name);
   expect(names(0)).toEqual(expect.arrayContaining(["scan_for_anomalies", "answer_question", "delegate_to"]));
   for (let i = 0; i < sent.length; i++) expect(names(i)).not.toContain("execute_query");
+  // AS-06-09: it works beside Studio's built-in agents, handing them chart and page edits.
+  const delegate = JSON.stringify(sent[0].tools.find((t) => t.name === "delegate_to")?.parameters);
+  expect(delegate).toContain('"enum":["widget"]');
+  expect(delegate).toContain('"enum":["page"]');
   if (shots) await page.screenshot({ path: `${shots}/14-insights-agent.png` });
 });
 

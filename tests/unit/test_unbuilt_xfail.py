@@ -27,12 +27,9 @@ def test_PK_05_mismatch_recall_on_the_labelled_photo_set():
 
 
 # AS-06 Ask Doorstep is built (tests/unit/test_as06_insights_agent.py and the browser test).
-# Studio's own AI panel and built-in agents need the "Pro with AI" licence; the key is Pro.
-@pytest.mark.xfail(
-    strict=True, reason=NEEDS_HUMAN + "an AG Studio Pro-with-AI licence for the built-in agents"
-)
-def test_AS_06_09_works_beside_studio_built_in_agents():
-    _unbuilt()
+# AS-06-09 is built: the Studio licence is Pro with AI, and the Doorstep agent delegates to
+# Studio's built-in widget and page agents (tests/unit/test_as07_studio_agent.py and AS-07 in
+# web/e2e/insights.spec.ts).
 
 
 # SB-01 and SB-02 are done: tests/integration/test_sb_live_sandbox_refund.py re-checks the live
