@@ -158,7 +158,9 @@ class CasePipeline:
         queued = self.session.scalar(
             select(MoneyAction.id).where(
                 MoneyAction.case_id == case.id,
-                MoneyAction.status == MoneyActionStatus.QUEUED.value,
+                MoneyAction.status.in_(
+                    (MoneyActionStatus.QUEUED.value, MoneyActionStatus.PENDING.value)
+                ),
             )
         )
         if queued is not None:  # it would land under a newer decision

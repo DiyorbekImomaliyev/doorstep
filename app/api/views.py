@@ -29,6 +29,7 @@ from app.orders.models import (
     AuditLog,
     Case,
     Decision,
+    Dispute,
     Evidence,
     MoneyAction,
     Order,
@@ -38,6 +39,7 @@ from app.orders.models import (
     TrackingEvent,
 )
 from app.policy.offers import OFFER_MAYBE_MADE, offer_amount
+from app.policy.service import refund_in_flight
 from app.proof.models import Receipt
 from app.proof.seal import AFTER_HANDOVER, BEFORE_HANDOVER, SELLER_BROWSER
 from app.proof.seller_protection import ACTION as SELLER_PROTECTION_ACTION
@@ -150,6 +152,14 @@ def buyer_outcome(s: Session, order: Order, case: Case) -> str | None:
         )
         .order_by(MoneyAction.created_at.desc())
     ).first()
+    sent = refund is not None and refund.status == MoneyActionStatus.COMPLETED.value
+    if case.state == CaseState.CLOSED.value and not sent:
+        if _dispute_resolved(s, order.id):  # PO-14
+            return "PayPal resolved your dispute. Its decision is in your PayPal account."
+        return (  # PO-15: the seller declined, or a person closed it after checking
+            "The seller checked your report and closed this case without a refund. If you "
+            "disagree, you can open a PayPal dispute, and PayPal decides."
+        )
     if refund is None:
         return None
     amount = money_text(
@@ -162,6 +172,11 @@ def buyer_outcome(s: Session, order: Order, case: Case) -> str | None:
         if simulated:
             return f"Your refund of {amount} was sent on {day}. {_DEMO_REFUND}"
         return f"Your refund of {amount} was sent to your PayPal on {day}."
+    if refund.status == MoneyActionStatus.PENDING.value:  # PO-13: PayPal confirms it later
+        return (
+            f"The seller sent your refund of {amount}. PayPal is still processing it; it reaches "
+            "your PayPal when PayPal confirms it."
+        )
     if refund.status == MoneyActionStatus.QUEUED.value:
         if simulated:
             return f"The seller approved your refund of {amount}. {_DEMO_REFUND}"
@@ -875,6 +890,17 @@ class CaseView(BaseModel):
     counterfactual: dict[str, Any] | None = None  # CF-01: which proof would have changed it
     recovery: RecoveryView | None = None  # RC-01: the carrier claim, if any
     offer: OfferOption | None = None  # PP-09: a refund the seller can offer inside the dispute
+    dispute_resolved: bool = False  # PO-14: PayPal resolved the dispute this case waited on
+    can_close: bool = False  # PO-15: a person may close this held case without a refund
+
+
+def _dispute_resolved(s: Session, order_id: str) -> bool:
+    return (
+        s.scalar(
+            select(Dispute.id).where(Dispute.order_id == order_id, Dispute.status == "resolved")
+        )
+        is not None
+    )
 
 
 def case_view(s: Session, case: Case, rule_names: dict[str, str] | None = None) -> CaseView:
@@ -924,7 +950,9 @@ def case_view(s: Session, case: Case, rule_names: dict[str, str] | None = None) 
     actions: list[str] = []
     # UI-01: an approved refund owns the case until it lands, so nothing is offered twice.
     on_its_way = any(
-        m.kind in _REFUND_KINDS and m.status == MoneyActionStatus.QUEUED.value for m in actions_rows
+        m.kind in _REFUND_KINDS
+        and m.status in (MoneyActionStatus.QUEUED.value, MoneyActionStatus.PENDING.value)
+        for m in actions_rows
     )
     if on_its_way:
         pass
@@ -952,6 +980,9 @@ def case_view(s: Session, case: Case, rule_names: dict[str, str] | None = None) 
         offer = OfferOption(amount_minor=amount.amount_minor, currency=amount.currency.value)
     receipts = len(list(s.scalars(select(Receipt.id).where(Receipt.case_id == case.id))))
     return CaseView(
+        dispute_resolved=case.state == CaseState.CLOSED.value and _dispute_resolved(s, order.id),
+        can_close=case.state == CaseState.HOLD_FOR_REVIEW.value
+        and not refund_in_flight(s, case.id),
         case_id=case.id,
         state=case.state,
         reason=case.reason,

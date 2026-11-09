@@ -14,18 +14,16 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.recovery import RecoveryDrafter
 from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expired
-from app.orders.enums import MoneyActionStatus
 from app.orders.models import MoneyAction
 from app.policy.evidence import DISPUTE_EVIDENCE_JOB, DisputeEvidenceJobHandler
 from app.policy.offers import DISPUTE_OFFER_JOB, OfferJobHandler
 from app.policy.rules import load_rules
-from app.policy.service import REFUND_JOB, RefundJobHandler
-from app.proof.receipts import ReceiptSigner, issue_receipt
+from app.policy.service import REFUND_JOB, PolicyService, RefundJobHandler
+from app.proof.receipts import ReceiptSigner, issue_refund_receipt
 from app.runtime import NotConfigured, Runtime, build_runtime
 from app.shipping.events import handle_shippo_track_updated
 from app.shipping.service import REGISTER_TRACK, RegisterTrackHandler, ShippingService
@@ -55,47 +53,32 @@ class ReceiptingRefundHandler:
     def run(self, session: Session, job: Job) -> None:
         self.inner.run(session, job)
         ma = session.get(MoneyAction, job.payload.get("money_action_id"))
-        if ma is None or ma.case_id is None or ma.status != MoneyActionStatus.COMPLETED.value:
-            return
-        from app.proof.models import Receipt
-
-        already = session.scalars(
-            select(Receipt).where(Receipt.case_id == ma.case_id, Receipt.kind == "refund")
-        ).first()
-        if already is None:
-            issue_receipt(
-                session,
-                self.signer,
-                case_id=ma.case_id,
-                kind="refund",
-                payload={
-                    "money_action_id": ma.id,
-                    "decision_id": ma.decision_id,
-                    "amount_minor": ma.amount_minor,
-                    "currency": ma.currency,
-                    "paypal_refund_id": ma.paypal_refund_id,
-                    "paypal_status": ma.paypal_status,
-                },
-                at=self.clock.now(),
-            )
+        if ma is not None:
+            issue_refund_receipt(session, self.signer, ma, at=self.clock.now())
 
     def on_failed(self, session: Session, job: Job, error: Exception) -> None:
         self.inner.on_failed(session, job, error)
 
 
-def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
-    rulebook = load_rules(rt.deps.rules_dir)
-    handlers: dict[str, Any] = {}
+def refund_gateway(rt: Runtime) -> RoutingRefundGateway:
+    """PayPal for real orders, the simulator for demo orders."""
     sim = SimulatedRefundGateway(rt.session_factory)
     if rt.paypal is not None:
         from app.policy.gateway import RestRefundGateway
 
         real: Any = RestRefundGateway(rt.paypal)
-        handlers[CAPTURE_ORDER] = CaptureOrderHandler(rt.services.orders, rt.clock)
-        handlers[ADD_TRACKING] = AddTrackingHandler(rt.services.orders, rt.clock)
     else:
         real = NotConfigured("PayPal refunds", "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET")
-    gateway = RoutingRefundGateway(real, sim)
+    return RoutingRefundGateway(real, sim)
+
+
+def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
+    rulebook = load_rules(rt.deps.rules_dir)
+    handlers: dict[str, Any] = {}
+    if rt.paypal is not None:
+        handlers[CAPTURE_ORDER] = CaptureOrderHandler(rt.services.orders, rt.clock)
+        handlers[ADD_TRACKING] = AddTrackingHandler(rt.services.orders, rt.clock)
+    gateway = refund_gateway(rt)
     refunds = RefundJobHandler(gateway, rulebook, rt.clock, disputes=gateway)  # live dispute read
     handlers[DISPUTE_EVIDENCE_JOB] = DisputeEvidenceJobHandler(  # DE-01..04
         gateway, rt.clock, rt.services.receipts
@@ -108,7 +91,7 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     handlers[DRAFT_RECOVERY] = DraftRecoveryHandler(RecoveryDrafter(llm))  # RC-03
     inbox_handlers: dict[tuple[str, str], Any] = {
         ("shippo", "track_updated"): handle_shippo_track_updated,
-        **paypal_inbox_handlers(rulebook, rt.clock),
+        **paypal_inbox_handlers(rulebook, rt.clock, rt.services.receipts),
     }
     inbox = InboxProcessor(rt.session_factory, inbox_handlers, rt.clock, rt.settings)
     runner = JobRunner(rt.session_factory, handlers, rt.clock, rt.settings)
@@ -143,7 +126,25 @@ def sweep(rt: Runtime) -> int:
         s.commit()
         if expired:
             log.info("sweep expired %d carrier claim(s) past their deadline", len(expired))
-        return len(flagged)
+    try:
+        sweep_refunds(rt)
+    except Exception:  # a PayPal read failing must not stop the other sweeps; next sweep retries
+        log.exception("pending refund sweep failed; retrying next sweep")
+    return len(flagged)
+
+
+def sweep_refunds(rt: Runtime) -> list[str]:
+    """PO-13: confirm pending refunds from PayPal in case the webhook never comes."""
+    with rt.session_factory() as s:
+        policy = PolicyService(s, load_rules(rt.deps.rules_dir), rt.clock)
+        changed = policy.sweep_pending_refunds(refund_gateway(rt))
+        for ma_id in changed:
+            ma = s.get_one(MoneyAction, ma_id)
+            issue_refund_receipt(s, rt.services.receipts, ma, at=rt.clock.now())
+        s.commit()
+    if changed:
+        log.info("refund sweep: PayPal answered %d pending refund(s)", len(changed))
+    return changed
 
 
 def run_loop(rt: Runtime, should_stop: Callable[[], bool], poll_s: float = 2.0) -> None:

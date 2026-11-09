@@ -218,6 +218,8 @@ export type CaseView = {
   recovery: RecoveryView | null;
   counterfactual: Counterfactual | null;
   offer: { amount_minor: number; currency: string } | null;
+  dispute_resolved?: boolean;
+  can_close?: boolean;
 };
 
 export type VerifyReport = {
@@ -306,7 +308,7 @@ export type PolicyAnswer = {
   disclaimer: string;
 };
 
-export type CaseAction = "approve" | "decline" | "send-evidence" | "make-offer" | "re-check";
+export type CaseAction = "approve" | "decline" | "close" | "send-evidence" | "make-offer" | "re-check";
 
 export const api = {
   health: () => call<Health>("GET", "/healthz"),

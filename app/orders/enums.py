@@ -81,6 +81,7 @@ class RecoveryStatus(StrEnum):
 
 class MoneyActionStatus(StrEnum):
     QUEUED = "queued"
+    PENDING = "pending"  # PO-13: PayPal accepted the refund; the money has not landed yet
     COMPLETED = "completed"
     FAILED = "failed"
     BLOCKED = "blocked"

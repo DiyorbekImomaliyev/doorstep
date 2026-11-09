@@ -27,6 +27,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from app.orders.enums import MoneyActionStatus
+from app.orders.models import MoneyAction
 from app.proof.models import Receipt
 
 GENESIS = "0" * 64
@@ -199,3 +201,32 @@ def verify_chain(session: Session, public_key_b64: str, *, case_id: str) -> Veri
             receipts=views,
         )
     return VerifyReport(status="ok", checked=len(rows), receipts=views)
+
+
+def issue_refund_receipt(
+    session: Session, signer: ReceiptSigner, ma: MoneyAction, *, at: datetime
+) -> Receipt | None:
+    """The signed receipt for a refund Doorstep sent, once per case, only when PayPal completed it
+    (from the refund job, or later from PayPal's confirmation of a pending refund, PO-13)."""
+    if ma.case_id is None or ma.status != MoneyActionStatus.COMPLETED.value:
+        return None
+    already = session.scalars(
+        select(Receipt).where(Receipt.case_id == ma.case_id, Receipt.kind == "refund")
+    ).first()
+    if already is not None:
+        return None
+    return issue_receipt(
+        session,
+        signer,
+        case_id=ma.case_id,
+        kind="refund",
+        payload={
+            "money_action_id": ma.id,
+            "decision_id": ma.decision_id,
+            "amount_minor": ma.amount_minor,
+            "currency": ma.currency,
+            "paypal_refund_id": ma.paypal_refund_id,
+            "paypal_status": ma.paypal_status,
+        },
+        at=at,
+    )

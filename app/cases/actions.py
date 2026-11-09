@@ -18,7 +18,7 @@ from app.policy.rules import RuleBook
 from app.policy.service import Approver, PolicyError, PolicyService, _latest_decision
 from app.proof.receipts import ReceiptSigner, issue_receipt
 
-Action = Literal["approve", "decline", "reship", "send-evidence", "make-offer"]
+Action = Literal["approve", "decline", "close", "reship", "send-evidence", "make-offer"]
 
 
 class CaseActions:
@@ -49,6 +49,8 @@ class CaseActions:
                 return money  # a repeated tap changed nothing, so nothing is signed
         elif action == "decline":
             self.policy.decline(case, approver)
+        elif action == "close":  # PO-15: a person closes a held case without a refund
+            self.policy.close_held(case, approver)
         else:
             self.policy.settle_with_reship(case, approver)
         decision = _latest_decision(self.session, case.id)

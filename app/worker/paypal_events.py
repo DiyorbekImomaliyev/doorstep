@@ -2,9 +2,11 @@
 
 - PAYMENT.CAPTURE.COMPLETED: backup to the capture job; stores the capture and marks PAID.
 - PAYMENT.CAPTURE.REFUNDED: records refunds made outside Doorstep, so the refundable balance
-  stays right (PO-06). Doorstep's own refunds are recognised by their PayPal refund id.
+  stays right (PO-06). Doorstep's own refunds are recognised by their PayPal refund id or their
+  custom_id; a pending one of ours is confirmed by PayPal's status here (PO-13).
 - CUSTOMER.DISPUTE.CREATED/UPDATED/RESOLVED: keeps the disputes table current, so the policy
-  routes to DISPUTE_EVIDENCE instead of refunding outside the dispute (PO-05).
+  routes to DISPUTE_EVIDENCE instead of refunding outside the dispute (PO-05). RESOLVED closes the
+  case that was waiting on the dispute, since PayPal decided it (PO-14).
 Events for orders Doorstep does not know are logged and skipped, never failed.
 """
 
@@ -19,15 +21,18 @@ from sqlalchemy.orm import Session
 
 from app.clock import Clock
 from app.money import Money
-from app.orders.enums import OrderState
-from app.orders.models import Dispute, Order
-from app.orders.state import transition_order
+from app.orders.enums import CaseState, OrderState
+from app.orders.models import Case, Dispute, Order
+from app.orders.state import transition_case, transition_order
 from app.policy.rules import RuleBook
 from app.policy.service import PolicyService
+from app.proof.receipts import ReceiptSigner, issue_refund_receipt
 from app.proof.seller_protection import record_seller_protection
 from app.worker.models import WebhookInbox
 
 log = logging.getLogger("doorstep.paypal_events")
+# The audit action is "transition: dispute resolved: <code>" in a 64-character column.
+_OUTCOME_CHARS = 30
 
 Handler = Callable[[Session, WebhookInbox], None]
 
@@ -82,7 +87,7 @@ def _capture_id_from_links(res: dict[str, Any]) -> str:
     return ""
 
 
-def _make_refunded(rulebook: RuleBook, clock: Clock) -> Handler:
+def _make_refunded(rulebook: RuleBook, clock: Clock, receipts: ReceiptSigner | None) -> Handler:
     def handle(s: Session, row: WebhookInbox) -> None:
         res = _resource(row)
         order = _order_by_capture(s, _capture_id_from_links(res))
@@ -91,9 +96,15 @@ def _make_refunded(rulebook: RuleBook, clock: Clock) -> Handler:
             log.info("refund event %s not matched to an order; skipped", row.event_id)
             return
         money = Money.from_paypal(str(amount.get("value")), str(amount.get("currency_code")))
-        PolicyService(s, rulebook, clock).record_external_refund(
-            order, money, paypal_refund_id=str(res["id"])
+        ma = PolicyService(s, rulebook, clock).record_external_refund(
+            order,
+            money,
+            paypal_refund_id=str(res["id"]),
+            status=str(res.get("status") or "COMPLETED"),
+            custom_id=str(res.get("custom_id") or "") or None,
         )
+        if receipts is not None:
+            issue_refund_receipt(s, receipts, ma, at=clock.now())
 
     return handle
 
@@ -126,16 +137,35 @@ def _make_dispute(clock: Clock) -> Handler:
             dispute.status = status
         else:  # resolved is final for webhooks: a late or reordered event never reopens it
             log.info("dispute %s already resolved; %s ignored", dispute_id, row.event_type)
+            return
         s.flush()
+        if resolved:
+            _close_disputed_case(s, order, _dict(res.get("dispute_outcome")))
 
     return handle
 
 
-def paypal_inbox_handlers(rulebook: RuleBook, clock: Clock) -> dict[tuple[str, str], Handler]:
+def _close_disputed_case(s: Session, order: Order, outcome: dict[str, Any]) -> None:
+    """PO-14: PayPal decided the dispute, so the case waiting on it is finished. PayPal's outcome
+    code goes into the audit word for word (cut to fit); Doorstep does not interpret it."""
+    case = s.scalars(
+        select(Case).where(
+            Case.order_id == order.id, Case.state == CaseState.DISPUTE_EVIDENCE.value
+        )
+    ).first()
+    if case is None:
+        return
+    code = str(outcome.get("outcome_code") or "no outcome code")[:_OUTCOME_CHARS]
+    transition_case(s, case, CaseState.CLOSED, actor="paypal", reason=f"dispute resolved: {code}")
+
+
+def paypal_inbox_handlers(
+    rulebook: RuleBook, clock: Clock, receipts: ReceiptSigner | None = None
+) -> dict[tuple[str, str], Handler]:
     dispute = _make_dispute(clock)
     return {
         ("paypal", "PAYMENT.CAPTURE.COMPLETED"): _make_capture_completed(clock),
-        ("paypal", "PAYMENT.CAPTURE.REFUNDED"): _make_refunded(rulebook, clock),
+        ("paypal", "PAYMENT.CAPTURE.REFUNDED"): _make_refunded(rulebook, clock, receipts),
         ("paypal", "CUSTOMER.DISPUTE.CREATED"): dispute,
         ("paypal", "CUSTOMER.DISPUTE.UPDATED"): dispute,
         ("paypal", "CUSTOMER.DISPUTE.RESOLVED"): dispute,

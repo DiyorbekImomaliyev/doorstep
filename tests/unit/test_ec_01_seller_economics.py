@@ -81,7 +81,7 @@ def test_EC_01_the_seller_route_answers_with_the_view(db, clock, session_factory
     from app.runtime import ROOT
     from app.security.links import LinkSigner
 
-    secret = "economics-test-secret-0123456789ab"
+    secret = "e" * 32  # a test-only signing secret
     links = LinkSigner(secret, clock)
     deps = AppDeps(
         settings=settings,

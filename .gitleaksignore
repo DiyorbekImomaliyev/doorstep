@@ -5,3 +5,4 @@ f37e7194c3cdf97c2234cc5776c3d1c97808fb34:tests/unit/test_sl_seal.py:generic-api-
 436aeff3d341ea6fc0a3655fedda8d05246a7cf3:tests/unit/test_se_secrets.py:generic-api-key:59
 d25e396e03a2a56ef63b2ca08221a154295e8f16:tests/unit/test_bc_links.py:generic-api-key:12
 284c5c2dbb2420e3850862cb5f778e70ed553a00:tests/unit/test_api_journey.py:generic-api-key:25
+8bee333add9912205150ab1b8b8466c05509b538:tests/unit/test_ec_01_seller_economics.py:generic-api-key:84

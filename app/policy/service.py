@@ -19,7 +19,7 @@ from datetime import UTC, datetime, time, timedelta
 from typing import Any, NamedTuple, cast
 
 from pydantic import BaseModel
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -63,6 +63,7 @@ from app.policy.reasons import Reason, message
 from app.policy.rules import RuleBook, effective_limits
 from app.worker.models import Job
 from app.worker.runner import PermanentError, enqueue, is_permanent
+from app.worker.simulated import SIMULATED_STATUS
 
 log = logging.getLogger("doorstep.policy")
 
@@ -70,7 +71,17 @@ REFUND_JOB = "paypal.refund"  # payload: {"money_action_id": ...}
 
 # Refund kinds and the statuses that hold or have moved money.
 _REFUND_KINDS = (MoneyActionKind.REFUND.value, MoneyActionKind.PARTIAL_REFUND.value)
-_COUNTED = (MoneyActionStatus.QUEUED.value, MoneyActionStatus.COMPLETED.value)
+# Money that is out or on its way: a pending refund counts, so it can never be sent twice (PO-13).
+_COUNTED = (
+    MoneyActionStatus.QUEUED.value,
+    MoneyActionStatus.PENDING.value,
+    MoneyActionStatus.COMPLETED.value,
+)
+# PayPal's refund statuses (RefundStatus in the PayPal SDK): CANCELLED, FAILED, PENDING, COMPLETED.
+REFUND_COMPLETED, REFUND_PENDING = "COMPLETED", "PENDING"
+# A demo order's refund, completed by the simulator; real PayPal never answers with this word.
+_DONE = frozenset({REFUND_COMPLETED, SIMULATED_STATUS})
+_SWEEP_BATCH = 20  # pending refunds read from PayPal per sweep
 _STOPPED = (MoneyActionStatus.BLOCKED.value, MoneyActionStatus.FAILED.value)
 # Capture statuses PayPal reports for a capture that can still be (partly) refunded.
 _REFUNDABLE_CAPTURE = frozenset({"COMPLETED", "PARTIALLY_REFUNDED"})
@@ -147,6 +158,46 @@ def _audit(
     )
 
 
+def _apply_refund_status(
+    session: Session,
+    ma: MoneyAction,
+    case: Case,
+    decision: Decision,
+    approval: Approval | None,
+    status: str,
+    *,
+    at: datetime,
+) -> None:
+    """PO-13: what PayPal's refund status means. Only COMPLETED settles the case; PENDING waits
+    for PayPal's confirmation; FAILED, CANCELLED or an unknown status fails it and holds the case.
+    """
+    before = {"status": ma.status}
+    ma.paypal_status = status
+    route: tuple[CaseState, str] | None = None
+    if status in _DONE:
+        ma.status = MoneyActionStatus.COMPLETED.value
+        ma.completed_at = at
+        action, route = "refund.completed", (CaseState.SETTLED, "refund completed")
+    elif status == REFUND_PENDING:
+        ma.status = MoneyActionStatus.PENDING.value
+        action = "refund.pending"
+    else:
+        ma.status = MoneyActionStatus.FAILED.value
+        action, route = "refund.failed", (CaseState.HOLD_FOR_REVIEW, "refund not completed")
+    _audit(
+        session,
+        actor="paypal",
+        action=action,
+        entity_type="money_action",
+        entity_id=ma.id,
+        before=before,
+        after=_money_audit_payload(decision, approval, ma),
+        at=at,
+    )
+    if route is not None:
+        _route_case(session, case, route[0], actor="policy", reason=route[1])
+
+
 def _route_case(session: Session, case: Case, to: CaseState, *, actor: str, reason: str) -> None:
     """Move the case only if that transition is allowed; otherwise leave it (already there,
     or a human owns it). Used on the execution path, which must never crash on a race."""
@@ -205,6 +256,20 @@ def _refunded_minor(session: Session, order_id: str, *, statuses: tuple[str, ...
 
 def _order_money(order: Order, minor: int) -> Money:
     return Money(amount_minor=minor, currency=Currency(order.currency))
+
+
+def refund_in_flight(session: Session, case_id: str) -> bool:
+    """A refund of this case is queued or pending at PayPal (PO-13, PO-15)."""
+    found = session.scalar(
+        select(MoneyAction.id).where(
+            MoneyAction.case_id == case_id,
+            MoneyAction.kind.in_(_REFUND_KINDS),
+            MoneyAction.status.in_(
+                (MoneyActionStatus.QUEUED.value, MoneyActionStatus.PENDING.value)
+            ),
+        )
+    )
+    return found is not None
 
 
 def _remaining_refundable(session: Session, order: Order) -> Money:
@@ -627,6 +692,23 @@ class PolicyService:
             reason="seller declined",
         )
 
+    def close_held(self, case: Case, approver: Approver) -> None:
+        """PO-15: a person closes a held case without a refund (HOLD_FOR_REVIEW -> CLOSED).
+        Never the system (hard rule 7), and never while a refund is on its way."""
+        if approver.kind == ApproverKind.SYSTEM:
+            raise PolicyError("only a person can close a case")
+        if CaseState(case.state) != CaseState.HOLD_FOR_REVIEW:
+            raise PolicyStateError(f"case {case.id} in {case.state} cannot be closed")
+        if refund_in_flight(self.session, case.id):
+            raise PolicyStateError(f"case {case.id}: a refund is on its way; wait for it to land")
+        transition_case(
+            self.session,
+            case,
+            CaseState.CLOSED,
+            actor=f"{approver.kind}:{approver.id}",
+            reason="closed after review",
+        )
+
     def settle_with_reship(self, case: Case, approver: Approver) -> None:
         """Reship fix: records the approval and settles with no MoneyAction (PO-11)."""
         decision = _latest_decision(self.session, case.id)
@@ -641,20 +723,84 @@ class PolicyService:
             reason="reship recorded",
         )
 
-    def record_external_refund(
-        self, order: Order, amount: Money, *, paypal_refund_id: str
-    ) -> MoneyAction:
-        """A refund made outside Doorstep (PAYMENT.CAPTURE.REFUNDED) (PO-06).
+    def remaining_refundable(self, order: Order) -> Money:
+        """What can still be refunded: captured minus every queued, pending, completed or
+        external refund Doorstep knows of."""
+        return _remaining_refundable(self.session, order)
 
-        Idempotent on the PayPal refund id; a refund Doorstep made itself is recognised by it.
+    def confirm_refund(self, ma: MoneyAction, status: str) -> bool:
+        """PO-13: PayPal's later answer on a pending refund. COMPLETED settles the case; FAILED or
+        CANCELLED (or a status Doorstep does not know) fails it and a person reviews. Still
+        PENDING, or a refund that is not pending, changes nothing. True when the refund completed.
+        """
+        if ma.status != MoneyActionStatus.PENDING.value or status == REFUND_PENDING:
+            return False
+        s = self.session
+        case = s.get_one(Case, ma.case_id)
+        decision = s.get_one(Decision, ma.decision_id)
+        _apply_refund_status(
+            s, ma, case, decision, _approval_for(s, decision.id), status, at=self.clock.now()
+        )
+        return ma.status == MoneyActionStatus.COMPLETED.value
+
+    def sweep_pending_refunds(self, gateway: RefundGateway) -> list[str]:
+        """PO-13: read PayPal for each pending refund and apply its answer, in case the webhook
+        never comes. A refund PayPal does not list is left pending for the next sweep. Returns the
+        ids of the money actions that stopped being pending."""
+        s = self.session
+        changed: list[str] = []
+        pending = s.scalars(
+            select(MoneyAction)
+            .where(MoneyAction.status == MoneyActionStatus.PENDING.value)
+            # Oldest first and a batch cap keep each sweep short; any order is correct, since
+            # every pending refund is read by a later sweep: equivalent mutants.
+            .order_by(MoneyAction.created_at, MoneyAction.id)  # pragma: no mutate
+            .limit(_SWEEP_BATCH)  # pragma: no mutate
+        ).all()
+        for ma in pending:
+            order = s.get_one(Order, ma.order_id)
+            live = gateway.get_capture_state(
+                cast(str, order.paypal_order_id), cast(str, order.capture_id)
+            )
+            found = [
+                r
+                for r in live.refunds
+                if r.refund_id == ma.paypal_refund_id or r.custom_id == ma.id
+            ]
+            if found:
+                self.confirm_refund(ma, found[0].status)
+            if ma.status != MoneyActionStatus.PENDING.value:
+                changed.append(ma.id)
+        return changed
+
+    def record_external_refund(
+        self,
+        order: Order,
+        amount: Money,
+        *,
+        paypal_refund_id: str,
+        status: str = REFUND_COMPLETED,
+        custom_id: str | None = None,
+    ) -> MoneyAction:
+        """A refund PayPal reports (PAYMENT.CAPTURE.REFUNDED) (PO-06).
+
+        A refund Doorstep sent itself is recognised by its PayPal id, or by its custom_id (our
+        money action id) when the webhook beats the refund job; a pending one is then confirmed
+        (PO-13). Anything else was made outside Doorstep and is recorded once.
         """
         s = self.session
         if amount.currency != order.currency:
             raise CurrencyMismatch(f"refund in {amount.currency}, order in {order.currency}")
         known = s.scalars(
-            select(MoneyAction).where(MoneyAction.paypal_refund_id == paypal_refund_id)
+            select(MoneyAction).where(
+                or_(
+                    MoneyAction.paypal_refund_id == paypal_refund_id,
+                    and_(MoneyAction.id == custom_id, MoneyAction.order_id == order.id),
+                )
+            )
         ).first()
         if known is not None:
+            self.confirm_refund(known, status)
             return known
         kind = (
             MoneyActionKind.PARTIAL_REFUND
@@ -854,26 +1000,13 @@ class RefundJobHandler:
                 request_id=cast(str, ma.request_id),  # set when the refund was queued
                 custom_id=ma.id,
             )
-        ma.status = MoneyActionStatus.COMPLETED.value
         ma.paypal_refund_id = result.refund_id
-        ma.paypal_status = result.status
         ma.paypal_response = {
             "refund_id": result.refund_id,
             "status": result.status,
             **dict(result.raw),
         }
-        ma.completed_at = now
-        _audit(
-            session,
-            actor="paypal",
-            action="refund.completed",
-            entity_type="money_action",
-            entity_id=ma.id,
-            before={"status": MoneyActionStatus.QUEUED.value},
-            after=_money_audit_payload(decision, approval, ma),
-            at=now,
-        )
-        _route_case(session, case, CaseState.SETTLED, actor="policy", reason="refund completed")
+        _apply_refund_status(session, ma, case, decision, approval, result.status, at=now)
 
     def on_failed(self, session: Session, job: Job, error: Exception) -> None:
         """Retries exhausted or a 4xx: mark failed, never retry with a new key, hold (PO-12)."""

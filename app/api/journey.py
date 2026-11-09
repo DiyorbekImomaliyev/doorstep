@@ -794,7 +794,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     def act(
         token: str,
         case_id: str,
-        action: Literal["approve", "decline", "send-evidence", "make-offer", "re-check"],
+        action: Literal["approve", "decline", "close", "send-evidence", "make-offer", "re-check"],
         s: Db,
     ) -> ActionOut:
         """approve / decline, (DE-01) send the facts-only evidence to the open PayPal dispute,

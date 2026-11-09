@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base, UTCDateTime, new_id
@@ -157,6 +157,10 @@ class MoneyAction(Base):
     # PO-07: one refund per decision, even under concurrent approvals.
     __table_args__ = (
         UniqueConstraint("decision_id", "kind", name="uq_money_action_decision_kind"),
+        # PO-13: one row per PayPal refund, so a webhook and the refund job can never both record
+        # it. An index, not a constraint, so ensure_indexes adds it to an existing database; rows
+        # without a refund id (NULL) are not compared.
+        Index("uq_money_action_paypal_refund_id", "paypal_refund_id", unique=True),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)

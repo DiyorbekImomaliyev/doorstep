@@ -47,8 +47,10 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // UI-01: an approved refund owns the case until it lands; follow it without a reopen.
-  const queued = c?.money.find((m) => (m.kind === "refund" || m.kind === "partial_refund") && m.status === "queued");
-  usePoll(reload, !!queued, 2000);
+  const isRefund = (m: { kind: string }) => m.kind === "refund" || m.kind === "partial_refund";
+  // PO-13: "pending" means PayPal accepted it and confirms when the money lands (no fast poll).
+  const queued = c?.money.find((m) => isRefund(m) && (m.status === "queued" || m.status === "pending"));
+  usePoll(reload, queued?.status === "queued", 2000);
 
   async function act(action: CaseAction) {
     setBusy(true); setErr(null);
@@ -56,6 +58,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
       await api.act(token, caseId, action);
       onChanged(action === "approve"
           ? (c?.order.simulated ? "Approved. This is a demo order, so the refund is simulated." : "Approved. The refund is on its way through PayPal.")
+        : action === "close" ? "Case closed without a refund. The buyer has been told."
         : action === "send-evidence" ? "Evidence is on its way to the PayPal dispute."
         : action === "make-offer" ? "Your refund offer is on its way to the PayPal dispute."
         : action === "re-check" ? "Decided again with the latest evidence."
@@ -81,7 +84,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
             <div className="facts">
               <div><span className="k">Likely cause</span><span className="v">{FAILURE_POINT[d.failure_point ?? ""] ?? d.failure_point ?? "—"}</span></div>
               <div><span className="k">Confidence</span><span className="v" style={{ textTransform: "capitalize" }}>{d.confidence ?? "—"}</span></div>
-              <div><span className="k">Refund</span><span className="v num">{c.state === "DISPUTE_EVIDENCE" ? "PayPal decides" : refund ?? "—"}</span></div>
+              <div><span className="k">Refund</span><span className="v num">{c.state === "DISPUTE_EVIDENCE" ? "PayPal decides" : closedUnpaid(c) ? "None" : refund ?? "—"}</span></div>
             </div>
             <div className="row wrap" style={{ gap: 8 }}>
               <span className="rule-line" title={d.rule_id ? `Rule file ${d.rule_id}, version ${d.rule_version ?? "?"}` : undefined}>
@@ -194,7 +197,9 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
           <RefreshCw size={15} className="spin" aria-hidden />
           <span>
             {c.order.simulated ? "Demo refund" : "Refund"} {money(queued.amount_minor, queued.currency)}{" "}
-            {c.order.simulated ? "is being simulated. No real money moves." : "is on its way through PayPal."}
+            {c.order.simulated ? "is being simulated. No real money moves."
+              : queued.status === "pending" ? "is pending at PayPal. The case settles when PayPal confirms it."
+              : "is on its way through PayPal."}
           </span>
         </footer>
       )}
@@ -203,6 +208,12 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
           {err && <ErrorBox message={err} />}
           <div className="row">
             {c.actions.includes("decline") && <button className="btn ghost danger" disabled={busy} onClick={() => act("decline")}>Decline</button>}
+            {c.can_close && (
+              <button className="btn ghost danger" disabled={busy} title="You checked the evidence and no refund is due. The buyer is told they can still open a PayPal dispute."
+                onClick={() => { if (window.confirm("Close this case without a refund? The buyer is told they can still open a PayPal dispute.")) act("close"); }}>
+                Close without refund
+              </button>
+            )}
             {c.actions.includes("re-check") && (
               <button className="btn ghost" disabled={busy} onClick={() => act("re-check")} title="Run the decision again on the evidence as it is now">
                 <RefreshCw size={15} />Decide again
@@ -234,9 +245,13 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
 
 // Plain words for the money row's status (PR-08: a simulated refund never reads as a real one).
 const MONEY_STATUS: Record<string, string> = {
-  queued: "On its way", completed: "Sent", simulated: "Simulated", failed: "Failed",
+  queued: "On its way", pending: "Pending at PayPal", completed: "Sent", simulated: "Simulated", failed: "Failed",
   blocked: "Held for review", unconfirmed: "Not confirmed",
 };
+
+/** PO-15: closed by the seller (declined, or closed after review) with no refund sent. */
+const closedUnpaid = (c: CaseView) => c.state === "CLOSED" && !c.dispute_resolved
+  && !c.money.some((m) => (m.kind === "refund" || m.kind === "partial_refund") && (m.status === "completed" || m.status === "simulated"));
 
 /** In a dispute where the courier's own data contradicts its delivered scan, offering the refund
  * inside the dispute is the better first move than sending weak evidence. */
@@ -268,8 +283,13 @@ function Recommendation({ c, refund, queued }: { c: CaseView; refund: string | n
   } else {
     const sent = c.money.find((m) => (m.kind === "refund" || m.kind === "partial_refund") && (m.status === "completed" || m.status === "simulated"));
     tone = "good";
-    title = sent ? `Done: ${money(sent.amount_minor, sent.currency)} refunded${sent.status === "simulated" ? " (simulated)" : ""}` : "Done";
-    text = c.recovery && c.recovery.status === "PREPARED" ? "Next, optional: claim it back from the courier below." : why ? `${why}.` : "";
+    title = sent ? `Done: ${money(sent.amount_minor, sent.currency)} refunded${sent.status === "simulated" ? " (simulated)" : ""}`
+      : c.dispute_resolved ? "Done: PayPal decided the dispute"
+      : closedUnpaid(c) ? "Closed without a refund" : "Done";
+    text = c.recovery && c.recovery.status === "PREPARED" ? "Next, optional: claim it back from the courier below."
+      : c.dispute_resolved ? "PayPal resolved it. The outcome is in your PayPal account."
+      : closedUnpaid(c) ? "The buyer was told they can still open a PayPal dispute, where PayPal decides."
+      : why ? `${why}.` : "";
   }
   return (
     <div className={`notice ${tone} recommend`} role="status">
