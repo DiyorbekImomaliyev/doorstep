@@ -12,9 +12,9 @@ recover the loss from the carrier.
 orders
 
 [Design](#design-at-a-glance) · [Try it](#try-it-in-60-seconds) · [Why it matters](#why-it-matters) ·
-[PayPal integration](#paypal-integration) · [Product tour](#product-tour) ·
-[What makes it different](#what-makes-it-different) · [Quality](#quality) ·
-[Run it locally](#run-it-locally)
+[What sellers say](#what-sellers-say) · [PayPal integration](#paypal-integration) ·
+[Product tour](#product-tour) · [What makes it different](#what-makes-it-different) ·
+[How it compares](#how-it-compares) · [Quality](#quality) · [Run it locally](#run-it-locally)
 
 ## Overview
 
@@ -85,9 +85,10 @@ Parcel problems are common in the UK, the EU and the US, and they end on the sel
 | | Figure | Source |
 | --- | --- | --- |
 | **UK** | 15 million people (37%) had a problem with their latest delivery; 29% said the courier left before they reached the door, and 24% had a parcel left somewhere insecure | [Citizens Advice, Nov 2025](https://www.citizensadvice.org.uk/about-us/media-centre/press-releases/parcel-problems-reach-record-as-15-million-people-are-let-down-on-the/) |
+| **UK, who is liable** | 31% of shoppers who complained to the shop were sent to the courier, "despite it being the retailer's responsibility under consumer law" | [Which?, 2,132 adults, Dec 2024](https://www.which.co.uk/policy-and-insight/article/clothes-up-in-smoke-and-chocolates-eaten-by-squirrels-which-reveals-shoppers-biggest-delivery-disasters-aLUgL2f34A2d) |
 | **EU** | 35% of online shoppers hit a problem buying online; a late delivery, for 1 in 5, was the most common | [Eurostat, Mar 2026](https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260311-1) |
 | **US** | 3 in 10 adults, about 80 million people, have had a package stolen; an estimated $7.7 billion of parcels were stolen in the past year, and 60% of recent victims took it to the store they bought from | [Security.org, Oct 2026](https://www.security.org/package-theft/annual-report/) |
-| **Card disputes** | "Item not received" is 1 in 5 card chargebacks in a normal week; over Black Friday 2025 it was 1 in 3 | [Chargeflow, about 3 million disputes, Oct 2026](https://www.chargeflow.io/data-lab/peak-season-part-1) |
+| **Card disputes** | "Item not received" is 1 in 5 card chargebacks in a normal week; over Black Friday 2025 it was 1 in 3. Never-arrived disputes backed by compelling evidence were won about 1.5 times as often | [Chargeflow, about 3 million disputes, Oct 2026](https://www.chargeflow.io/data-lab/peak-season-part-1) |
 
 ### What it is worth to a seller
 
@@ -110,12 +111,52 @@ the sourced costs.
 **Why pay when PayPal has Seller Protection?** Seller Protection covers a seller in a PayPal claim
 when tracking shows "delivered" to the address on the payment. It does not change the seller's
 duty to the buyer: in the UK the parcel stays at the seller's risk until the buyer holds it
-(Consumer Rights Act 2015, s.29), and an item-not-received claim filed with the buyer's card
+(Consumer Rights Act 2015, s.29). A UK ombudsman upheld PayPal on tracking alone and still noted
+that "consumer law differs" ([Financial Ombudsman, DRN-6052873, Jan 2026](https://www.financial-ombudsman.org.uk/decision/DRN-6052873.pdf)).
+An item-not-received claim filed with the buyer's card
 issuer is outside Seller Protection. A claim the seller loses costs £12 or $15 in PayPal fees
 ([UK](https://www.paypal.com/uk/business/paypal-business-fees),
 [US](https://www.paypal.com/us/business/paypal-business-fees)), and a seller's dispute rate decides
 whether PayPal charges the higher fee. Doorstep shows PayPal's verdict beside the legal rule it
 applied, and settles fast when the law says the seller owes the buyer, before it becomes a claim.
+
+## What sellers say
+
+We read what small sellers say in public, in November 2026: 60 Reddit threads (52 from sellers,
+quotes checked word for word against the [Arctic Shift](https://arctic-shift.photon-reddit.com/)
+archive) and the transcripts of 25 YouTube videos. Counts are threads and videos read, not market
+shares. Usernames are left out.
+
+| What sellers do or lose today | Seen in | What Doorstep does |
+| --- | --- | --- |
+| Check the courier's GPS point or doorstep photo by hand; the photo can vanish from tracking | 14 threads, 5 videos | Audits the "Delivered" scan's place, order and batch in code, and keeps what it found |
+| Give up on courier claims: slow, capped, deadline-bound | 12 threads, 8 videos | Prepares the claim pack with the carrier's own cover and deadline |
+| Find the parcel with a neighbour or in the building | 10 threads | Lists where to look before the buyer sends a "not received" report |
+| Refund a parcel as lost, then it turns up | 7 videos | Spots the late "Delivered" scan, withdraws the unsent claim, asks the buyer to tap "It arrived" |
+| Avoid accusing the buyer: the top advice | 4 threads, 4 videos | Sends contradicting evidence to a person, never to an automatic denial |
+| Win on the platform, then lose a card chargeback | 6 threads, 2 videos | Settles on the law before a claim starts, and keeps the signed record |
+
+> "I took a screenshot of the picture on royal mail tracking but now it's not there anymore???"
+> UK seller, [r/eBaySellerAdvice, Jan 2025](https://www.reddit.com/r/eBaySellerAdvice/comments/1i13xew/)
+
+> "they’re only offering me £10.50 the service fee"
+> UK seller of a £1,600 item sent Special Delivery, [r/royalmail, Sep 2025](https://www.reddit.com/r/royalmail/comments/1nqr2og/)
+
+> "Do not call the buyer a scammer or even write the message in a way that implies you believe they are a scammer."
+> Top advice to a seller, [r/EtsySellers, Jan 2024](https://www.reddit.com/r/EtsySellers/comments/1aevj1d/)
+
+> "Paypal sided in my favor in December, but then they charged back from their credit card company again?"
+> US seller, $1,350 order, [r/paypal, Jan 2025](https://www.reddit.com/r/paypal/comments/1icik7j/)
+
+> "always, always, always film yourself packaging up the items that you're selling"
+> UK seller, [The Monica Way, 231,179 views, Oct 2026](https://www.youtube.com/watch?v=YviHjr5YduQ)
+
+**What the research changed.** It added the "where to look" step and the late-delivery handling.
+It reframed the pitch: on PayPal, a "Delivered" scan to the payment address usually wins an
+item-not-received claim, so the open risks are the card chargeback and the buyer's legal rights,
+and Doorstep's job is a fair, final settlement rather than winning disputes. And it kept the QR
+seal optional: no seller asked for one; it answers the UK rule that a parcel is the seller's risk
+until the buyer holds it.
 
 ## How it works
 
@@ -210,7 +251,10 @@ Each row opens a detail panel without leaving the table.
 
 ### Buyer's page
 
-- **Reports** a problem with taps; a note is optional.
+- **Reports** a problem with taps; a note is optional. When the courier says "Delivered", it first
+  lists where parcels usually turn up: a neighbour, the post room, a porch or meter box.
+- **Says "It arrived"** in one tap if the courier scans the parcel delivered after the report;
+  the seller sees it on the case, with an unsent courier claim already withdrawn.
 - **Answers** within seconds with the regional rule and the buyer's rights, and shows each next
   step.
 - **Opens** from a signed link, with no account and no login.
@@ -291,6 +335,24 @@ signed delivery proof the assistant can check (see below).
   verify against a published key, without trusting whoever passed it on.
 - **Keeps AI away from money by construction.** Models write words and plans; code decides
   liability and limits. Import contracts in CI prove no AI code can reach a PayPal write.
+
+## How it compares
+
+| Kind of tool | Examples | Who pays | When it acts |
+| --- | --- | --- | --- |
+| Shipping protection at checkout | Route, Seel, ParcelWILL, Corso | The shopper, per order: ParcelWILL charges 2% or $1.28, whichever is higher | After a loss, it pays the claim |
+| Self-insurance app | Navidium | The merchant keeps the fees and pays the losses; $29.99 to $99.99 a month by volume | After a loss |
+| Parcel insurance | Shipsurance, InsureShip | The merchant, per $100 of cover | After a loss |
+| Carrier cover | Royal Mail, Evri | Included with the label; only the sender can claim | After a loss, within the carrier's deadline |
+| Chargeback tools | Chargeflow, Justt | The merchant | After a card dispute opens |
+| PayPal Seller Protection | PayPal | Free with PayPal | After a claim; covers "Delivered" tracking to the payment address |
+| **Doorstep** | | The seller: 100 orders a month free, then 8p or 10c an order, capped | **Before and at the door**: checks the address, proves the handoff, settles on the law, prepares the carrier claim |
+
+The others pay out or fight once something has gone wrong. Doorstep works earlier and on the
+seller's legal duty, and it sits beside them: its claim packs and signed proof are the evidence
+those claims ask for. Prices: [WiserReview, Jul 2026](https://wiserreview.com/blog/route-alternatives/),
+[Shipsurance](https://shipsurance.com/shipping-insurance); carrier cover from
+[`rules/carriers/carrier_claims_v1.yaml`](rules/carriers/carrier_claims_v1.yaml).
 
 ## Quality
 
