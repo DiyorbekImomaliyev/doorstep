@@ -21,6 +21,8 @@ type Hero = { icon: ReactNode; tone: "" | "accent" | "good" | "warn"; title: str
 function heroFor(v: BuyerView): Hero {
   if (v.case_open) return { icon: <LifeBuoy />, tone: "accent", title: "We're sorting it out", text: v.case_message ?? "Your report is with the seller." };
   if (v.state === "RESOLVED") return { icon: <CircleCheck />, tone: "good", title: "Resolved", text: v.case_message ?? "This order is settled." };
+  if (v.state === "EXCEPTION" && v.choice_made === "locker") return { icon: <Lock />, tone: "accent", title: "Going to a locker", text: "The courier takes it to a locker near you. This page updates when it's there." };
+  if (v.state === "EXCEPTION" && v.choice_made) return { icon: <Truck />, tone: "accent", title: "Redelivery booked", text: "The courier tries again. This page updates as it moves." };
   if (v.state === "EXCEPTION") return { icon: <TriangleAlert />, tone: "warn", title: "The courier couldn't deliver", text: "Choose what happens next." };
   if (v.state === "CONFIRMED") return { icon: <CircleCheck />, tone: "good", title: "Received", text: "Thanks for confirming." };
   if (v.state === "DELIVERED" || v.state === "PICKED_UP") return { icon: <House />, tone: "accent", title: v.status, text: "Do you have it?" };
@@ -89,6 +91,8 @@ export default function Buyer({ token }: { token: string }) {
   if (!v) return (<><Brand /><div className="narrow col"><Loading height={160} /><Loading height={80} /></div></>);
 
   const hero = heroFor(v);
+  // The courier couldn't deliver: choosing what happens next is the one thing to do on this page.
+  const deciding = v.choice_offered.length > 0 && !v.choice_made;
   const idx = stepIndex(v.progress_state || v.state);
 
   return (
@@ -153,10 +157,11 @@ export default function Buyer({ token }: { token: string }) {
           <div className="notice"><Check aria-hidden /><span>You chose: {v.choice_made === "locker" ? "send to a locker" : "try again"}.</span></div>
         )}
 
-        {(v.can_confirm || v.can_report) && !v.case_open && !reporting && (
+        {(v.can_confirm || v.can_report) && !v.case_open && !reporting && !deciding && (
           <section className="col" style={{ gap: 10 }}>
             {v.can_confirm && (
-              <button className="btn primary lg block" disabled={busy} onClick={() => run(() => api.gotIt(token), "Thanks! Marked as received")}>
+              // "Got it" leads only once the courier says it was delivered; before that it is one option of two.
+              <button className={`btn lg block ${v.state === "DELIVERED" || v.state === "PICKED_UP" ? "primary" : ""}`} disabled={busy} onClick={() => run(() => api.gotIt(token), "Thanks! Marked as received")}>
                 Got it
               </button>
             )}

@@ -328,6 +328,19 @@ def _state_title(entity: str, after: dict[str, Any], action: str) -> str:
     return action.replace(".", " ").replace("_", " ")
 
 
+_CHOICE_WORD = {"locker": "a locker", "rebook": "redelivery"}
+
+
+def _shipment_title(action: str, after: dict[str, Any], *, for_buyer: bool) -> str:
+    """A shipment step in plain words; the audit action name is for the record, not for people."""
+    if action == "shipment.choice":
+        chose = _CHOICE_WORD.get(str(after.get("choice")), "how to get the parcel")
+        return f"You chose {chose}" if for_buyer else f"Buyer chose {chose}"
+    if action == "shipment.stale":
+        return "No courier update for a while"
+    return action.replace(".", " ").replace("_", " ").capitalize()
+
+
 _SEAL_DETAIL = {  # SL-04, SL-07: why a seal scan did or did not count
     AFTER_HANDOVER: "counted as possession proof",
     BEFORE_HANDOVER: "not counted: scanned before the carrier had the parcel",
@@ -396,7 +409,11 @@ def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]
             )
         elif row.entity_type == "shipment":
             items.append(
-                TimelineItem(at=row.at, kind="carrier", title=row.action.replace(".", " "))
+                TimelineItem(
+                    at=row.at,
+                    kind="carrier",
+                    title=_shipment_title(row.action, row.after, for_buyer=for_buyer),
+                )
             )
     for ev in s.scalars(select(TrackingEvent).where(TrackingEvent.shipment_id.in_(shipment_ids))):
         # Real Shippo events carry "substatus": null (and may omit tracking_status): read safely.
