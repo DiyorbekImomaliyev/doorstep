@@ -52,6 +52,7 @@ from app.cases.pipeline import BuyerActionError, CasePipeline
 from app.cases.recovery import ClaimDraftOnOpen, RecoveryError, SellerMark, seller_mark
 from app.checkout.address import AddressChecker, AddressCheckResult
 from app.checkout.catalog import CatalogError, charge_for, products
+from app.checkout.retry import pay_another_way
 from app.checkout.service import CheckoutError, CheckoutService, DeliveryQuote
 from app.db import Base
 from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
@@ -142,6 +143,13 @@ class ReturnOut(BaseModel):
     buyer_token: str
     buyer_url: str
     address: AddressCheckResult | None = None
+
+
+class PayAgainOut(BaseModel):
+    # PayPal's approval page for the new order; None once the buyer approved it (go to buyer_url).
+    approve_url: str | None
+    buyer_token: str
+    buyer_url: str
 
 
 class ReportIn(BaseModel):
@@ -508,6 +516,27 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
             s.commit()
         token = services.links.issue(order.id, scope=BUYER)
         return ReturnOut(buyer_token=token, buyer_url=_buyer_url(token), address=result)
+
+    @router.post(
+        "/api/buyer/{token}/pay-again", response_model=PayAgainOut, dependencies=[checkout_cap]
+    )
+    def pay_again(token: str, s: Db) -> PayAgainOut:
+        """CK-09: PayPal declined the payment method; start a new payment for the same item."""
+        order = _order(s, token)
+        s.refresh(order, with_for_update=True)  # a double tap waits, then finds the first restart
+        try:
+            restarted = pay_another_way(s, _checkout(s), order)
+        except CatalogError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
+        except CheckoutError as exc:
+            raise HTTPException(409, str(exc)) from None
+        s.commit()
+        new_token = services.links.issue(restarted.order_id, scope=BUYER)
+        return PayAgainOut(
+            approve_url=restarted.approve_url,
+            buyer_token=new_token,
+            buyer_url=_buyer_url(new_token),
+        )
 
     @router.post("/api/buyer/{token}/approved", response_model=AddressCheckResult)
     def approved(token: str, s: Db) -> AddressCheckResult:

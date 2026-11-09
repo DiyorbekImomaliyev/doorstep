@@ -74,7 +74,7 @@ seller pays for.
 | Stage | PayPal capability | How Doorstep uses it |
 | --- | --- | --- |
 | Checkout | Orders v2 | Creates the order with Home / Locker / Signature shipping options; PATCHes the fixed address before capture |
-| Payment | Capture | Captures through the outbox, also when the buyer closes the tab after approving: the approved event or a sweep asks PayPal, and only an `APPROVED` order on a deliverable address is captured. Shows PayPal's Seller Protection verdict, never uses it as a money input |
+| Payment | Capture | Captures through the outbox, also when the buyer closes the tab after approving: the approved event or a sweep asks PayPal, and only an `APPROVED` order on a deliverable address is captured. A declined payment method is never retried: the buyer pays another way on a new PayPal order. Shows PayPal's Seller Protection verdict, never uses it as a money input |
 | Shipping | Order tracking | Adds the carrier and tracking number to the capture through the outbox |
 | Settlement | Refunds | Full or partial refund with `PayPal-Request-Id` and our id in `custom_id` |
 | Disputes | Disputes API | Reads disputes live before every refund; sends `provide-evidence`; makes refund offers in the inquiry stage |
@@ -191,7 +191,7 @@ the delivery status, one reports a problem. Neither can move money.
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% | every push, in CI |
 | Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 2,974; only wording changes may survive | full local run, Nov 6; CI re-runs it on every change to `app/policy`, and new money code is mutation-tested before it is committed |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease | every push, in CI |
-| API fuzzing, Schemathesis (`make fuzz`) | 46 API operations fuzzed from the OpenAPI schema, 0 failures | every push, in CI |
+| API fuzzing, Schemathesis (`make fuzz`) | 47 API operations fuzzed from the OpenAPI schema, 0 failures | every push, in CI |
 | Browser tests, Playwright (`make e2e`) | 18 passed in Chromium | locally, against a running server |
 | Failure-point engine (`make evals`) | 96.7% agreement with the expected cause on 60 hand-written scenarios (target 85%); 95.0% on a 20-case hold-out. This measures rule consistency, not accuracy on real deliveries | recorded run, Nov 7 |
 | Policy reader, Ragas (`make evals`) | faithfulness 0.91 (target 0.90) and context recall 0.97 on 30 questions over six seller policies | recorded run, Nov 7 |

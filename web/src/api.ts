@@ -29,6 +29,7 @@ export type BuyerView = {
   case_message: string | null;
   timeline: TimelineItem[];
   rights: string;
+  can_pay_again: boolean; // CK-09: PayPal declined the payment method
 };
 
 export type ReportOut = { case_id: string; status: string; message: string; rights: string };
@@ -328,6 +329,9 @@ export const api = {
       "POST", "/api/checkout/start",
       { seller_id: sellerId, amount_minor: amountMinor, currency, buyer_country: country, method, sku },
     ),
+  // CK-09: a new PayPal payment for the same item; approve_url is null once it was approved.
+  payAgain: (t: string) =>
+    call<{ approve_url: string | null; buyer_token: string; buyer_url: string }>("POST", `/api/buyer/${t}/pay-again`),
   paypalReturn: (paypalOrderId: string) =>
     call<{ buyer_token: string; buyer_url: string }>("POST", "/api/checkout/return", { paypal_order_id: paypalOrderId }),
 

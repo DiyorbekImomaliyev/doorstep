@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.ai.explainer import money_text, source_name
 from app.ai.risk import RiskFeatures, load_model
 from app.cases.signals import EvidenceKind
+from app.checkout.retry import can_pay_again
 from app.checkout.risk import seller_case_rate, seller_order_count
 from app.geo import postcode_district  # re-exported: shown in the Control Room
 from app.money import MINOR_UNIT_EXPONENT, Money, parse_currency
@@ -475,6 +476,8 @@ class BuyerView(BaseModel):
     progress_state: str = ""
     # RT-01: the rule file's buyer_rights text, once the buyer has reported a problem.
     rights: str = ""
+    # CK-09: PayPal declined the payment method, so the buyer may pay another way.
+    can_pay_again: bool = False
 
 
 _CASE_STATES = {OrderState.CASE_OPEN.value, OrderState.RESOLVED.value}
@@ -506,6 +509,7 @@ def buyer_view(s: Session, order: Order) -> BuyerView:
         message = buyer_outcome(s, order, case) or message
     reportable = {"IN_TRANSIT", "EXCEPTION", "DELIVERED", "PICKED_UP", "CONFIRMED"}
     return BuyerView(
+        can_pay_again=can_pay_again(order),
         order_ref=order.id[:8].upper(),
         item=order.item_description,
         amount_minor=order.amount_minor,

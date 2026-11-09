@@ -24,6 +24,9 @@ function heroFor(v: BuyerView): Hero {
   if (v.state === "EXCEPTION") return { icon: <TriangleAlert />, tone: "warn", title: "The courier couldn't deliver", text: "Choose what happens next." };
   if (v.state === "CONFIRMED") return { icon: <CircleCheck />, tone: "good", title: "Received", text: "Thanks for confirming." };
   if (v.state === "DELIVERED" || v.state === "PICKED_UP") return { icon: <House />, tone: "accent", title: v.status, text: "Do you have it?" };
+  if (v.can_pay_again) {
+    return { icon: <TriangleAlert />, tone: "warn", title: "PayPal declined that payment method", text: "Nothing was charged. Choose another card, bank or your PayPal balance." };
+  }
   if (v.state === "CREATED" && (v.capture_status === "FAILED" || v.capture_status === "DECLINED")) {
     return { icon: <TriangleAlert />, tone: "warn", title: "Payment didn't go through", text: "Nothing was charged. You can order again from the shop." };
   }
@@ -42,6 +45,20 @@ export default function Buyer({ token }: { token: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   // The page follows the parcel and the case on its own until the order is finished.
   usePoll(reload, !!v && (v.case_open || !["CONFIRMED", "RESOLVED"].includes(v.state)), 5000);
+
+  // CK-09: PayPal restarts the payment as a new order, so the buyer can choose another method.
+  async function payAgain() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const next = await api.payAgain(token);
+      sessionStorage.setItem("doorstep:last_buyer_url", next.buyer_url);
+      window.location.assign(next.approve_url ?? next.buyer_url);
+    } catch (e) {
+      setActionError(String((e as Error).message));
+      setBusy(false);
+    }
+  }
 
   async function run(fn: () => Promise<BuyerView | void>, done?: string) {
     setBusy(true);
@@ -105,6 +122,12 @@ export default function Buyer({ token }: { token: string }) {
         </section>
 
         {v.case_open && v.rights && <RightsCard text={v.rights} />}
+
+        {v.can_pay_again && (
+          <button className="btn paypal lg block" disabled={busy} onClick={payAgain}>
+            {busy ? "Opening PayPal…" : "Pay another way"}
+          </button>
+        )}
 
         {actionError && <ErrorBox message={actionError} />}
 
