@@ -125,6 +125,10 @@ export default function Buyer({ token }: { token: string }) {
           )}
         </section>
 
+        {v.delivered_after_report_at && (
+          <LateArrival v={v} busy={busy} onArrived={() => run(() => api.arrived(token), "Thanks, the shop can see it arrived")} />
+        )}
+
         {v.case_open && v.rights && <RightsCard text={v.rights} />}
 
         {v.can_pay_again && (
@@ -209,6 +213,27 @@ export function RightsCard({ text }: { text: string }) {
       <h3 className="rights-head"><Scale size={16} aria-hidden />Your rights</h3>
       <p>{text}</p>
       <span className="faint">Information, not legal advice.</span>
+    </section>
+  );
+}
+
+/** AD-01/03: the courier scanned it delivered after the buyer reported it missing. Facts and one
+ *  optional tap; it never asks the buyer for money. */
+function LateArrival({ v, busy, onArrived }: { v: BuyerView; busy: boolean; onArrived: () => void }) {
+  const when = new Date(v.delivered_after_report_at!).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const shop = v.seller_name || "the shop";
+  return (
+    <section className="card col" aria-label="Delivered after your report">
+      <h3 className="row" style={{ gap: 8 }}><Truck size={16} color="var(--text-3)" aria-hidden />The courier now shows it delivered</h3>
+      <p>The courier scanned your parcel as delivered on {when}, after you reported it missing.</p>
+      {v.arrival_confirmed ? (
+        <div className="notice"><Check aria-hidden /><span>Thanks. {shop} can see it arrived.</span></div>
+      ) : (
+        <>
+          <p className="muted">If it has reached you, please tap below so {shop} knows. If it hasn't, there's nothing you need to do.</p>
+          <button className="btn lg block" disabled={busy} onClick={onArrived}><Check size={17} />It arrived</button>
+        </>
+      )}
     </section>
   );
 }

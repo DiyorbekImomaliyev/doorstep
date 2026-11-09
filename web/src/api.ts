@@ -30,6 +30,8 @@ export type BuyerView = {
   timeline: TimelineItem[];
   rights: string;
   can_pay_again: boolean; // CK-09: PayPal declined the payment method
+  delivered_after_report_at?: string | null; // AD-01: the courier scanned it delivered after the report
+  arrival_confirmed?: boolean; // AD-03: the buyer said it arrived
 };
 
 export type ReportOut = { case_id: string; status: string; message: string; rights: string };
@@ -208,6 +210,8 @@ export type DecisionView = {
   missing_signals: string[];
 };
 
+export type LateDelivery = { delivered_at: string; claim_withdrawn: boolean; buyer_says_arrived: boolean };
+
 export type CaseView = {
   case_id: string;
   state: string;
@@ -227,6 +231,7 @@ export type CaseView = {
   offer: { amount_minor: number; currency: string } | null;
   dispute_resolved?: boolean;
   can_close?: boolean;
+  delivered_after_report?: LateDelivery | null; // AD-01
 };
 
 export type VerifyReport = {
@@ -360,6 +365,7 @@ export const api = {
 
   buyer: (t: string) => call<BuyerView>("GET", `/api/buyer/${t}`),
   gotIt: (t: string) => call<BuyerView>("POST", `/api/buyer/${t}/got-it`),
+  arrived: (t: string) => call<BuyerView>("POST", `/api/buyer/${t}/arrived`),
   notHere: (t: string, reason: string, note: string) =>
     call<ReportOut>("POST", `/api/buyer/${t}/not-here`, { reason, note }),
 

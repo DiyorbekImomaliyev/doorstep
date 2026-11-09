@@ -3,7 +3,7 @@ import {
   Bot, Camera, CircleCheck, CircleHelp, CircleX, Copy, ExternalLink, FileText, Info, Landmark, Link2,
   Lightbulb, ListChecks, MessageSquare, QrCode, RefreshCw, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
 } from "lucide-react";
-import { api, type AgentRun, type CaseAction, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
+import { api, type AgentRun, type CaseAction, type CaseView, type LateDelivery, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
 import { Badge, Bar, ErrorBox, Loading, SectionHead, Timeline, useAsync, usePoll } from "../components/ui";
 import { FAILURE_POINT, METHOD, ROUTE, money, pct, riskTone, stateTone, when, type Tone } from "../format";
 
@@ -139,6 +139,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
         )}
 
         {c.state === "DISPUTE_EVIDENCE" && <section className="sec"><DisputeNote c={c} /></section>}
+        {c.delivered_after_report && <LateDeliveryPanel late={c.delivered_after_report} />}
         {c.scan_audit && <ScanAuditPanel audit={c.scan_audit} demo={c.order.simulated} />}
         {c.recovery && <RecoveryPanel token={token} recovery={c.recovery} primary={c.actions.length === 0} onChanged={(m) => { onChanged(m); reload(); }} />}
 
@@ -642,6 +643,33 @@ function CheckIcon({ result }: { result: string }) {
 }
 
 /** SA-01..05: the carrier's "Delivered" scan, checked against the carrier's own data. */
+/** AD-01..03: the courier scanned it delivered after the buyer reported it missing. Facts, the
+ *  claim Doorstep withdrew, and a neutral message the seller may send; nothing accuses the buyer. */
+function LateDeliveryPanel({ late }: { late: LateDelivery }) {
+  const day = new Date(late.delivered_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const message = `Hi, the courier now shows your order as delivered on ${day}, after you told us it hadn't arrived. ` +
+    "If it has reached you, could you let us know? We can agree what's fair: paying for it again or sending it back. " +
+    "If it hasn't arrived, there's nothing you need to do. Thank you.";
+  return (
+    <section className="sec" aria-label="Delivered after the report">
+      <SectionHead icon={<Truck aria-hidden />} title="Delivered after the report"
+        right={<Badge tone={late.buyer_says_arrived ? "good" : "neutral"}>{late.buyer_says_arrived ? "Buyer says it arrived" : "Buyer not asked yet"}</Badge>} />
+      <p className="muted" style={{ fontSize: 13 }}>
+        The courier scanned the parcel as delivered on {day}, after the buyer reported it missing.
+        {late.claim_withdrawn && " Doorstep withdrew the courier claim you had not submitted: a claim on a parcel the courier says it delivered would be refused."}
+        {late.buyer_says_arrived ? " The buyer tapped \u201cIt arrived\u201d on their page." : " The buyer's page asks them to tap \u201cIt arrived\u201d if it reached them."}
+      </p>
+      <details className="fold">
+        <summary><MessageSquare aria-hidden />Message to the buyer (optional)</summary>
+        <div className="col" style={{ gap: 10 }}>
+          <p className="prose small">{message}</p>
+          <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => navigator.clipboard?.writeText(message)}><Copy size={14} />Copy message</button>
+        </div>
+      </details>
+    </section>
+  );
+}
+
 function ScanAuditPanel({ audit, demo }: { audit: ScanAudit; demo: boolean }) {
   const v = AUDIT_VERDICT[audit.verdict];
   return (

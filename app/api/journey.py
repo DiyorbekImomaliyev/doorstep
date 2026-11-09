@@ -590,6 +590,23 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         s.commit()
         return buyer_view(s, order)
 
+    @router.post("/api/buyer/{token}/arrived", response_model=BuyerView, dependencies=[report_cap])
+    def arrived(token: str, request: Request, s: Db) -> BuyerView:
+        """AD-03: the parcel turned up after the buyer's report. Moves no money."""
+        from app.cases.late_delivery import NotDeliveredAfterReport, buyer_says_arrived
+
+        order = _order(s, token)
+        if _from_seller_browser(request, order):  # SL-08: only the buyer can say it arrived
+            raise HTTPException(409, "Only the buyer can say the parcel arrived.")
+        try:
+            buyer_says_arrived(s, order, actor=BUYER, now=deps.clock.now())
+        except NotDeliveredAfterReport:
+            raise HTTPException(
+                409, "The courier hasn't scanned this parcel as delivered since your report."
+            ) from None
+        s.commit()
+        return buyer_view(s, order)
+
     @router.post("/api/buyer/{token}/not-here", response_model=ReportOut, dependencies=[report_cap])
     def not_here(token: str, body: ReportIn, s: Db) -> ReportOut:
         order = _order(s, token)

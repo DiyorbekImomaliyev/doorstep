@@ -495,6 +495,9 @@ class BuyerView(BaseModel):
     rights: str = ""
     # CK-09: PayPal declined the payment method, so the buyer may pay another way.
     can_pay_again: bool = False
+    # AD-01/03: the carrier scanned it delivered after the buyer's report; did they say it came?
+    delivered_after_report_at: datetime | None = None
+    arrival_confirmed: bool = False
 
 
 _CASE_STATES = {OrderState.CASE_OPEN.value, OrderState.RESOLVED.value}
@@ -525,7 +528,10 @@ def buyer_view(s: Session, order: Order) -> BuyerView:
     if case is not None:
         message = buyer_outcome(s, order, case) or message
     reportable = {"IN_TRANSIT", "EXCEPTION", "DELIVERED", "PICKED_UP", "CONFIRMED"}
+    late = _late_delivery_view(s, order.id)
     return BuyerView(
+        delivered_after_report_at=late.delivered_at if late else None,
+        arrival_confirmed=bool(late and late.buyer_says_arrived),
         can_pay_again=can_pay_again(order),
         order_ref=order.id[:8].upper(),
         item=order.item_description,
@@ -897,6 +903,25 @@ class OfferOption(BaseModel):
     currency: str
 
 
+class LateDeliveryView(BaseModel):
+    delivered_at: datetime
+    claim_withdrawn: bool  # AD-02: an unsubmitted carrier claim was withdrawn
+    buyer_says_arrived: bool  # AD-03
+
+
+def _late_delivery_view(s: Session, order_id: str) -> LateDeliveryView | None:
+    from app.cases.late_delivery import late_delivery
+
+    late = late_delivery(s, order_id)
+    if late is None:
+        return None
+    return LateDeliveryView(
+        delivered_at=late.delivered_at,
+        claim_withdrawn=late.claim_withdrawn,
+        buyer_says_arrived=late.buyer_says_arrived,
+    )
+
+
 class CaseView(BaseModel):
     case_id: str
     state: str
@@ -916,6 +941,8 @@ class CaseView(BaseModel):
     offer: OfferOption | None = None  # PP-09: a refund the seller can offer inside the dispute
     dispute_resolved: bool = False  # PO-14: PayPal resolved the dispute this case waited on
     can_close: bool = False  # PO-15: a person may close this held case without a refund
+    # AD-01: the carrier scanned the parcel delivered after the buyer reported it missing.
+    delivered_after_report: LateDeliveryView | None = None
 
 
 def _dispute_resolved(s: Session, order_id: str) -> bool:
@@ -1004,6 +1031,7 @@ def case_view(s: Session, case: Case, rule_names: dict[str, str] | None = None) 
         offer = OfferOption(amount_minor=amount.amount_minor, currency=amount.currency.value)
     receipts = len(list(s.scalars(select(Receipt.id).where(Receipt.case_id == case.id))))
     return CaseView(
+        delivered_after_report=_late_delivery_view(s, order.id),
         dispute_resolved=case.state == CaseState.CLOSED.value and _dispute_resolved(s, order.id),
         can_close=case.state == CaseState.HOLD_FOR_REVIEW.value
         and not refund_in_flight(s, case.id),

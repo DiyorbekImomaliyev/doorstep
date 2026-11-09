@@ -127,6 +127,7 @@ class _Spec:
     seal_scan_after_h: int | None = None  # the buyer scanned the seal this long after delivery
     dispute: bool = False  # the buyer opened a (simulated) PayPal dispute before reporting
     approved: bool = False  # Maria already approved this refund (AP-01 precedent)
+    arrives_after_report: bool = False  # AD-01: the courier scans it delivered after the report
 
 
 _PACKED = (EvidenceKind.PACKING_PHOTO, {"verdict": "match", "expected_weight_g": 900})
@@ -394,6 +395,26 @@ SCENARIO: tuple[_Spec, ...] = (
         delivered_zip="B12 0XS",
         approved=True,
     ),
+    # AD-01: tracking went quiet, Maria refunded it as lost, then the courier scanned it delivered.
+    _Spec(
+        "late-trousers",
+        "Hannah Cole",
+        "Cord trousers, olive, W32",
+        4600,
+        "GBP",
+        "GB",
+        "home",
+        _O.IN_TRANSIT,
+        "M14 5RX",
+        "Manchester",
+        110,
+        (_PACKED,),
+        report=ClaimReason.NOT_RECEIVED,
+        stale=True,
+        carrier="royal_mail",
+        approved=True,
+        arrives_after_report=True,
+    ),
 )
 
 
@@ -581,7 +602,28 @@ def _build(
                 case = session.get(Case, report.case_id)
                 assert case is not None
                 actions.act(case, "approve", seller_approver(seller_id))
+            if spec.arrives_after_report:
+                _arrive_after_report(session, order, shipment, report.case_id)
     session.flush()
+
+
+def _arrive_after_report(session: Session, order: Order, shipment: Shipment, case_id: str) -> None:
+    """AD-01: the courier's delivered scan lands just after the buyer's report."""
+    from app.cases.late_delivery import record_delivered_scan
+
+    case = session.get(Case, case_id)
+    assert case is not None
+    at = case.opened_at + timedelta(seconds=1)
+    event = TrackingEvent(
+        shipment_id=shipment.id,
+        status="DELIVERED",
+        occurred_at=at,
+        applied=False,  # the case is open: the order's state stays where it is (SM-09)
+        raw={"tracking_status": {"status": "DELIVERED"}},
+    )
+    session.add(event)
+    session.flush()
+    record_delivered_scan(session, order, event, now=at)
 
 
 def _summary(session: Session, tag: str, seller_id: str) -> SeedSummary:
