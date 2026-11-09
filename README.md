@@ -11,6 +11,48 @@ recover the loss from the carrier.
 **Live app:** https://doorstep-ojmg.onrender.com · PayPal sandbox and Shippo test mode · UK and US
 orders
 
+[Design](#design-at-a-glance) · [Try it](#try-it-in-60-seconds) · [Why it matters](#why-it-matters) ·
+[PayPal integration](#paypal-integration) · [Product tour](#product-tour) ·
+[What makes it different](#what-makes-it-different) · [Quality](#quality) ·
+[Run it locally](#run-it-locally)
+
+## Overview
+
+A courier's "Delivered" scan wins every argument today. The buyer is told to wait, the honest
+seller pays for the parcel, and the carrier that lost it walks away. UK law already says the risk
+stays with the seller until the buyer **physically holds** the parcel
+([Consumer Rights Act 2015, s.29](https://www.legislation.gov.uk/ukpga/2015/15/section/29)), but
+nobody can cheaply prove possession.
+
+Doorstep closes that gap inside PayPal. It runs every order through five stages (prevent, prove,
+resolve, recover, learn) and settles the money through PayPal's own APIs when something still goes
+wrong.
+
+**One case, start to finish.** Royal Mail scans Sam's £60 jacket "Delivered", and Sam taps **Not
+here**. Doorstep's audit finds the scan was made in E8 while the parcel was going to N1, in the same
+minute as two more of Maria's parcels to two other areas. Under the UK rule the parcel was still
+Maria's risk, so Doorstep recommends the refund and Maria approves it in one tap; the refund goes
+to Sam through PayPal. Maria gets a Royal Mail claim pack in which every sentence cites a checked
+fact, with the deadline from Royal Mail's own terms.
+
+## Design at a glance
+
+One FastAPI web service, one background worker and one Postgres, on Render. Models write words and
+plans; code decides who is liable and how much. Only `app/policy` can move money, and every PayPal
+write goes through an outbox with one idempotency key. Click a diagram to open it full size.
+
+**System architecture:** who talks to what, and the one path money takes.
+
+![System architecture: web service, worker and Postgres on Render, with PayPal, Shippo and two model providers](docs/img/architecture.svg)
+
+**Money path:** from "Not here" to a PayPal refund, exactly once, and what happens when a step fails.
+
+![The money path: the request writes a decision and an outbox job in one transaction; the worker re-checks PayPal and refunds with one idempotency key](docs/img/money-path.svg)
+
+**AI system:** what each model sees and returns, and the code that checks it before anything is kept.
+
+![AI system design: inputs as data, one guarded model call, code-side verification, and a money boundary no model output can cross](docs/img/ai-system.svg)
+
 ## Try it in 60 seconds
 
 1. Open the [live app](https://doorstep-ojmg.onrender.com) and press **Open my demo shop**. You get
@@ -35,19 +77,6 @@ accounts**, and use the personal account's email and password (or create one the
 >   which every screen labels "simulated"; locker booking and rerouting; the carrier's scan
 >   locations. Doorstep prepares carrier claims, and the seller files them on the carrier's site.
 >   The delivery-risk model is trained on synthetic data ([model card](docs/MODEL_CARD_risk.md)).
-
-![The Delivery Control Room: KPI cards, a prevention tip and the orders that need the seller](docs/img/screens/control-room.png)
-
-## Overview
-
-A courier's "Delivered" scan wins every argument today. The buyer is told to wait, the honest
-seller pays for the parcel, and the carrier that lost it walks away. UK law already says the risk
-stays with the seller until the buyer **physically holds** the parcel
-([Consumer Rights Act 2015, s.29](https://www.legislation.gov.uk/ukpga/2015/15/section/29)), but
-nobody can cheaply prove possession.
-
-Doorstep closes that gap inside PayPal. It runs every order through five stages (prevent, prove,
-resolve, recover, learn) and settles the money through PayPal's own APIs when something still goes wrong.
 
 ## Why it matters
 
@@ -125,9 +154,22 @@ disputes and webhook verification use REST through one thin client (`app/paypal_
 
 ## Product tour
 
-### Order grid
+Each screenshot opens with a click.
 
-![The order grid with one row's detail open: journey, proof on file, delivery risk and case](docs/img/screens/grid-detail.png)
+### Control Room
+
+The seller's home. KPI cards count the orders that need the seller, parcels in transit, money at
+stake and money recovered from carriers; a click filters the grid. A prevention tip comes from the
+seller's own cases, and the greeting names the next thing to do.
+
+<details>
+<summary>Screenshot: the Delivery Control Room</summary>
+
+<img src="docs/img/screens/control-room.png" alt="The Delivery Control Room: KPI cards, a prevention tip and the orders that need the seller" width="100%">
+
+</details>
+
+### Order grid
 
 | Column | What it shows |
 | --- | --- |
@@ -139,13 +181,16 @@ disputes and webhook verification use REST through one thin client (`app/paypal_
 | **Delivery** | Shows the method the buyer chose: home, locker or signature. |
 | **Next** | Starts the one action the order needs now: pack, review, approve or send evidence. |
 
-The KPI cards above the grid count the orders that need the seller, parcels in transit, money at
-stake and money recovered; a click filters the grid. Each row opens a detail panel without leaving
-the table.
+Each row opens a detail panel without leaving the table.
+
+<details>
+<summary>Screenshot: an order with its detail panel open</summary>
+
+<img src="docs/img/screens/grid-detail.png" alt="The order grid with one row's detail open: journey, proof on file, delivery risk and case" width="100%">
+
+</details>
 
 ### Case
-
-<img src="docs/img/screens/case.png" alt="A case: likely cause, rule, delivered-scan audit and carrier recovery" width="440" align="right">
 
 - **Decision** states the likely cause, the confidence and the refund, with the rule file and
   version it used.
@@ -156,9 +201,22 @@ the table.
 - **Money** lists every PayPal write with its id and status.
 - **Timeline** records each step and links to the signed receipts.
 
-<br clear="right">
+<details>
+<summary>Screenshot: Sam's case, with the contradicted delivered scan</summary>
+
+<img src="docs/img/screens/case.png" alt="A case: likely cause, rule, delivered-scan audit and carrier recovery" width="520">
+
+</details>
 
 ### Buyer's page
+
+- **Reports** a problem with taps; a note is optional.
+- **Answers** within seconds with the regional rule and the buyer's rights, and shows each next
+  step.
+- **Opens** from a signed link, with no account and no login.
+
+<details>
+<summary>Screenshot: the buyer reports a problem, and gets an answer</summary>
 
 <p>
   <img src="docs/img/screens/buyer-report.png" alt="The buyer reports a problem with taps" width="260">
@@ -166,10 +224,7 @@ the table.
   <img src="docs/img/screens/buyer-answer.png" alt="The buyer gets an answer within seconds" width="260">
 </p>
 
-- **Reports** a problem with taps; a note is optional.
-- **Answers** within seconds with the regional rule and the buyer's rights, and shows each next
-  step.
-- **Opens** from a signed link, with no account and no login.
+</details>
 
 Buyers' AI assistants use the same process through the MCP server at `/agent/mcp`: one tool reads
 the delivery status, one reports a problem. Neither can move money. Every status answer carries a
@@ -177,21 +232,20 @@ signed delivery proof the assistant can check (see below).
 
 ### Insights
 
-![Insights on AG Studio: orders, case rate, prevention rate, net delivery loss and where the money went](docs/img/screens/insights.png)
-
 - **Reports** orders, case rate, prevention rate and net delivery loss, week by week, on AG Studio.
 - **Breaks down** where deliveries failed, where the money went and which delivery method keeps
   proof on file.
 - **Ask Doorstep** turns a plain question into a chart. The model picks the measure; the browser
   computes every number.
 
-### Signed receipts
+<details>
+<summary>Screenshot: Insights on AG Studio</summary>
 
-<p>
-  <img src="docs/img/screens/receipts.png" alt="Public receipt check: every receipt in the chain verified" width="440">
-  &nbsp;
-  <img src="docs/img/screens/proof.png" alt="Public proof check: a signed delivery record shown as genuine, with its facts" width="220">
-</p>
+<img src="docs/img/screens/insights.png" alt="Insights on AG Studio: orders, case rate, prevention rate, net delivery loss and where the money went" width="100%">
+
+</details>
+
+### Signed receipts and delivery proof
 
 - **Signs** every money decision with Ed25519 and chains it to the previous receipt by hash.
 - **Re-checks** the whole chain on a public page, `/verify/{case}`. Any edit breaks it.
@@ -200,6 +254,17 @@ signed delivery proof the assistant can check (see below).
   chain. Facts only: no address, no name, never who is at fault. The buyer opens it from their
   page, a buyer's AI assistant gets it from `get_delivery_status`, and anyone checks it at `/proof`
   against the public key at `/.well-known/jwks.json`. One changed character fails the check.
+
+<details>
+<summary>Screenshot: the public receipt check and the delivery proof check</summary>
+
+<p>
+  <img src="docs/img/screens/receipts.png" alt="Public receipt check: every receipt in the chain verified" width="440">
+  &nbsp;
+  <img src="docs/img/screens/proof.png" alt="Public proof check: a signed delivery record shown as genuine, with its facts" width="220">
+</p>
+
+</details>
 
 ## What makes it different
 
@@ -219,9 +284,11 @@ signed delivery proof the assistant can check (see below).
   A refund counts as sent only when PayPal says COMPLETED; a pending one waits for PayPal.
 - **Signs every money decision.** Chains Ed25519-signed receipts by hash; a public page re-checks
   the whole chain.
-- **Signs what happened at the door, for AI assistants too.** Agent-payment protocols sign what a
-  buyer asked for and paid; none signs the delivery. Doorstep's delivery proof is a standard JWS
-  any assistant can verify against a published key, without trusting whoever passed it on.
+- **Signs what happened at the door, for AI assistants too.** Agent-payment mandates (AP2) sign
+  what a shopper authorised and paid, and "a valid AP2 mandate does not prove that delivery
+  occurred" ([VCAP-AP2, an individual Internet-Draft, Sep 2026](https://datatracker.ietf.org/doc/html/draft-stone-vcap-ap2-binding-01)).
+  Doorstep's delivery proof is a working answer for parcels: a standard JWS any assistant can
+  verify against a published key, without trusting whoever passed it on.
 - **Keeps AI away from money by construction.** Models write words and plans; code decides
   liability and limits. Import contracts in CI prove no AI code can reach a PayPal write.
 
@@ -302,18 +369,14 @@ make lint test            # lint, types, import contracts, tests
 **Deploy:** `render.yaml` creates the web service, the worker and Postgres in one step. Secrets are
 set in the Render dashboard, never in the repository.
 
-## Design
+## Design in detail
 
-A modular monolith on Render: **one FastAPI web service, one background worker, one Postgres.**
-People reach it through signed links, buyers' AI assistants through MCP, and PayPal and Shippo
-through verified webhooks. Open a section for the detail.
+The diagrams are at the [top](#design-at-a-glance). People reach Doorstep through signed links,
+buyers' AI assistants through MCP, and PayPal and Shippo through verified webhooks. Open a section
+for the detail.
 
 <details>
-<summary><b>Architecture and one order, end to end</b></summary>
-
-![System architecture: web service, worker and Postgres on Render, with PayPal, Shippo and two model providers](docs/img/architecture.svg)
-
-**One order, end to end:**
+<summary><b>One order, end to end</b></summary>
 
 1. **Checkout.** The buyer picks home, locker or signature; Doorstep creates the PayPal order with
    those shipping options. This is one of two synchronous PayPal writes, because the buyer is
@@ -336,20 +399,6 @@ through verified webhooks. Open a section for the detail.
    the same key, so PayPal returns the first result instead of refunding twice.
 8. **Recover.** For a carrier fault, the seller gets a claim pack, submits it on the carrier's
    site, and marks it paid or refused.
-
-<details>
-<summary><b>Money path</b>: from "Not here" to a PayPal refund</summary>
-
-![Sequence diagram of the money path](docs/img/money-path.svg)
-
-</details>
-
-<details>
-<summary><b>AI system</b>: what each model sees, returns and is checked against</summary>
-
-![AI system design](docs/img/ai-system.svg)
-
-</details>
 
 </details>
 
