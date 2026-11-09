@@ -408,6 +408,9 @@ export type OrdersGridProps = {
 export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onShown }: OrdersGridProps) {
   // Lanes only when they add something: a list with one lane (e.g. "Needs you") stays flat.
   const grouped = useMemo(() => new Set(rows.map(laneOf)).size > 1, [rows]);
+  // Risk is scored only before delivery, so a list of delivered orders (e.g. "Needs you") would
+  // show a column of dashes: the column appears only when some row has a score.
+  const scored = useMemo(() => rows.some((r) => r.delivery_risk != null), [rows]);
 
   const columns = useMemo<ColDef<OrderRow>[]>(() => [
     {
@@ -427,7 +430,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onSho
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <JourneyCell r={p.data} /> : null),
     },
     {
-      colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned",
+      colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned", hide: !scored,
       filter: "agNumberColumnFilter", tooltipField: "delivery_risk", tooltipComponent: RiskTip,
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <RiskCell r={p.data} /> : null),
     },
@@ -466,7 +469,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, onSho
       suppressMovable: true, suppressColumnsToolPanel: true, filter: false, cellClass: "cell-end",
       cellRenderer: ActionCell, cellRendererParams: { onOpen },
     },
-  ], [grouped, onOpen]);
+  ], [grouped, onOpen, scored]);
 
   const getContextMenuItems = useCallback((p: GetContextMenuItemsParams<OrderRow>): (DefaultMenuItem | MenuItemDef)[] => {
     const r = p.node?.data;
