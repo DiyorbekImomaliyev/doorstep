@@ -72,8 +72,17 @@ def assemble_signals(
         )
 
     proofs = {p for e in evidence for p in _PROOFS_BY_KIND.get(e.kind, ())}
-    if any(e.kind == EvidenceKind.SEAL_SCAN.value and e.ai_result.get("counted") for e in evidence):
-        proofs.add(ProofKind.BUYER_SEAL_SCAN)  # SL-04: only a scan after carrier handover counts
+    # SL-08: a seal scan proves possession only after the carrier's delivered scan. A scan while
+    # the parcel was in transit proves nothing about the buyer, so it leaves the case to the
+    # other evidence (never against the buyer).
+    delivered_at = min((e.occurred_at for e in events if e.status == "DELIVERED"), default=None)
+    if delivered_at is not None and any(
+        e.kind == EvidenceKind.SEAL_SCAN.value
+        and e.ai_result.get("counted")
+        and e.created_at >= delivered_at
+        for e in evidence
+    ):
+        proofs.add(ProofKind.BUYER_SEAL_SCAN)
     if order.state == OrderState.PICKED_UP.value:  # picked up from a locker with the code
         proofs.add(ProofKind.LOCKER_PICKUP_CODE)
     delivered = any(e.status == "DELIVERED" for e in events)

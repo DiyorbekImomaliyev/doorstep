@@ -210,12 +210,12 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
             )}
             <div className="grow" />
             {c.offer && (
-              <button className="btn ghost" disabled={busy} onClick={() => act("make-offer")} title="PayPal shows the buyer this offer inside the dispute; PayPal refunds only if the buyer accepts">
+              <button className={offerFirst(c) ? "btn primary lg" : "btn ghost"} disabled={busy} onClick={() => act("make-offer")} title="PayPal shows the buyer this offer inside the dispute; PayPal refunds only if the buyer accepts">
                 <Wallet size={15} />Offer {money(c.offer.amount_minor, c.offer.currency)} refund in the dispute
               </button>
             )}
             {c.actions.includes("send-evidence") && (
-              <button className="btn primary lg" disabled={busy} onClick={() => act("send-evidence")}><Send size={16} />Send evidence to PayPal</button>
+              <button className={offerFirst(c) ? "btn ghost" : "btn primary lg"} disabled={busy} onClick={() => act("send-evidence")}><Send size={16} />Send evidence to PayPal</button>
             )}
             {c.actions.includes("approve") && (
               <button className={c.state === "HOLD_FOR_REVIEW" ? "btn lg" : "btn primary lg"} disabled={busy} onClick={() => act("approve")}>
@@ -238,6 +238,10 @@ const MONEY_STATUS: Record<string, string> = {
   blocked: "Held for review", unconfirmed: "Not confirmed",
 };
 
+/** In a dispute where the courier's own data contradicts its delivered scan, offering the refund
+ * inside the dispute is the better first move than sending weak evidence. */
+const offerFirst = (c: CaseView) => !!c.offer && c.scan_audit?.verdict === "contradicted";
+
 /** One line at the top of every case: what Doorstep recommends, and why, before any detail. */
 function Recommendation({ c, refund, queued }: { c: CaseView; refund: string | null; queued: boolean }) {
   const d = c.decision;
@@ -255,6 +259,8 @@ function Recommendation({ c, refund, queued }: { c: CaseView; refund: string | n
     text = `${why}.`;
   } else if (c.state === "HOLD_FOR_REVIEW") {
     [title, text] = ["Recommended: check the evidence first", "The evidence disagrees, so Doorstep decided nothing on its own. Nothing has been refused."];
+  } else if (c.state === "DISPUTE_EVIDENCE" && offerFirst(c)) {
+    [title, text] = [`Recommended: offer the refund in the dispute`, "The courier's own data doesn't support its delivered scan, so the evidence is weak. PayPal refunds only if the buyer accepts."];
   } else if (c.state === "DISPUTE_EVIDENCE") {
     [title, text] = ["Recommended: send the evidence to PayPal", "The buyer opened a PayPal dispute, so PayPal decides. The proof is ready below."];
   } else if (c.state === "AUTO_REFUND") {

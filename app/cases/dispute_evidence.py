@@ -17,7 +17,7 @@ from app.ai.explainer import _ACCUSING
 from app.orders.models import Case, Decision, Order, Shipment, TrackingEvent
 from app.policy.carriers import normalise
 from app.policy.evidence import NOTES_MAX, EvidenceSubmission
-from app.proof.seal import counted_scan
+from app.proof.seal import proof_scan
 
 # Carrier codes PayPal accepts in tracking_info; any other carrier is sent as OTHER.
 PAYPAL_CARRIER = {"royal_mail": "ROYAL_MAIL", "usps": "USPS", "ups": "UPS", "fedex": "FEDEX"}
@@ -55,15 +55,17 @@ def build_submission(
                 + "; ".join(f"{e.status} {_when(e.occurred_at)}" for e in events[-_MAX_EVENTS:])
                 + "."
             )
-    seal = counted_scan(session, order.id)
+    seal = proof_scan(session, order.id)  # SL-08: only a scan after the delivered scan
     if seal is not None:
         lines.append(
             f"Possession seal: the QR code packed inside the parcel was scanned on "
-            f"{_when(seal.created_at)}, after the carrier had handled the parcel."
+            f"{_when(seal.created_at)}, after the carrier's delivered scan."
         )
+    # The audit goes in only when the carrier's data agrees with itself; the raw tracking above is
+    # there either way, so nothing the carrier reported is held back.
     audit = decision.signals.get("scan_audit") or {}
-    if audit.get("verdict"):
-        lines.append(f"Delivered-scan audit of the carrier's data: {audit['verdict']}.")
+    if audit.get("verdict") == "consistent":
+        lines.append("Delivered-scan audit of the carrier's data: consistent.")
     lines.append(f"Doorstep's signed receipts for this case can be verified at {verify_url}.")
     notes = "\n".join(lines)[:NOTES_MAX]
     if _ACCUSING.search(notes):

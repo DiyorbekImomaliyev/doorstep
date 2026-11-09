@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import segno
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.cases.signals import EvidenceKind
@@ -81,6 +81,27 @@ def seal_scans(session: Session, order_id: str) -> list[Evidence]:
 
 def counted_scan(session: Session, order_id: str) -> Evidence | None:
     return next((e for e in seal_scans(session, order_id) if e.ai_result.get("counted")), None)
+
+
+def proof_scan(session: Session, order_id: str) -> Evidence | None:
+    """SL-08: the counted scan made after the carrier's first delivered scan, or None. Only this
+    one proves possession (the same test assemble_signals applies)."""
+    shipment_ids = select(Shipment.id).where(Shipment.order_id == order_id)
+    delivered_at = session.scalar(
+        select(func.min(TrackingEvent.occurred_at))
+        .where(TrackingEvent.shipment_id.in_(shipment_ids))
+        .where(TrackingEvent.status == "DELIVERED")
+    )
+    if delivered_at is None:
+        return None
+    return next(
+        (
+            e
+            for e in seal_scans(session, order_id)
+            if e.ai_result.get("counted") and e.created_at >= delivered_at
+        ),
+        None,
+    )
 
 
 def seller_browser_for(links: LinkSigner, cookie: str | None, seller_id: str) -> bool:
