@@ -201,7 +201,9 @@ def _buyer_next(ctx: ExplainContext) -> str:
     """What happens next, in the buyer's terms: who acts, and for how much (never an accusation)."""
     amount = money_text(ctx.refund) if ctx.refund is not None else None
     if ctx.route == CaseState.AUTO_REFUND and amount:
-        return f"Your refund of {amount} has been sent through PayPal."
+        # Written when the refund is queued, before PayPal has it: "on its way" stays true
+        # while the outbox sends it and PayPal moves it (approved Nov 9, 2026).
+        return f"Your refund of {amount} is on its way through PayPal."
     if ctx.route == CaseState.AWAITING_SELLER:
         if ctx.reship:
             return "The seller has been asked to confirm a replacement, sent to you again."

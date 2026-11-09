@@ -13,7 +13,7 @@ from tests.unit.test_ex_explainer import _ctx
 @pytest.mark.parametrize(
     ("route", "extra", "says"),
     [
-        (CaseState.AUTO_REFUND, {}, "Your refund of £40.00 has been sent through PayPal."),
+        (CaseState.AUTO_REFUND, {}, "Your refund of £40.00 is on its way through PayPal."),
         (CaseState.AWAITING_SELLER, {}, "The seller has been asked to approve a refund of £40.00."),
         (CaseState.AWAITING_SELLER, {"reship": True, "refund": None}, "confirm a replacement"),
         (
