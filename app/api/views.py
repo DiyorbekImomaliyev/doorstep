@@ -290,6 +290,9 @@ _AGENT_TITLES = {
     "list_disputes": "checked PayPal disputes",
     "get_dispute": "read the PayPal dispute",
     "request_refund": "asked the policy for the refund",
+    "record_dispute": "found an open PayPal dispute",  # AT-07: Doorstep's reactions to a read
+    "queue_tracking": "queued tracking for the PayPal payment",
+    "hold_for_review": "held the case for a person",
     "finish": "finished",
 }
 

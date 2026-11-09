@@ -58,6 +58,7 @@ from app.paypal_client.reads import DISPUTE_LIST_MAX_AGE
 from app.paypal_client.types import DisputeSummary, RefundInfo, RefundResult
 from app.policy.autopilot import RULE_APPROVER, matching_rule
 from app.policy.fingerprint import evidence_fingerprint
+from app.policy.inflight import refund_in_flight as refund_in_flight  # one definition
 from app.policy.ports import DisputeLookup, RefundGateway
 from app.policy.reasons import Reason, message
 from app.policy.rules import RuleBook, effective_limits
@@ -256,20 +257,6 @@ def _refunded_minor(session: Session, order_id: str, *, statuses: tuple[str, ...
 
 def _order_money(order: Order, minor: int) -> Money:
     return Money(amount_minor=minor, currency=Currency(order.currency))
-
-
-def refund_in_flight(session: Session, case_id: str) -> bool:
-    """A refund of this case is queued or pending at PayPal (PO-13, PO-15)."""
-    found = session.scalar(
-        select(MoneyAction.id).where(
-            MoneyAction.case_id == case_id,
-            MoneyAction.kind.in_(_REFUND_KINDS),
-            MoneyAction.status.in_(
-                (MoneyActionStatus.QUEUED.value, MoneyActionStatus.PENDING.value)
-            ),
-        )
-    )
-    return found is not None
 
 
 def _remaining_refundable(session: Session, order: Order) -> Money:

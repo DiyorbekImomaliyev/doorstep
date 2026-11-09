@@ -378,7 +378,7 @@ cap.
 | Packing check | Vision model | match, item, colour, size seen, confidence | below a confidence floor it is "check", never a pass | "Please check" |
 | Explainer | LLM | summary, buyer message and claim letter | must match the rule outcome; no accusation, no new amount, no echo of or answer to the buyer's note, no promise or claim of a refund before it happens | template from the decision |
 | Claim pack | LLM | sentences, each citing fact ids | unknown fact or a number not in its facts → sentence dropped | template built from facts |
-| Case agent | LLM planner + PayPal Agent Toolkit | one read-only step at a time | tool allowlist; the refund tool only asks the policy | fixed plan, labelled |
+| Case agent | LLM planner + PayPal Agent Toolkit | one read-only step at a time; each read becomes a typed observation | tool allowlist; code reacts to what PayPal showed (a listed dispute is recorded and routed to evidence, missing tracking re-queues the tracking job, an unreceived payment holds the case); the refund tool asks the policy only when PayPal agrees with Doorstep | Doorstep's own plan, step by step on the same observations |
 | Policy check | LLM | misleading lines in the seller's policy | quotes must be word for word; numbers must be in the facts | "unchecked" |
 | Policy reader | BM25, then LLM | answer with cited passages | every cited id must be one retrieved | the rule file quoted |
 | Ask Doorstep | LLM | a chart plan from a fixed menu; no data rows sent | the browser computes every number from the seller's rows | keyword match on the menu |

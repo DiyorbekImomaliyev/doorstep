@@ -13,6 +13,7 @@ from app.orders.state import transition_order
 from app.paypal_client.idempotency import request_id_for
 from app.proof.seller_protection import record_seller_protection
 from app.worker.gateway import OrdersGateway
+from app.worker.kinds import ADD_TRACKING as ADD_TRACKING  # re-exported for existing importers
 from app.worker.models import Job
 from app.worker.runner import PermanentError
 from app.worker.simulated import is_simulated
@@ -21,7 +22,6 @@ log = logging.getLogger("doorstep.worker")
 
 CAPTURE_ORDER = "paypal.capture_order"  # payload: {"order_id": <Doorstep order id>}
 CAPTURE_FAILED = "FAILED"  # our marker: the capture call itself failed; nothing was charged
-ADD_TRACKING = "paypal.add_tracking"  # payload: {"shipment_id": <Doorstep shipment id>}
 
 # Doorstep/Shippo carrier token -> PayPal ShipmentCarrier member.
 # Anything else (e.g. Shippo's test carrier "shippo") is sent as OTHER.

@@ -487,7 +487,17 @@ const AGENT_STEP: Record<string, string> = {
   list_disputes: "Checked PayPal disputes",
   get_dispute: "Read the PayPal dispute",
   request_refund: "Asked Doorstep's policy",
+  // AT-07: Doorstep acting on what a read showed
+  record_dispute: "Found an open PayPal dispute",
+  queue_tracking: "Queued tracking for PayPal",
+  hold_for_review: "Held for a person",
   finish: "Finished",
+};
+const AGENT_REACTIONS = new Set(["record_dispute", "queue_tracking", "hold_for_review"]);
+/** When a reaction replaced the question to the policy, the badge says what happened instead. */
+const REACTION_OUTCOME: Record<string, { tone: Tone; label: string }> = {
+  record_dispute: { tone: "neutral", label: "Dispute on file" },
+  hold_for_review: { tone: "accent", label: "Held for a person" },
 };
 
 const AGENT_OUTCOME: Record<string, { tone: Tone; label: string }> = {
@@ -549,13 +559,20 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
     if (auto && !AUTO_RAN.has(caseId)) { AUTO_RAN.add(caseId); void go(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, caseId]);
-  const outcome = run?.outcome ? AGENT_OUTCOME[run.outcome] : null;
+  const reacted = run?.steps.find((s) => REACTION_OUTCOME[s.tool]);
+  const outcome = run?.outcome ? AGENT_OUTCOME[run.outcome] : reacted ? REACTION_OUTCOME[reacted.tool] : null;
   const shown = run?.steps.filter((s) => s.tool !== "finish") ?? [];
+  // AT-07: when the agent did not ask the policy, its last step says why.
+  const closing = run && !run.outcome ? run.steps.find((s) => s.tool === "finish")?.summary.replace(/^Done\.\s*/, "") : "";
   return (
     <section className="sec" aria-label="Doorstep agent">
       <SectionHead icon={<Bot aria-hidden />} title="Doorstep agent" right={outcome && <Badge tone={outcome.tone}>{outcome.label}</Badge>} />
       <p className="muted" style={{ fontSize: 13 }} title="PayPal Agent Toolkit, read-only. Money goes only through the policy service, within your limits.">
-        {run ? "Checked PayPal for you, read-only, then asked your policy. It can't approve for you." : "Checks PayPal for you (read-only), then asks your policy. It can't approve for you."}
+        {run
+          ? run.outcome
+            ? "Checked PayPal for you, read-only, then asked your policy. It can't approve for you."
+            : "Checked PayPal for you, read-only, and acted on what it found. It can't approve for you."
+          : "Checks PayPal for you (read-only), then asks your policy. It can't approve for you."}
       </p>
       {busy && !run && <Loading height={96} />}
       {err && <ErrorBox message={err} />}
@@ -563,7 +580,9 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
         <ol className="checks agent-checks">
           {shown.map((s, i) => (
             <li key={i}>
-              <CircleCheck className="r-supports" aria-hidden />
+              {AGENT_REACTIONS.has(s.tool)
+                ? <Zap className="r-react" aria-label="Doorstep acted on this" />
+                : <CircleCheck className="r-supports" aria-hidden />}
               <span className="col" style={{ gap: 1, minWidth: 0 }}>
                 <strong style={{ fontWeight: 600 }}>{AGENT_STEP[s.tool] ?? s.tool}</strong>
                 <span className="muted">{s.summary}</span>
@@ -572,11 +591,12 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
           ))}
         </ol>
       )}
+      {closing && <p style={{ fontSize: 13, margin: 0 }}><strong style={{ fontWeight: 600 }}>No refund asked.</strong> {closing}</p>}
       <div className="row wrap" style={{ gap: 10 }}>
         <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => go()}>{busy ? "Checking PayPal…" : run ? "Run the agent again" : "Run the agent"}</button>
         {run && (
           <span className="faint" title={run.planner}>
-            {run.planner.startsWith("model") ? "Planned by AI, within code checks." : "Ran the standard checklist."} Every step is in the timeline.
+            {run.planner.startsWith("model") ? "Planned by AI, within code checks." : "Doorstep's checks, each step chosen by what PayPal showed."} Every step is in the timeline.
           </span>
         )}
       </div>

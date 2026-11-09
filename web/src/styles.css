@@ -237,6 +237,7 @@ input:focus, textarea:focus, select:focus { outline: 3px solid var(--accent-soft
 .r-contradicts { color: var(--bad); }
 .r-supports { color: var(--good); }
 .r-unknown, .r-context { color: var(--text-3); }
+.r-react { color: var(--accent); }
 
 details.fold { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 0; }
 details.fold summary { cursor: pointer; font-weight: 550; padding: 11px 14px; list-style: none; display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
