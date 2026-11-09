@@ -2,6 +2,7 @@
 
 setup:
 	uv sync
+	cd web && npm ci
 
 lint:
 	uv run ruff check app tests evals scripts tuning

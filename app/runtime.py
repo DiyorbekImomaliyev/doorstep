@@ -143,7 +143,8 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
     clock = SystemClock()
     settings = _settings()
     import_all_models()
-    database_url = env("DATABASE_URL", f"sqlite:///{ROOT / 'doorstep.db'}")
+    # Unset or blank: a local SQLite file, so a fresh clone runs with no database server.
+    database_url = env("DATABASE_URL") or f"sqlite:///{ROOT / 'doorstep.db'}"
     engine = make_engine(database_url)
     if create_tables:
         Base.metadata.create_all(engine)  # no migrations in the hackathon build
