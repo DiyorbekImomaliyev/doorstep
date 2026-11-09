@@ -1,12 +1,15 @@
 # PayPal Seller Protection checks (RL-07, RL-10).
 id: paypal_sp_v1
 kind: seller_protection
-source: "PayPal Seller Protection (CEMEA) https://paypal.com/mk/legalhub/sellerprotection-cemea; signature guidance https://www.paypal.com/lu/cshelp/article/how-do-i-prove-that-ive-sent-an-item-or-digital-goods-to-the-buyer-help177"
-version: "2026-11-04"
+source: "PayPal Seller Protection (CEMEA) https://paypal.com/mk/legalhub/sellerprotection-cemea; signature guidance (US) https://www.paypal.com/us/cshelp/article/how-do-i-prove-that-ive-sent-an-item-or-digital-goods-to-the-buyer-help177"
+version: "2026-11-09"  # source names the US article and its 26 Jan 2026 change; threshold unchanged
 # Shipping to an address other than the PayPal order's shipping address voids protection.
 # These address fields are compared after normalising case, spaces and punctuation.
 redirect_compare_fields: [line1, line2, city, postal_code, country]
 # Signature confirmation is recommended for orders strictly over this amount (minor units).
+# PayPal's US article: transactions before 26 January 2026 over $750 USD required a signature;
+# after that date PayPal "still recommend[s]" one, "although it's not mandatory". So Doorstep
+# suggests it and never treats a missing signature as voiding protection.
 # Only currencies the source names are listed; others get no signature suggestion.
 signature_recommended_over_minor:
   USD: 75000
