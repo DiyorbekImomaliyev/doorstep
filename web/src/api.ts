@@ -210,7 +210,7 @@ export type DecisionView = {
   missing_signals: string[];
 };
 
-export type LateDelivery = { delivered_at: string; claim_withdrawn: boolean; buyer_says_arrived: boolean };
+export type LateDelivery = { delivered_at: string; claim_withdrawn: boolean; buyer_says_arrived: boolean; refund_held?: boolean };
 
 export type CaseView = {
   case_id: string;

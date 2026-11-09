@@ -12,6 +12,8 @@ AD-03: the buyer may tap "It arrived". That stores the buyer's confirmation as e
 refund still waiting is held for a person (the evidence fingerprint changes).
 AD-04: nothing here moves money, changes the order's state or asks the buyer to pay. The seller
 gets the facts and a neutral message; the buyer is never accused (hard rule 7).
+AD-05: the scan is stored as evidence, so a refund that has not gone out yet is held for a person
+by the pre-refund re-check (app/policy, PO-13). A refund PayPal already has is never touched.
 """
 
 from __future__ import annotations
@@ -24,13 +26,23 @@ from sqlalchemy.orm import Session
 
 from app.cases.recovery import transition_recovery
 from app.cases.signals import EvidenceKind
-from app.orders.enums import RecoveryStatus
-from app.orders.models import AuditLog, Case, Evidence, Order, Recovery, Shipment, TrackingEvent
+from app.orders.enums import MoneyActionStatus, RecoveryStatus
+from app.orders.models import (
+    AuditLog,
+    Case,
+    Evidence,
+    MoneyAction,
+    Order,
+    Recovery,
+    Shipment,
+    TrackingEvent,
+)
 
 RECORDED = "order.delivered_after_report"
 ARRIVED = "buyer.arrived_after_report"
 NOT_RECEIVED = "not_received"
 DELIVERED = "DELIVERED"
+EVIDENCE_CHANGED = "evidence_changed"  # app/policy/reasons.py Reason.EVIDENCE_CHANGED
 
 
 class NotDeliveredAfterReport(ValueError):
@@ -43,6 +55,7 @@ class LateDelivery:
     delivered_at: datetime
     claim_withdrawn: bool
     buyer_says_arrived: bool
+    refund_held: bool  # AD-05: a refund that had not gone out is held for the seller
 
 
 def _audit(session: Session, order_id: str, action: str) -> AuditLog | None:
@@ -57,15 +70,27 @@ def _audit(session: Session, order_id: str, action: str) -> AuditLog | None:
     ).first()
 
 
+def _refund_held(session: Session, case_id: str) -> bool:
+    blocked = session.scalars(
+        select(MoneyAction).where(
+            MoneyAction.case_id == case_id,
+            MoneyAction.status == MoneyActionStatus.BLOCKED.value,
+        )
+    )
+    return any((m.paypal_response or {}).get("blocked_code") == EVIDENCE_CHANGED for m in blocked)
+
+
 def late_delivery(session: Session, order_id: str) -> LateDelivery | None:
     row = _audit(session, order_id, RECORDED)
     if row is None:
         return None
+    case_id = str(row.after["case_id"])
     return LateDelivery(
-        case_id=str(row.after["case_id"]),
+        case_id=case_id,
         delivered_at=datetime.fromisoformat(str(row.after["delivered_at"])),
         claim_withdrawn=bool(row.after.get("claim_withdrawn")),
         buyer_says_arrived=_audit(session, order_id, ARRIVED) is not None,
+        refund_held=_refund_held(session, case_id),
     )
 
 
@@ -104,6 +129,14 @@ def record_delivered_scan(
             reason="the carrier now scans the parcel as delivered",
             now=now,
         )
+    session.add(  # AD-05: new evidence, so the pre-refund re-check holds a waiting refund
+        Evidence(
+            order_id=order.id,
+            kind=EvidenceKind.CARRIER_DELIVERED_AFTER_REPORT.value,
+            ai_result={"case_id": case.id, "delivered_at": event.occurred_at.isoformat()},
+            created_at=now,
+        )
+    )
     session.add(
         AuditLog(
             actor="carrier",

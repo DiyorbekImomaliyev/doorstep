@@ -132,7 +132,7 @@ shares. Usernames are left out.
 | Check the courier's GPS point or doorstep photo by hand; the photo can vanish from tracking | 14 threads, 5 videos | Audits the "Delivered" scan's place, order and batch in code, and keeps what it found |
 | Give up on courier claims: slow, capped, deadline-bound | 12 threads, 8 videos | Prepares the claim pack with the carrier's own cover and deadline |
 | Find the parcel with a neighbour or in the building | 10 threads | Lists where to look before the buyer sends a "not received" report |
-| Refund a parcel as lost, then it turns up | 7 videos | Spots the late "Delivered" scan, withdraws the unsent claim, asks the buyer to tap "It arrived" |
+| Refund a parcel as lost, then it turns up | 7 videos | Spots the late "Delivered" scan, holds a refund not yet sent, withdraws the unsent claim, asks the buyer to tap "It arrived" |
 | Avoid accusing the buyer: the top advice | 4 threads, 4 videos | Sends contradicting evidence to a person, never to an automatic denial |
 | Win on the platform, then lose a card chargeback | 6 threads, 2 videos | Settles on the law before a claim starts, and keeps the signed record |
 
@@ -253,8 +253,9 @@ Each row opens a detail panel without leaving the table.
 
 - **Reports** a problem with taps; a note is optional. When the courier says "Delivered", it first
   lists where parcels usually turn up: a neighbour, the post room, a porch or meter box.
-- **Says "It arrived"** in one tap if the courier scans the parcel delivered after the report;
-  the seller sees it on the case, with an unsent courier claim already withdrawn.
+- **Says "It arrived"** in one tap if the courier scans the parcel delivered after the report.
+  The seller sees it on the case: an unsent courier claim is withdrawn, and a refund that has not
+  gone out is held for the seller to decide again, since a scan alone is not the buyer holding it.
 - **Answers** within seconds with the regional rule and the buyer's rights, and shows each next
   step.
 - **Opens** from a signed link, with no account and no login.

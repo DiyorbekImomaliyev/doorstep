@@ -654,11 +654,12 @@ function LateDeliveryPanel({ late }: { late: LateDelivery }) {
     <section className="sec" aria-label="Delivered after the report">
       <SectionHead icon={<Truck aria-hidden />} title="Delivered after the report"
         right={<Badge tone={late.buyer_says_arrived ? "good" : "neutral"}>{late.buyer_says_arrived ? "Buyer says it arrived" : "Buyer not asked yet"}</Badge>} />
-      <p className="muted" style={{ fontSize: 13 }}>
-        The courier scanned the parcel as delivered on {day}, after the buyer reported it missing.
-        {late.claim_withdrawn && " Doorstep withdrew the courier claim you had not submitted: a claim on a parcel the courier says it delivered would be refused."}
-        {late.buyer_says_arrived ? " The buyer tapped \u201cIt arrived\u201d on their page." : " The buyer's page asks them to tap \u201cIt arrived\u201d if it reached them."}
-      </p>
+      <ul className="late-facts">
+        <li>The courier scanned it delivered on {day}, after the buyer reported it missing.</li>
+        {late.claim_withdrawn && <li>Courier claim withdrawn: you had not sent it, and a claim on a parcel the courier says it delivered would be refused.</li>}
+        {late.refund_held && <li><strong>Refund held for you:</strong> it had not gone out yet. Choose “Decide again” to settle on the evidence as it is now. A scan alone does not show the buyer has the parcel.</li>}
+        <li>{late.buyer_says_arrived ? "The buyer tapped \u201cIt arrived\u201d on their page." : "The buyer's page asks them to tap \u201cIt arrived\u201d if it reached them."}</li>
+      </ul>
       <details className="fold">
         <summary><MessageSquare aria-hidden />Message to the buyer (optional)</summary>
         <div className="col" style={{ gap: 10 }}>

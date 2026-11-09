@@ -178,7 +178,12 @@ def test_AD_03_the_buyer_says_it_arrived_once(db, clock):
     before = evidence_fingerprint(db, order.id)
     buyer_says_arrived(db, order, actor="buyer", now=clock.now())
     buyer_says_arrived(db, order, actor="buyer", now=clock.now())
-    [proof] = db.scalars(select(Evidence).where(Evidence.order_id == order.id)).all()
+    [proof] = db.scalars(
+        select(Evidence).where(
+            Evidence.order_id == order.id,
+            Evidence.kind == EvidenceKind.BUYER_CONFIRMATION.value,
+        )
+    ).all()
     assert proof.kind == EvidenceKind.BUYER_CONFIRMATION.value
     # A refund still waiting is held for a person: the evidence it was decided on changed.
     assert evidence_fingerprint(db, order.id) != before

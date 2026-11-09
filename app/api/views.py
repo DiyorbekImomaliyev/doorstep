@@ -431,6 +431,8 @@ def timeline(s: Session, order: Order, *, for_buyer: bool) -> list[TimelineItem]
     for e in s.scalars(select(Evidence).where(Evidence.order_id == order.id)):
         if for_buyer and e.kind == EvidenceKind.PACKING_PHOTO.value:
             continue
+        if e.kind == EvidenceKind.CARRIER_DELIVERED_AFTER_REPORT.value:
+            continue  # AD-05: the carrier's own event is already on the timeline
         detail = ""
         if e.kind == EvidenceKind.SEAL_SCAN.value and not for_buyer:
             detail = _SEAL_DETAIL.get(str(e.ai_result.get("reason", "")), "")
@@ -907,6 +909,7 @@ class LateDeliveryView(BaseModel):
     delivered_at: datetime
     claim_withdrawn: bool  # AD-02: an unsubmitted carrier claim was withdrawn
     buyer_says_arrived: bool  # AD-03
+    refund_held: bool = False  # AD-05: a refund that had not gone out is held for the seller
 
 
 def _late_delivery_view(s: Session, order_id: str) -> LateDeliveryView | None:
@@ -919,6 +922,7 @@ def _late_delivery_view(s: Session, order_id: str) -> LateDeliveryView | None:
         delivered_at=late.delivered_at,
         claim_withdrawn=late.claim_withdrawn,
         buyer_says_arrived=late.buyer_says_arrived,
+        refund_held=late.refund_held,
     )
 
 

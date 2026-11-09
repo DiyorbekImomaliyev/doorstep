@@ -32,6 +32,9 @@ class EvidenceKind(StrEnum):
     DOORSTEP_PHOTO = "doorstep_photo"  # carrier photo at the buyer's address
     BUYER_CONFIRMATION = "buyer_confirmation"  # "Got it" (BC-02)
     SEAL_SCAN = "seal_scan"  # ai_result: {counted, reason} (SL-03, SL-04)
+    # AD-05: the courier's "Delivered" scan after a "not received" report. New evidence, so a
+    # refund still waiting is held for a person. It is not possession proof.
+    CARRIER_DELIVERED_AFTER_REPORT = "carrier_delivered_after_report"  # ai_result: {case_id, ...}
 
 
 _PROOFS_BY_KIND: dict[str, tuple[ProofKind, ...]] = {
