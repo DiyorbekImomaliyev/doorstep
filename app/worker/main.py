@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import signal
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -38,6 +39,9 @@ from app.worker.simulated import RoutingRefundGateway, SimulatedRefundGateway
 log = logging.getLogger("doorstep.worker")
 
 SWEEP_EVERY_S = 300
+
+# Jobs that call a model and can take tens of seconds. They run in a lane of their own (WK-01).
+MODEL_JOBS = frozenset({DRAFT_RECOVERY})
 
 
 class ReceiptingRefundHandler:
@@ -111,6 +115,27 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     return inbox, runner
 
 
+def split_lanes(runner: JobRunner) -> tuple[JobRunner, JobRunner]:
+    """WK-01: (everything else, model jobs). A slow model draft never holds up a refund."""
+    rest = {k: h for k, h in runner.handlers.items() if k not in MODEL_JOBS}
+    models = {k: h for k, h in runner.handlers.items() if k in MODEL_JOBS}
+    lane = lambda hs: JobRunner(runner.session_factory, hs, runner.clock, runner.settings)  # noqa: E731
+    return lane(rest), lane(models)
+
+
+def _model_lane(
+    runner: JobRunner, should_stop: Callable[[], bool], poll_s: float
+) -> None:  # pragma: no cover - thread loop
+    while not should_stop():
+        try:
+            done = runner.run_due()
+        except Exception:
+            log.exception("model job lane error; continuing")
+            done = 0
+        if not done:
+            time.sleep(poll_s)
+
+
 def sweep(rt: Runtime) -> int:
     with rt.session_factory() as s:
         flagged = ShippingService(s, rt.clock, rt.settings).sweep_stale()
@@ -125,6 +150,13 @@ def run_loop(rt: Runtime, should_stop: Callable[[], bool], poll_s: float = 2.0) 
     """The worker loop. Used by the worker process and, on a one-service deploy, by a thread
     inside the web process (EMBEDDED_WORKER=1). Every step is idempotent, so both are safe."""
     inbox, runner = build_worker(rt)
+    runner, model_runner = split_lanes(runner)
+    threading.Thread(
+        target=_model_lane,
+        args=(model_runner, should_stop, poll_s),
+        name="doorstep-model-jobs",
+        daemon=True,
+    ).start()
     last_sweep = 0.0
     log.info("worker started")
     while not should_stop():

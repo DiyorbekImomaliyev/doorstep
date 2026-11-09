@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -42,6 +42,8 @@ class JobHandler(Protocol):
 
 
 RATE_LIMITED = 429
+# PayPal jobs (refunds, captures, tracking, evidence) sort before every other kind.
+_MONEY_FIRST = case((Job.kind.startswith("paypal."), 0), else_=1)
 
 
 def is_permanent(error: Exception) -> bool:
@@ -108,27 +110,35 @@ class JobRunner:
         self.settings = settings
 
     def run_due(self) -> int:
-        """Run every queued job whose run_at <= now, once. Returns the number run."""
-        now = self.clock.now()
-        with self.session_factory() as session:
-            due = list(
-                session.scalars(
-                    select(Job.id)
-                    .where(
-                        Job.status == QUEUED,
-                        Job.run_at <= now,
-                        Job.kind.in_(list(self.handlers)),
-                    )
-                    .order_by(Job.run_at, Job.created_at)
-                )
-            )
+        """Run every queued job whose run_at <= now, at most once each. Returns the number run.
+
+        Money first (WK-01): PayPal jobs run before the rest, and a PayPal job that falls due
+        while a slow job runs (a model drafting a claim) goes next, so an approved refund never
+        waits behind AI work.
+        """
         ran = 0
-        for job_id in due:
+        tried: set[str] = set()
+        while (job_id := self._next_due(tried)) is not None:
+            tried.add(job_id)
             try:
                 ran += self._run_one(job_id)
             except Exception:  # one bad job never stops the loop; it stays queued for later
                 log.exception("job %s could not be run or recorded", job_id)
         return ran
+
+    def _next_due(self, tried: set[str]) -> str | None:
+        with self.session_factory() as session:
+            return session.scalar(
+                select(Job.id)
+                .where(
+                    Job.status == QUEUED,
+                    Job.run_at <= self.clock.now(),
+                    Job.kind.in_(list(self.handlers)),
+                    Job.id.not_in(tried),
+                )
+                .order_by(_MONEY_FIRST, Job.run_at, Job.created_at)
+                .limit(1)
+            )
 
     def _claim(self, session: Session, job_id: str) -> Job | None:
         """Lock the job row; skip it if another worker holds it or it is no longer due."""
