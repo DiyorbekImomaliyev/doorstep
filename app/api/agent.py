@@ -19,6 +19,7 @@ from app.cases.engine import ClaimReason
 from app.cases.pipeline import BuyerActionError, CasePipeline
 from app.mcp.server import AgentRefused, DeliveryStatus, ProblemReport, Reason
 from app.orders.models import Order
+from app.proof.attestation import Prover
 
 AGENT_REPORTER = "agent"
 MCP_MOUNT = "/agent"
@@ -30,9 +31,12 @@ class OrderAgentPort:
         self,
         session_factory: sessionmaker[Session],
         pipeline: Callable[[Session], CasePipeline],
+        *,
+        prover: Prover | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.pipeline = pipeline
+        self.prover = prover  # DP-05: signs the delivery facts on every status answer
 
     def _order(self, s: Session, order_id: str) -> Order:
         order = s.get(Order, order_id)
@@ -42,7 +46,9 @@ class OrderAgentPort:
 
     def status(self, order_id: str) -> DeliveryStatus:
         with self.session_factory() as s:
-            v = buyer_view(s, self._order(s, order_id))
+            order = self._order(s, order_id)
+            v = buyer_view(s, order)
+            proof = self.prover.prove(s, order)[0] if self.prover else None
             return DeliveryStatus(
                 order_ref=v.order_ref,
                 item=v.item,
@@ -53,6 +59,9 @@ class OrderAgentPort:
                 can_report=v.can_report,
                 case_open=v.case_open,
                 case_message=v.case_message,
+                delivery_proof=proof,
+                proof_check_url=self.prover.check_url(proof) if self.prover and proof else None,
+                proof_keys_url=self.prover.keys_url if self.prover else None,
             )
 
     def report(self, order_id: str, reason: Reason, note: str) -> ProblemReport:
@@ -110,6 +119,7 @@ def build_agent_http(runtime: Any) -> Any:
             services.receipts,
         )
 
-    port = OrderAgentPort(runtime.session_factory, pipeline)
+    prover = Prover(services.receipts, issuer=services.app_base_url, clock=runtime.clock)
+    port = OrderAgentPort(runtime.session_factory, pipeline, prover=prover)
     server = build_mcp(services.links, port)
     return server.http_app(path=MCP_PATH, stateless_http=True, json_response=True)

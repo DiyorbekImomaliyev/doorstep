@@ -6,6 +6,7 @@ import "./styles.css";
 import { Wordmark } from "./components/ui";
 import Buyer from "./pages/Buyer";
 import Home from "./pages/Home";
+import Proof from "./pages/Proof";
 import Return from "./pages/Return";
 import Seal from "./pages/Seal";
 import Shop from "./pages/Shop";
@@ -44,6 +45,7 @@ function route() {
   if (first === "shop" && second) return <Shop sellerId={second} />;
   if (first === "verify" && second) return <Verify caseId={second} />;
   if (first === "return") return <Return />;
+  if (first === "proof") return <Proof />;
   return <Home />;
 }
 

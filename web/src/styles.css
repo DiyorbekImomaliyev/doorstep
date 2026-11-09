@@ -787,3 +787,8 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .notice.recommend { margin-bottom: 4px; }
 .notice.recommend strong { font-size: 15px; }
+
+/* DP-03: the signed facts on the public proof check */
+.proof-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 13.5px; }
+.proof-facts dt { color: var(--text-2); }
+.proof-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }

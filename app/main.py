@@ -11,7 +11,7 @@ from app.policy.rules import load_rules
 WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"
 # First path segments that belong to the API. A GET under one of them that no route matched is a
 # 404, never the page: an API client must not get HTML with 200 for a mistyped path.
-API_PREFIXES = frozenset({"api", "cases", "demo", "healthz", "mcp", "webhooks"})
+API_PREFIXES = frozenset({".well-known", "api", "cases", "demo", "healthz", "mcp", "webhooks"})
 IMMUTABLE = "public, max-age=31536000, immutable"
 
 
@@ -76,9 +76,11 @@ def create_app(deps: AppDeps) -> FastAPI:
         app.include_router(build_journey_router(deps, deps.services, rulebook))
         from app.api.autopilot import build_autopilot_router
         from app.api.policy_check import build_policy_check_router
+        from app.api.proof import build_proof_router
 
         app.include_router(build_autopilot_router(deps, deps.services, rulebook))
         app.include_router(build_policy_check_router(deps, deps.services, rulebook))
+        app.include_router(build_proof_router(deps, deps.services))
         _mount_web(app)
     else:
 

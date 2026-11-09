@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Bot, Check, CircleCheck, History, House, LifeBuoy, Lock, MapPin, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
+import { Bot, Check, CircleCheck, History, House, KeyRound, LifeBuoy, Lock, MapPin, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
 import { api, type BuyerView } from "../api";
 import { Brand, ErrorBox, Loading, Timeline, Toast, useAsync, usePoll } from "../components/ui";
 import { METHOD, REASONS, money } from "../format";
@@ -193,6 +193,7 @@ export default function Buyer({ token }: { token: string }) {
           <h3 className="row" style={{ gap: 8 }}><History size={16} color="var(--text-3)" aria-hidden />History</h3>
           <Timeline items={v.timeline} />
         </section>
+        {v.carrier && <ProofLink token={token} />}
         {v.can_report && <AgentLink token={token} />}
         <p className="footnote"><ShieldCheck aria-hidden />Doorstep never asks for card details. PayPal handles the money.</p>
       </main>
@@ -275,6 +276,20 @@ function AddressFix({ token, view, busy, onDone, onKeep }: { token: string; view
 }
 
 /** MC-01: an AI assistant can report a problem for this one order, never touch others. */
+/** DP-04: the buyer opens the delivery facts as a signed proof anyone can check. */
+function ProofLink({ token }: { token: string }) {
+  const [err, setErr] = useState<string | null>(null);
+  async function open() {
+    try { window.location.assign((await api.buyerProof(token)).check_url); } catch (e) { setErr(String((e as Error).message)); }
+  }
+  return (
+    <div className="col" style={{ gap: 6 }}>
+      <button className="btn" style={{ alignSelf: "flex-start" }} onClick={open}><KeyRound size={15} />Signed delivery record</button>
+      {err && <ErrorBox message={err} />}
+    </div>
+  );
+}
+
 function AgentLink({ token }: { token: string }) {
   const [link, setLink] = useState<{ order_token: string; mcp_url: string; expires_in_days: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -286,7 +301,7 @@ function AgentLink({ token }: { token: string }) {
       <summary><Bot aria-hidden />Using an AI assistant?</summary>
       <div className="col">
         <p className="muted" style={{ fontSize: 13 }}>
-          Let your assistant report a problem (MCP). This order only; it can't move money.
+          Let your assistant check the signed delivery record and report a problem (MCP). This order only; it can't move money.
         </p>
         {!link && <button className="btn" style={{ alignSelf: "flex-start" }} onClick={get}>Create an assistant link</button>}
         {err && <ErrorBox message={err} />}

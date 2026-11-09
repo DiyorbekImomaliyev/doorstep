@@ -317,12 +317,29 @@ export type PolicyAnswer = {
   disclaimer: string;
 };
 
+export type ProofClaims = {
+  iss: string;
+  sub: string;
+  iat: number;
+  carrier: string | null;
+  delivered_scan_at: string | null;
+  seal_scanned_after_delivery_at: string | null;
+  scan_audit: string | null;
+  case_state: string | null;
+  rule: string | null;
+  receipt_head: string | null;
+  statement: string;
+};
+export type ProofCheck = { valid: boolean; claims: ProofClaims | null; reason: string | null };
+
 export type CaseAction = "approve" | "decline" | "close" | "send-evidence" | "make-offer" | "re-check";
 
 export const api = {
   health: () => call<Health>("GET", "/healthz"),
   seed: (scratch: boolean) => call<SeedOut>("POST", `/demo/seed?scratch=${scratch ? 1 : 0}`),
   verify: (caseId: string) => call<VerifyReport>("GET", `/cases/${encodeURIComponent(caseId)}/verify`),
+  verifyProof: (proof: string) => call<ProofCheck>("POST", "/api/proof/verify", { proof }),
+  buyerProof: (t: string) => call<{ proof: string; claims: ProofClaims; check_url: string }>("GET", `/api/buyer/${t}/proof`),
 
   quote: (sellerId: string, amountMinor: number, currency: string, country: string) =>
     call<Quote>("POST", "/api/checkout/quote", {

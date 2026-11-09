@@ -143,7 +143,8 @@ the table.
 - **Opens** from a signed link, with no account and no login.
 
 Buyers' AI assistants use the same process through the MCP server at `/agent/mcp`: one tool reads
-the delivery status, one reports a problem. Neither can move money.
+the delivery status, one reports a problem. Neither can move money. Every status answer carries a
+signed delivery proof the assistant can check (see below).
 
 ### Insights
 
@@ -161,6 +162,11 @@ the delivery status, one reports a problem. Neither can move money.
 
 - **Signs** every money decision with Ed25519 and chains it to the previous receipt by hash.
 - **Re-checks** the whole chain on a public page, `/verify/{case}`. Any edit breaks it.
+- **Signs the delivery facts** as a compact JWS (EdDSA, RFC 8037): the carrier's delivered scan,
+  the seal scanned after it, the scan-audit verdict, the case's rule and the head of its receipt
+  chain. Facts only: no address, no name, never who is at fault. The buyer opens it from their
+  page, a buyer's AI assistant gets it from `get_delivery_status`, and anyone checks it at `/proof`
+  against the public key at `/.well-known/jwks.json`. One changed character fails the check.
 
 ## What makes it different
 
@@ -180,6 +186,9 @@ the delivery status, one reports a problem. Neither can move money.
   A refund counts as sent only when PayPal says COMPLETED; a pending one waits for PayPal.
 - **Signs every money decision.** Chains Ed25519-signed receipts by hash; a public page re-checks
   the whole chain.
+- **Signs what happened at the door, for AI assistants too.** Agent-payment protocols sign what a
+  buyer asked for and paid; none signs the delivery. Doorstep's delivery proof is a standard JWS
+  any assistant can verify against a published key, without trusting whoever passed it on.
 - **Keeps AI away from money by construction.** Models write words and plans; code decides
   liability and limits. Import contracts in CI prove no AI code can reach a PayPal write.
 
@@ -191,7 +200,7 @@ the delivery status, one reports a problem. Neither can move money.
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% | every push, in CI |
 | Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 2,974; only wording changes may survive | full local run, Nov 6; CI re-runs it on every change to `app/policy`, and new money code is mutation-tested before it is committed |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease | every push, in CI |
-| API fuzzing, Schemathesis (`make fuzz`) | 47 API operations fuzzed from the OpenAPI schema, 0 failures | every push, in CI |
+| API fuzzing, Schemathesis (`make fuzz`) | 49 API operations fuzzed from the OpenAPI schema, 0 failures | every push, in CI |
 | Browser tests, Playwright (`make e2e`) | 18 passed in Chromium | locally, against a running server |
 | Failure-point engine (`make evals`) | 96.7% agreement with the expected cause on 60 hand-written scenarios (target 85%); 95.0% on a 20-case hold-out. This measures rule consistency, not accuracy on real deliveries | recorded run, Nov 7 |
 | Policy reader, Ragas (`make evals`) | faithfulness 0.91 (target 0.90) and context recall 0.97 on 30 questions over six seller policies | recorded run, Nov 7 |
@@ -418,7 +427,7 @@ app/
   ai/             model adapter, explainer, claim pack, packing check, policy reader, risk model
   agent/          case agent on the PayPal Agent Toolkit (read-only)
   mcp/            MCP server for buyers' AI assistants
-  proof/          signed receipts, possession seal, Seller Protection status
+  proof/          signed receipts, signed delivery proof, possession seal, Seller Protection status
   security/       signed links, rate limits
   ops/            pipeline health signals for /healthz, seller economics
   demo/           seeded demo and per-visitor scratch shops

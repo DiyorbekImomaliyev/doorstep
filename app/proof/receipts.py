@@ -73,6 +73,10 @@ class ReceiptSigner:
     def verify(self, digest_hex: str, signature_b64: str) -> bool:
         return _verify(self._public, digest_hex, signature_b64)
 
+    def sign_bytes(self, data: bytes) -> bytes:
+        """A raw Ed25519 signature, for the signed delivery proof's JWS (DP-02)."""
+        return self._key.sign(data)
+
 
 def _verify(public: Ed25519PublicKey, digest_hex: str, signature_b64: str) -> bool:
     try:
