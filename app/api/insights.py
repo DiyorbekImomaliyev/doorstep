@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.views import evidence_scores, latest_decision, postcode_district
+from app.checkout.fixes import fixed_addresses
 from app.orders.models import Case, MoneyAction, Order, Recovery, Seller, Shipment, TrackingEvent
 from app.worker.simulated import is_simulated
 
@@ -102,6 +103,7 @@ def _liable_party(signals: dict[str, Any]) -> str | None:
 
 def insights(s: Session, seller: Seller) -> InsightsOut:
     orders = list(s.scalars(select(Order).where(Order.seller_id == seller.id)))
+    fixed = fixed_addresses(s, [o.id for o in orders])  # EC-02
     scores = evidence_scores(s, orders)  # three queries for every order, not three per order
     order_ids = [o.id for o in orders]
     shipments = list(s.scalars(select(Shipment).where(Shipment.order_id.in_(order_ids))))
@@ -152,7 +154,7 @@ def insights(s: Session, seller: Seller) -> InsightsOut:
                 method=o.shipping_method,
                 recommended_method=o.recommended_method,
                 risk=o.risk_score,
-                address_check=o.address_check,
+                address_check="fixed" if o.id in fixed else o.address_check,
                 state=o.state,
                 evidence_score=scores[o.id].score,
                 simulated=is_simulated(o.capture_id),

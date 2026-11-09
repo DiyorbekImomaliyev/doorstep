@@ -38,13 +38,14 @@ const LIVE_MS = 10_000;
 const METHOD_TEXT: Record<string, string> = { home: "home delivery", locker: "locker pickup", signature: "signature" };
 
 /** CF-02, in one line: computed in code from the seller's own seller-liable cases. */
-/** EC-01: the seller's plan this month, and the problems settled before a PayPal dispute. Only
- * measured counts and published figures: no "saved" total, since not every problem would have
- * become a dispute. */
+/** EC-01/EC-02: the seller's plan this month, what Doorstep measurably did, and the published
+ * costs beside it. No "saved" total, since not every problem would have become a failed delivery
+ * or a lost claim: the break-even restates the price as failed deliveries. */
 function PlanStrip({ e }: { e: Economics }) {
   const month = new Date(`${e.month}-01T12:00:00`).toLocaleString("en-GB", { month: "long" });
   const price = e.price_minor === 0 ? "Free" : `${money(e.price_minor, e.currency)} so far`;
   const fee = money(e.dispute_fee_minor, e.currency);
+  const failed = money(e.failed_delivery_cost_minor, e.currency);
   return (
     <section className="plan-strip" aria-label="Your Doorstep plan">
       <span className="tip-icon" aria-hidden><ReceiptText size={16} /></span>
@@ -55,9 +56,14 @@ function PlanStrip({ e }: { e: Economics }) {
         </span>
       </div>
       <div className="col plan-side" style={{ gap: 2 }}>
-        <span><strong className="num">{e.settled_before_dispute}</strong> problem{e.settled_before_dispute === 1 ? "" : "s"} settled with no PayPal dispute</span>
+        <span>
+          <strong className="num">{e.addresses_fixed}</strong> address{e.addresses_fixed === 1 ? "" : "es"} fixed before payment ·{" "}
+          <strong className="num">{e.settled_before_dispute}</strong> problem{e.settled_before_dispute === 1 ? "" : "s"} settled with no PayPal dispute
+        </span>
         <span className="muted" style={{ fontSize: 13 }}>
-          A dispute costs {fee} in PayPal fees, win or lose (<a href={e.fee_source} target="_blank" rel="noreferrer">PayPal's fees page</a>).
+          A failed delivery costs a seller {failed} on average (<a href={e.failed_delivery_source} target="_blank" rel="noreferrer">Loqate</a>).{" "}
+          {e.break_even_failures > 0 ? `This month's price is the cost of ${e.break_even_failures} failed ${e.break_even_failures === 1 ? "delivery" : "deliveries"}. ` : ""}
+          A PayPal claim you lose costs {fee} (<a href={e.fee_source} target="_blank" rel="noreferrer">fees</a>), none under {money(e.fee_waived_below_minor, e.currency)} or with Seller Protection (<a href={e.fee_terms_source} target="_blank" rel="noreferrer">terms</a>).
         </span>
       </div>
     </section>

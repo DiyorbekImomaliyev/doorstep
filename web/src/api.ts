@@ -90,8 +90,14 @@ export type Economics = {
   per_order_minor: number;
   monthly_cap_minor: number;
   settled_before_dispute: number;
+  addresses_fixed: number;
   dispute_fee_minor: number;
   fee_source: string;
+  fee_waived_below_minor: number;
+  fee_terms_source: string;
+  failed_delivery_cost_minor: number;
+  failed_delivery_source: string;
+  break_even_failures: number;
   rule: string;
 };
 

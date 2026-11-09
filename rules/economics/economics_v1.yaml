@@ -3,8 +3,8 @@
 # The fees are PayPal's own published figures; the price is Doorstep's.
 id: economics_v1
 kind: economics
-version: "2026-11-09"
-source: "PayPal business fees pages (UK, US), checked 2026-11-08; Doorstep price list"
+version: "2026-11-09.2"
+source: "PayPal business fees pages and User Agreements (UK, US), checked 2026-11-09; Loqate, Fixing Failed Deliveries (2021); Doorstep price list"
 paypal_dispute_fee:
   GBP:
     amount_minor: 1200
@@ -12,6 +12,23 @@ paypal_dispute_fee:
   USD:
     amount_minor: 1500
     source: "https://www.paypal.com/us/business/paypal-business-fees"
+# PayPal charges no Standard Dispute fee on inquiries or disputes not escalated to a claim, on
+# claims decided for the seller or covered by Seller Protection, and on "Claims with a
+# transaction value that is less than twice the amount of a Standard Dispute fee".
+dispute_fee_waived_below_multiple: 2
+fee_terms_source:
+  GBP: "https://pep.paypal.com/uk/legalhub/paypal/useragreement-full"
+  USD: "https://pep.paypal.com/us/legalhub/paypal/useragreement-full"
+# Average cost per failed first-time delivery, as reported by 304 retail executives (Loqate,
+# Fixing Failed Deliveries, 2021, p.4: "In the UK, it's a 6% failure rate at an average cost of
+# £11.60 each"; "In the US, 8% of first-time deliveries fail, at an average cost of $17.20").
+failed_delivery_cost:
+  GBP:
+    amount_minor: 1160
+    source: "https://info.loqate.com/hubfs/Loqate%202021/Fixing%20Failed%20Deliveries/Fixing%20Failed%20Deliveries%20-%20Final.pdf"
+  USD:
+    amount_minor: 1720
+    source: "https://info.loqate.com/hubfs/Loqate%202021/Fixing%20Failed%20Deliveries/Fixing%20Failed%20Deliveries%20-%20Final.pdf"
 price:
   free_orders_per_month: 100
   per_order_minor:
