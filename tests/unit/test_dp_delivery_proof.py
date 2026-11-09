@@ -1,7 +1,7 @@
 """DP-01..05: a signed delivery proof that a buyer's AI assistant, or anyone, can check.
 
-Agent-payment protocols sign what the buyer asked for and paid. None signs what happened at the
-door. Doorstep signs the delivery facts it holds as a compact JWS (RFC 7515) with EdDSA
+Agent-payment mandates (AP2) sign what the buyer authorised and paid, which does not prove the
+parcel arrived. Doorstep signs the delivery facts it holds as a compact JWS (RFC 7515) with EdDSA
 (RFC 8037), using its receipt key, and publishes the public key as a JWK set. A changed byte
 fails the check, and a proof signed by any other key fails too.
 
