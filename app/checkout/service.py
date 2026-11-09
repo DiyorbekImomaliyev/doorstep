@@ -23,9 +23,9 @@ from app.orders.enums import OrderState, ShippingMethod
 from app.orders.models import AuditLog, Order, Seller
 from app.orders.schemas import Address
 from app.paypal_client.idempotency import request_id_for
-from app.paypal_client.types import ShippingOption
+from app.paypal_client.types import OrderItem, ShippingOption, invoice_id_for
 from app.policy.rules import RuleBook
-from app.worker.gateway import OrdersGateway
+from app.worker.gateway import ItemisedOrders, OrdersGateway
 from app.worker.handlers import CAPTURE_ORDER
 from app.worker.runner import enqueue
 from tuning import engine_config as cfg
@@ -112,6 +112,7 @@ class CheckoutService:
         buyer_country: str,
         item_description: str = "",
         scratch_tag: str | None = None,
+        sku: str | None = None,
     ) -> StartedCheckout:
         if self.session.get(Seller, seller_id) is None:
             raise CheckoutError(f"unknown seller {seller_id}")
@@ -130,12 +131,21 @@ class CheckoutService:
         )
         self.session.add(order)
         self.session.flush()
-        created = self.orders.create_order(
-            amount=amount,
-            options=quote.options,
-            selected=method,
-            request_id=request_id_for("order", order.id, "create"),
-        )
+        request_id = request_id_for("order", order.id, "create")
+        if isinstance(self.orders, ItemisedOrders):  # CK-10: the item and Doorstep's numbers
+            created = self.orders.create_itemised_order(
+                amount=amount,
+                options=quote.options,
+                selected=method,
+                request_id=request_id,
+                item=OrderItem(name=order.item_description, sku=sku, unit=amount) if sku else None,
+                invoice_id=invoice_id_for(order.id),
+                custom_id=order.id,
+            )
+        else:
+            created = self.orders.create_order(
+                amount=amount, options=quote.options, selected=method, request_id=request_id
+            )
         order.paypal_order_id = created.order_id
         self._audit(order, "checkout.started", {"method": method.value, "risk": quote.risk})
         self.session.flush()

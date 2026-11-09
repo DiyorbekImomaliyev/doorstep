@@ -84,6 +84,7 @@ def pay_another_way(session: Session, checkout: CheckoutService, order: Order) -
         buyer_country=order.buyer_country,
         item_description=item.name,
         scratch_tag=order.scratch_tag,
+        sku=item.sku,
     )
     session.add(
         AuditLog(

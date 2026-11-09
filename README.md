@@ -73,7 +73,7 @@ seller pays for.
 
 | Stage | PayPal capability | How Doorstep uses it |
 | --- | --- | --- |
-| Checkout | Orders v2 | Creates the order with Home / Locker / Signature shipping options; PATCHes the fixed address before capture |
+| Checkout | Orders v2 | Creates the order with the item (name, SKU, price), Doorstep's invoice number and Home / Locker / Signature shipping options; PATCHes the fixed address before capture |
 | Payment | Capture | Captures through the outbox, also when the buyer closes the tab after approving: the approved event or a sweep asks PayPal, and only an `APPROVED` order on a deliverable address is captured. A declined payment method is never retried: the buyer pays another way on a new PayPal order. Shows PayPal's Seller Protection verdict, never uses it as a money input |
 | Shipping | Order tracking | Adds the carrier and tracking number to the capture through the outbox |
 | Settlement | Refunds | Full or partial refund with `PayPal-Request-Id` and our id in `custom_id` |

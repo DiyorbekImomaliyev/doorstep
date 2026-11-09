@@ -484,6 +484,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
                 body.method,
                 buyer_country=body.buyer_country,
                 item_description=item.name,
+                sku=item.sku,
             )
         except CheckoutError as exc:
             raise HTTPException(404, str(exc)) from None

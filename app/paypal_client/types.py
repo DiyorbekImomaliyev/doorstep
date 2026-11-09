@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.money import Money
 from app.orders.enums import ShippingMethod
@@ -10,6 +10,21 @@ class ShippingOption(BaseModel):
     method: ShippingMethod
     label: str
     amount: Money
+
+
+class OrderItem(BaseModel):
+    """CK-10: what the buyer bought, as the PayPal order lists it."""
+
+    name: str
+    sku: str
+    unit: Money
+    quantity: int = Field(default=1, ge=1)
+
+
+def invoice_id_for(order_id: str) -> str:
+    """CK-10: Doorstep's invoice number. PayPal shows it to the buyer and requires it unique per
+    merchant account, so it is the full order id, never a shortened one."""
+    return f"DS-{order_id.upper()}"
 
 
 class CreatedOrder(BaseModel):
