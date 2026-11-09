@@ -201,7 +201,7 @@ function Previews() {
             <div className="mock-line"><b>Black jacket, size M</b><b>£60</b></div>
             <div className="mock-line"><span>Likely cause</span><span>Lost by carrier</span></div>
             <div className="mock-line"><span>Courier scan</span><span className="badge bad">Contradicted</span></div>
-            <div className="mock-line"><span>Rule</span><span className="mono">uk_possession_v1</span></div>
+            <div className="mock-line"><span>Rule</span><span>Consumer Rights Act s.29</span></div>
             <div className="mock-btn primary">Approve refund £60</div>
           </div>
         </div>
@@ -210,7 +210,7 @@ function Previews() {
       <div className="preview">
         <div className="pv-top">
           <span className="pv-who"><Truck />The courier</span>
-          <span className="pv-title">Pays for its own mistake.</span>
+          <span className="pv-title">Gets a checked claim, ready to file.</span>
         </div>
         <div className="pv-shot">
           <div className="mock-card">

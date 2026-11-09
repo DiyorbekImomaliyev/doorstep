@@ -16,7 +16,7 @@ const STEPS: Step[] = [
   { stage: "Resolve", short: "Not here", title: "“Delivered”, but not here", text: "Wrong street. Sam taps Not here.", icon: <ScanLine /> },
   { stage: "Resolve", short: "Facts", title: "Doorstep checks the facts", text: "Courier data, the seal and the law.", icon: <Scale /> },
   { stage: "Resolve", short: "Refund", title: "Refunded through PayPal", text: "Sam gets £60 back. Maria taps once.", icon: <Banknote /> },
-  { stage: "Recover", short: "Courier pays", title: "The courier pays it back", text: "A checked claim. Maria loses nothing.", icon: <Landmark /> },
+  { stage: "Recover", short: "Claim", title: "A claim on the courier", text: "Checked, with the evidence, before the deadline.", icon: <Landmark /> },
 ];
 
 const DURATION = 3000;

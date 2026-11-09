@@ -139,7 +139,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
         )}
 
         {c.state === "DISPUTE_EVIDENCE" && <section className="sec"><DisputeNote c={c} /></section>}
-        {c.scan_audit && <ScanAuditPanel audit={c.scan_audit} />}
+        {c.scan_audit && <ScanAuditPanel audit={c.scan_audit} demo={c.order.simulated} />}
         {c.recovery && <RecoveryPanel token={token} recovery={c.recovery} primary={c.actions.length === 0} onChanged={(m) => { onChanged(m); reload(); }} />}
 
         {c.money.length > 0 && (
@@ -642,12 +642,13 @@ function CheckIcon({ result }: { result: string }) {
 }
 
 /** SA-01..05: the carrier's "Delivered" scan, checked against the carrier's own data. */
-function ScanAuditPanel({ audit }: { audit: ScanAudit }) {
+function ScanAuditPanel({ audit, demo }: { audit: ScanAudit; demo: boolean }) {
   const v = AUDIT_VERDICT[audit.verdict];
   return (
     <section className="sec" aria-label="Delivered-scan audit">
       <SectionHead icon={<ScanLine aria-hidden />} title="Courier's “Delivered” scan" right={<Badge tone={v.tone}>{v.label}</Badge>} />
       <p className="muted" style={{ fontSize: 13 }}>{v.text}</p>
+      {demo && <p className="muted" style={{ fontSize: 12 }}>Demo order: these carrier scans are sample data.</p>}
       <ul className="checks">
         {audit.checks.map((ch) => (
           <li key={ch.id}>
