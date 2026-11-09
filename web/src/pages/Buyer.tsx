@@ -182,6 +182,7 @@ export default function Buyer({ token }: { token: string }) {
         {reporting && !v.case_open && v.state !== "RESOLVED" && (
           <Report
             busy={busy}
+            delivered={v.state === "DELIVERED" || v.state === "PICKED_UP"}
             onCancel={() => setReporting(false)}
             onSend={(reason, note) =>
               run(async () => {
@@ -238,7 +239,10 @@ function LateArrival({ v, busy, onArrived }: { v: BuyerView; busy: boolean; onAr
   );
 }
 
-function Report({ busy, onCancel, onSend }: { busy: boolean; onCancel: () => void; onSend: (reason: string, note: string) => void }) {
+/** Where parcels marked "delivered" usually turn up: sellers find most of them this way. */
+const LOOK_IN = ["With a neighbour", "In your building's post room, or with the concierge", "In a porch, bin store or meter box", "With someone else at home"];
+
+function Report({ busy, delivered, onCancel, onSend }: { busy: boolean; delivered: boolean; onCancel: () => void; onSend: (reason: string, note: string) => void }) {
   const [reason, setReason] = useState("not_received");
   const [note, setNote] = useState("");
   return (
@@ -252,6 +256,12 @@ function Report({ busy, onCancel, onSend }: { busy: boolean; onCancel: () => voi
           </button>
         ))}
       </div>
+      {delivered && reason === "not_received" && (
+        <div className="look-in" aria-label="Before you send">
+          <span className="faint">Parcels marked delivered often turn up nearby. Worth a quick look:</span>
+          <ul>{LOOK_IN.map((x) => <li key={x}>{x}</li>)}</ul>
+        </div>
+      )}
       <label className="field">
         Anything else? <span className="faint">(optional)</span>
         <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="e.g. the photo shows a door that isn't mine" />
