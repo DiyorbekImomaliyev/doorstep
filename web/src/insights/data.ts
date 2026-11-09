@@ -157,7 +157,8 @@ export function simulatedHistory(home: "GBP" | "USD", before: Date): InsightsOut
         });
       }
       if (fp === "CARRIER_LOST" || fp === "DAMAGED_IN_TRANSIT") {
-        const cover = carrier === "royal_mail" || carrier === "usps" ? 15000 : carrier === "evri" ? 2000 : 10000;
+        // Cover as in rules/carriers/carrier_claims_v1.yaml: Royal Mail £75, USPS $100, Evri £20.
+        const cover = carrier === "royal_mail" ? 7500 : carrier === "evri" ? 2000 : 10000;
         const claim = Math.min(amount, cover);
         let status = pick(rnd, [["PAID", 52], ["DENIED", 14], ["SUBMITTED", 16], ["PREPARED", 10], ["EXPIRED", 8]]);
         // Older claims have moved on, as they would for a real shop: a seller files within weeks

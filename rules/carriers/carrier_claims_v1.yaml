@@ -5,8 +5,8 @@
 # terms could not be confirmed on its own site (for example DPD UK) uses `default`.
 id: carrier_claims_v1
 kind: carrier_claims
-version: "2026-11-05"
-source: "Each carrier's published terms (source and terms_url per entry), checked 2026-11-05"
+version: "2026-11-09"  # Royal Mail Tracked 24/48 cover £150 -> £75 (6 Oct 2025 price change)
+source: "Each carrier's published terms (source and terms_url per entry), checked 2026-11-05; Royal Mail re-checked 2026-11-09"
 disclaimer: >-
   Carrier terms differ by service and account and change over time. Check the carrier's current
   terms before filing; Doorstep prepares the claim and the seller submits it.
@@ -15,11 +15,14 @@ carriers:
     name: Royal Mail
     aliases: [royalmail, royal_mail_tracked]
     service_basis: "Tracked 24 / Tracked 48, retail"
-    standard_cover_minor: {GBP: 15000}  # up to £150 or the item's value, whichever is lower
+    # Up to £75 or the item's value, whichever is lower. Royal Mail halved Tracked 24/48 cover from
+    # £150 to £75 with its 6 October 2025 price change (Citizens Advice; seller reports). Royal
+    # Mail's own pages refuse automated reads, so this was checked through those sources.
+    standard_cover_minor: {GBP: 7500}
     loss_window_days: 30  # Tracked 24/48: 30 calendar days from posting (80 for other services)
     damage_window_days: 30
     window_starts: posting
-    source: "Royal Mail retail compensation policy (damage and part loss); Tracked 48 product page"
+    source: "Royal Mail retail compensation policy (damage and part loss); Citizens Advice, Claiming compensation from Royal Mail (Tracked 24/48 up to £75); Royal Mail price changes of 6 Oct 2025"
     terms_url: "https://www.royalmail.com/retail-compensation-policy-damage"
   evri:
     name: Evri

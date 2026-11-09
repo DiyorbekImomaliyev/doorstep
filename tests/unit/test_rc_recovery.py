@@ -3,6 +3,7 @@ the carrier's own data and its published terms; the seller submits it and record
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -183,7 +184,8 @@ def test_RC_01_claim_is_capped_by_the_carriers_standard_cover(db, clock, pipelin
     *_, report = _reported(db, clock, pipeline, amount_minor=20_000)
     recovery = _recovery(db, report.case_id)
     assert recovery is not None
-    assert recovery.claim_minor == 15_000 and recovery.terms["cover_minor"] == 15_000
+    # Royal Mail Tracked 24/48: £75 since 6 Oct 2025 (RC-03).
+    assert recovery.claim_minor == 7_500 and recovery.terms["cover_minor"] == 7_500
 
 
 def test_RC_01_damaged_in_transit_uses_the_damage_window(db, clock, pipeline):
@@ -256,7 +258,7 @@ def test_RC_01_unknown_currency_cover_claims_the_item_value(rulebook, clock):
 def test_RC_02_carrier_file_loads_with_the_rule_book_and_names_its_sources(rulebook):
     carriers = rulebook.carriers
     assert carriers is not None
-    assert carriers.rule_id == "carrier_claims_v1" and carriers.rule_version == "2026-11-05"
+    assert carriers.rule_id == "carrier_claims_v1" and carriers.rule_version == "2026-11-09"
     assert "carrier_claims_v1" not in rulebook.rule_ids  # not a liability rule (RL-01 unchanged)
     for carrier_id, entry in carriers.data.carriers.items():
         assert entry.source
@@ -318,7 +320,10 @@ def test_RC_02_invalid_carrier_file_stops_startup(rules_copy, change):
 
 def test_RC_02_unquoted_date_version_is_rejected(rules_copy):
     path = rules_copy.joinpath(*CARRIER_FILE)
-    path.write_text(path.read_text().replace('version: "2026-11-05"', "version: 2026-11-05"))
+    text = path.read_text()
+    unquoted = re.sub(r'^version: "([0-9-]+)"', r"version: \1", text, count=1, flags=re.M)
+    assert unquoted != text
+    path.write_text(unquoted)
     with pytest.raises(RuleValidationError):
         load_carrier_terms(rules_copy)
 
