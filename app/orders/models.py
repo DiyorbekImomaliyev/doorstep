@@ -29,6 +29,19 @@ class Seller(Base):
     policy_text: Mapped[str] = mapped_column(Text, default="")
 
 
+class Product(Base):
+    """CK-07: what a seller sells, at the price the checkout charges. The browser only shows it."""
+
+    __tablename__ = "products"
+    __table_args__ = (UniqueConstraint("seller_id", "sku", name="uq_product_seller_sku"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    seller_id: Mapped[str] = mapped_column(ForeignKey("sellers.id"), index=True)
+    sku: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    # Minor units per currency the item is sold in, e.g. {"GBP": 6000, "USD": 6000}.
+    prices: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
+
+
 class SellerRule(Base):
     """AP-02..05: a seller's autopilot rule, suggested from their own approvals and turned on by
     them. One row per (seller, failure point, currency); status on | off | dismissed."""

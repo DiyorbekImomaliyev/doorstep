@@ -253,6 +253,8 @@ export type PolicyCheck = {
   provider: string | null; dropped: number;
 };
 
+export type Product = { sku: string; name: string; prices: Record<string, number> };
+
 export type Quote = {
   options: { method: string; label: string; amount: Money }[];
   recommended: string;
@@ -319,10 +321,12 @@ export const api = {
     call<Quote>("POST", "/api/checkout/quote", {
       seller_id: sellerId, amount_minor: amountMinor, currency, buyer_country: country,
     }),
-  start: (sellerId: string, amountMinor: number, currency: string, country: string, method: string, item: string) =>
+  products: (sellerId: string) => call<Product[]>("GET", `/api/shop/${sellerId}/products`),
+  // CK-07: the amount is the price the page showed; the server refuses it if the price differs.
+  start: (sellerId: string, amountMinor: number, currency: string, country: string, method: string, sku: string) =>
     call<{ order_id: string; approve_url: string; buyer_token: string; buyer_url: string }>(
       "POST", "/api/checkout/start",
-      { seller_id: sellerId, amount_minor: amountMinor, currency, buyer_country: country, method, item_description: item },
+      { seller_id: sellerId, amount_minor: amountMinor, currency, buyer_country: country, method, sku },
     ),
   paypalReturn: (paypalOrderId: string) =>
     call<{ buyer_token: string; buyer_url: string }>("POST", "/api/checkout/return", { paypal_order_id: paypalOrderId }),

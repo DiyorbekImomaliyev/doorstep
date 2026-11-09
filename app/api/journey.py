@@ -51,6 +51,7 @@ from app.cases.engine import ClaimReason
 from app.cases.pipeline import BuyerActionError, CasePipeline
 from app.cases.recovery import ClaimDraftOnOpen, RecoveryError, SellerMark, seller_mark
 from app.checkout.address import AddressChecker, AddressCheckResult
+from app.checkout.catalog import CatalogError, charge_for, products
 from app.checkout.service import CheckoutError, CheckoutService, DeliveryQuote
 from app.db import Base
 from app.demo.seed import DEMO_TAG, SeedSummary, seed_scenario
@@ -114,7 +115,14 @@ class QuoteIn(AmountIn):
 
 class StartIn(QuoteIn):
     method: ShippingMethod
-    item_description: str = Field(default="", max_length=200)
+    item_description: str = Field(default="", max_length=200)  # ignored: the product names it
+    sku: str | None = Field(default=None, max_length=64)
+
+
+class ProductOut(BaseModel):
+    sku: str
+    name: str
+    prices: dict[str, int]
 
 
 class StartOut(BaseModel):
@@ -441,16 +449,33 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         amount = Money(amount_minor=body.amount_minor, currency=body.currency)
         return _checkout(s).quote(body.seller_id, amount, buyer_country=body.buyer_country)
 
+    @router.get("/api/shop/{seller_id}/products", response_model=list[ProductOut])
+    def shop_products(seller_id: str, s: Db) -> list[ProductOut]:
+        try:
+            items = products(s, seller_id)
+        except CatalogError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
+        return [ProductOut(sku=p.sku, name=p.name, prices=p.prices) for p in items]
+
     @router.post("/api/checkout/start", response_model=StartOut, dependencies=[checkout_cap])
     def start(body: StartIn, s: Db) -> StartOut:
-        amount = Money(amount_minor=body.amount_minor, currency=body.currency)
+        try:  # CK-07: the server's price, or a refusal before anything reaches PayPal
+            item, amount = charge_for(
+                s,
+                body.seller_id,
+                sku=body.sku,
+                currency=body.currency,
+                shown_minor=body.amount_minor,
+            )
+        except CatalogError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
         try:
             started = _checkout(s).start(
                 body.seller_id,
                 amount,
                 body.method,
                 buyer_country=body.buyer_country,
-                item_description=body.item_description,
+                item_description=item.name,
             )
         except CheckoutError as exc:
             raise HTTPException(404, str(exc)) from None

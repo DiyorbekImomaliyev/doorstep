@@ -1,10 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Check, House, Lock, PenLine, ShieldCheck, Shirt, Sparkles } from "lucide-react";
-import { api, type Quote } from "../api";
+import { api, type Product, type Quote } from "../api";
 import { Brand, ErrorBox, Loading } from "../components/ui";
 import { METHOD, money } from "../format";
 
-const PRODUCT = { name: "Black jacket, size M", amount: 6000, currency: "GBP" };
 const HINT: Record<string, string> = {
   home: "Left at your door or with a neighbour.",
   locker: "Collect with a code. The strongest proof you got it.",
@@ -31,20 +30,30 @@ export default function Shop({ sellerId }: { sellerId: string }) {
   const [method, setMethod] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // CK-07: the item and its price come from the seller's product table; the server charges that.
+  const [product, setProduct] = useState<Product | null>(null);
   const currency = country === "US" ? "USD" : "GBP";
+  const amount = product?.prices[currency] ?? null;
 
   useEffect(() => {
+    api.products(sellerId)
+      .then((items) => items[0] ? setProduct(items[0]) : setErr("This shop has nothing for sale."))
+      .catch((e) => setErr(String(e.message)));
+  }, [sellerId]);
+
+  useEffect(() => {
+    if (amount === null) return;
     setQuote(null);
-    api.quote(sellerId, PRODUCT.amount, currency, country)
+    api.quote(sellerId, amount, currency, country)
       .then((q) => { setQuote(q); setMethod(q.recommended); })
       .catch((e) => setErr(String(e.message)));
-  }, [sellerId, country, currency]);
+  }, [sellerId, country, currency, amount]);
 
   async function pay() {
-    if (!method) return;
+    if (!method || !product || amount === null) return;
     setBusy(true); setErr(null);
     try {
-      const started = await api.start(sellerId, PRODUCT.amount, currency, country, method, PRODUCT.name);
+      const started = await api.start(sellerId, amount, currency, country, method, product.sku);
       sessionStorage.setItem("doorstep:last_buyer_url", started.buyer_url);
       window.location.assign(started.approve_url);
     } catch (e) {
@@ -62,8 +71,8 @@ export default function Shop({ sellerId }: { sellerId: string }) {
             <Shirt size={28} strokeWidth={1.5} />
           </div>
           <div className="col grow" style={{ gap: 2 }}>
-            <h2>{PRODUCT.name}</h2>
-            <span className="muted num">{money(PRODUCT.amount, currency)}</span>
+            <h2>{product?.name ?? "\u00a0"}</h2>
+            <span className="muted num">{amount !== null ? money(amount, currency) : "\u00a0"}</span>
           </div>
           <select aria-label="Ship to" value={country} onChange={(e) => setCountry(e.target.value)}>
             <option value="GB">Ship to UK</option>
@@ -96,13 +105,13 @@ export default function Shop({ sellerId }: { sellerId: string }) {
         </section>
 
         <section className="card col summary" aria-label="Order summary">
-          <div className="sum-line"><span>{PRODUCT.name}</span><span className="num">{money(PRODUCT.amount, currency)}</span></div>
+          <div className="sum-line"><span>{product?.name}</span><span className="num">{amount !== null && money(amount, currency)}</span></div>
           <div className="sum-line"><span>Delivery{method ? ` · ${METHOD[method] ?? method}` : ""}</span><span>Free</span></div>
-          <div className="sum-line total"><span>Total</span><span className="num">{money(PRODUCT.amount, currency)}</span></div>
+          <div className="sum-line total"><span>Total</span><span className="num">{amount !== null && money(amount, currency)}</span></div>
         </section>
 
         {err && <ErrorBox message={err} />}
-        <button className="btn paypal lg block" disabled={!method || busy} onClick={pay}>
+        <button className="btn paypal lg block" disabled={!method || !product || busy} onClick={pay}>
           {busy ? "Opening PayPal…" : "Pay with PayPal"}
         </button>
         <p className="footnote"><ShieldCheck aria-hidden />Sandbox only. Your address is checked before you're charged.</p>

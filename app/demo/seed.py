@@ -11,6 +11,7 @@ The filmed refund comes from a real sandbox checkout, not from seeded data.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -18,6 +19,8 @@ from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.ai.explainer import Explainer
@@ -34,6 +37,7 @@ from app.orders.models import (
     Dispute,
     Evidence,
     Order,
+    Product,
     Seller,
     Shipment,
     TrackingEvent,
@@ -46,6 +50,38 @@ from app.shipping.service import FAILED_ATTEMPT_CHOICES
 from app.worker.simulated import SIM_PREFIX
 
 DEMO_TAG = "demo"
+DEMO_SKU = "jacket-black-m"  # CK-07: the one item Maria's demo shop sells, priced on the server
+_DEMO_PRICES = {"GBP": 6000, "USD": 6000}
+
+
+def _add_demo_product(session: Session, seller_id: str) -> None:
+    session.add(
+        Product(seller_id=seller_id, sku=DEMO_SKU, name="Black jacket, size M", prices=_DEMO_PRICES)
+    )
+
+
+def backfill_demo_products(session: Session) -> int:
+    """Gives every demo shop seeded before CK-07 its product; real sellers are never touched."""
+    has_product = select(Product.id).where(Product.seller_id == Seller.id).exists()
+    missing = session.scalars(
+        select(Seller.id).where(Seller.scratch_tag.is_not(None), ~has_product)
+    ).all()
+    for seller_id in missing:
+        _add_demo_product(session, seller_id)
+    session.flush()
+    return len(missing)
+
+
+def backfill_demo_catalog(engine: Engine) -> None:
+    """Startup step. The web service and the worker may race; the loser logs and moves on."""
+    try:
+        with Session(engine) as session:
+            backfill_demo_products(session)
+            session.commit()
+    except SQLAlchemyError:
+        logging.getLogger(__name__).warning("demo product backfill skipped")
+
+
 _NS = uuid.UUID("7c1d6a52-4c1e-4a59-9a43-6a3d0f1d2c11")
 
 _O = OrderState
@@ -437,6 +473,7 @@ def _build(
         )
     )
     session.flush()
+    _add_demo_product(session, seller_id)
     # RC-08: seeded cases keep the fact-only claim pack; every judge reset would otherwise ask the
     # model to reword about nine packs nobody opened. Cases reported during the demo get the draft.
     pipeline = CasePipeline(

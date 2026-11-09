@@ -25,6 +25,7 @@ from app.api.deps import AppDeps, Services, ServiceUnavailable
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import Base, ensure_indexes, import_all_models, make_engine, make_session_factory
+from app.demo.seed import backfill_demo_catalog
 from app.proof.receipts import ReceiptSigner
 from app.security.links import LinkSigner
 
@@ -149,6 +150,7 @@ def build_runtime(*, create_tables: bool = True) -> Runtime:
     if create_tables:
         Base.metadata.create_all(engine)  # no migrations in the hackathon build
         ensure_indexes(engine)  # indexes added after a table was made
+        backfill_demo_catalog(engine)  # CK-07: demo shops seeded before products existed
     session_factory = make_session_factory(engine)
 
     paypal = None
