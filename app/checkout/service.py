@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.cases.engine import AddressCheck
 from app.checkout import risk
 from app.checkout.address import AddressChecker, AddressCheckResult
-from app.checkout.ports import ApprovedOrderReader
+from app.checkout.ports import ApprovedOrder, ApprovedOrderReader
 from app.clock import Clock
 from app.config import Settings
 from app.money import Money
@@ -147,10 +147,14 @@ class CheckoutService:
         )
 
     # ---- CK-01 / CK-02 / CK-06 -------------------------------------------------------
-    def on_approved(self, order: Order) -> AddressCheckResult:
-        """The buyer approved in PayPal: read the address PayPal returned and check it."""
+    def on_approved(
+        self, order: Order, approved: ApprovedOrder | None = None
+    ) -> AddressCheckResult:
+        """The buyer approved in PayPal: read the address PayPal returned and check it.
+        `approved`: PayPal's answer when the caller already read it (CK-08)."""
         self._require_created(order)
-        approved = self.reader.get_approved(self._paypal_id(order))
+        if approved is None:
+            approved = self.reader.get_approved(self._paypal_id(order))
         order.payer_id = approved.payer_id
         self._ship_to(order, approved.address)
         result = self.checker.check(approved.address)

@@ -1,5 +1,7 @@
 """PayPal webhook events, processed from the inbox by the worker.
 
+- CHECKOUT.ORDER.APPROVED: if the buyer does not come back from PayPal, a follow-up job checks the
+  address and captures (CK-08).
 - PAYMENT.CAPTURE.COMPLETED: backup to the capture job; stores the capture and marks PAID.
 - PAYMENT.CAPTURE.REFUNDED: records refunds made outside Doorstep, so the refundable balance
   stays right (PO-06). Doorstep's own refunds are recognised by their PayPal refund id or their
@@ -28,6 +30,7 @@ from app.policy.rules import RuleBook
 from app.policy.service import PolicyService
 from app.proof.receipts import ReceiptSigner, issue_refund_receipt
 from app.proof.seller_protection import record_seller_protection
+from app.worker.approved import awaiting_return, schedule_completion
 from app.worker.models import WebhookInbox
 
 log = logging.getLogger("doorstep.paypal_events")
@@ -159,11 +162,28 @@ def _close_disputed_case(s: Session, order: Order, outcome: dict[str, Any]) -> N
     transition_case(s, case, CaseState.CLOSED, actor="paypal", reason=f"dispute resolved: {code}")
 
 
+def _make_order_approved(clock: Clock) -> Handler:
+    """CK-08: PayPal says the buyer approved. If they do not come back within the grace period,
+    the follow-up job checks the address and captures."""
+
+    def handle(s: Session, row: WebhookInbox) -> None:
+        paypal_order_id = str(_resource(row).get("id") or "")
+        order = s.scalars(select(Order).where(Order.paypal_order_id == paypal_order_id)).first()
+        if order is None or not paypal_order_id:
+            log.info("approved event %s not matched to an order; skipped", row.event_id)
+            return
+        if awaiting_return(order):
+            schedule_completion(s, order, clock=clock, sweep=False)
+
+    return handle
+
+
 def paypal_inbox_handlers(
     rulebook: RuleBook, clock: Clock, receipts: ReceiptSigner | None = None
 ) -> dict[tuple[str, str], Handler]:
     dispute = _make_dispute(clock)
     return {
+        ("paypal", "CHECKOUT.ORDER.APPROVED"): _make_order_approved(clock),
         ("paypal", "PAYMENT.CAPTURE.COMPLETED"): _make_capture_completed(clock),
         ("paypal", "PAYMENT.CAPTURE.REFUNDED"): _make_refunded(rulebook, clock, receipts),
         ("paypal", "CUSTOMER.DISPUTE.CREATED"): dispute,

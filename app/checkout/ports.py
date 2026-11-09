@@ -15,6 +15,9 @@ class ApprovedOrder(BaseModel):
     paypal_order_id: str
     payer_id: str
     address: Address
+    # CK-08: PayPal's order status. A capture follows only on APPROVED, which is what the buyer's
+    # return from PayPal implies, hence the default.
+    status: str = "APPROVED"
 
 
 class ApprovedOrderReader(Protocol):

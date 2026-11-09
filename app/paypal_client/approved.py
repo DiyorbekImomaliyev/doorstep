@@ -25,6 +25,7 @@ def parse_approved_order(body: dict[str, Any]) -> ApprovedOrder:
     return ApprovedOrder(
         paypal_order_id=str(body.get("id") or ""),
         payer_id=str(_dict(body.get("payer")).get("payer_id") or ""),
+        status=str(body.get("status") or ""),
         address=Address(
             name=str(_dict(shipping.get("name")).get("full_name") or ""),
             line1=str(address.get("address_line_1") or ""),

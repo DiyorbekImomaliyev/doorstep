@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.recovery import RecoveryDrafter
 from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expired
+from app.checkout.address import AddressChecker
 from app.orders.models import MoneyAction
 from app.policy.evidence import DISPUTE_EVIDENCE_JOB, DisputeEvidenceJobHandler
 from app.policy.offers import DISPUTE_OFFER_JOB, OfferJobHandler
@@ -27,8 +28,10 @@ from app.proof.receipts import ReceiptSigner, issue_refund_receipt
 from app.runtime import NotConfigured, Runtime, build_runtime
 from app.shipping.events import handle_shippo_track_updated
 from app.shipping.service import REGISTER_TRACK, RegisterTrackHandler, ShippingService
+from app.worker.approved import CompleteApprovedHandler, sweep_unreturned_approvals
 from app.worker.handlers import ADD_TRACKING, CAPTURE_ORDER, AddTrackingHandler, CaptureOrderHandler
 from app.worker.inbox import InboxProcessor
+from app.worker.kinds import COMPLETE_APPROVED
 from app.worker.models import Job
 from app.worker.paypal_events import paypal_inbox_handlers
 from app.worker.runner import JobRunner
@@ -78,6 +81,14 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     if rt.paypal is not None:
         handlers[CAPTURE_ORDER] = CaptureOrderHandler(rt.services.orders, rt.clock)
         handlers[ADD_TRACKING] = AddTrackingHandler(rt.services.orders, rt.clock)
+        handlers[COMPLETE_APPROVED] = CompleteApprovedHandler(  # CK-08
+            rt.services.orders,
+            rt.services.approved,
+            AddressChecker(rt.services.address_validator),
+            rulebook,
+            rt.clock,
+            rt.settings,
+        )
     gateway = refund_gateway(rt)
     refunds = RefundJobHandler(gateway, rulebook, rt.clock, disputes=gateway)  # live dispute read
     handlers[DISPUTE_EVIDENCE_JOB] = DisputeEvidenceJobHandler(  # DE-01..04
@@ -130,7 +141,23 @@ def sweep(rt: Runtime) -> int:
         sweep_refunds(rt)
     except Exception:  # a PayPal read failing must not stop the other sweeps; next sweep retries
         log.exception("pending refund sweep failed; retrying next sweep")
+    try:
+        sweep_approvals(rt)
+    except Exception:  # same: the other sweeps already ran; next sweep retries
+        log.exception("approved checkout sweep failed; retrying next sweep")
     return len(flagged)
+
+
+def sweep_approvals(rt: Runtime) -> int:
+    """CK-08: queue a PayPal check for checkouts whose buyer never came back from PayPal."""
+    if rt.paypal is None:  # nothing can capture without PayPal
+        return 0
+    with rt.session_factory() as s:
+        queued = sweep_unreturned_approvals(s, rt.clock)
+        s.commit()
+    if queued:
+        log.info("approved checkout sweep: asking PayPal about %d order(s)", queued)
+    return queued
 
 
 def sweep_refunds(rt: Runtime) -> list[str]:

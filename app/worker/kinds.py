@@ -5,3 +5,4 @@ write module (the import contracts forbid that, even indirectly).
 """
 
 ADD_TRACKING = "paypal.add_tracking"  # payload: {"shipment_id": <Doorstep shipment id>}
+COMPLETE_APPROVED = "checkout.complete_approved"  # payload: {"order_id": <Doorstep order id>}
