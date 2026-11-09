@@ -20,6 +20,8 @@ orders
 3. **Open Maria's Control Room**, open the **Black jacket** case and **Approve** the refund. The
    money row follows it to "Simulated" (a demo order), and Sam's page says it was sent and simulated.
 4. Press **verify** next to the signed receipts: a public page re-checks every receipt in the chain.
+5. On Sam's page, open **Signed delivery record**, then press **Change one character and check
+   again**: the same facts, one character different, fail the check.
 
 **Buy with PayPal** runs a real sandbox checkout. It needs a PayPal sandbox personal account: sign
 in at [developer.paypal.com](https://developer.paypal.com/dashboard/accounts), open **Sandbox
@@ -49,15 +51,42 @@ resolve, recover, learn) and settles the money through PayPal's own APIs when so
 
 ## Why it matters
 
-Parcel problems are common in every market Doorstep covers, and they end in disputes that the
-seller pays for.
+Parcel problems are common in the UK, the EU and the US, and they end on the seller's desk.
 
 | | Figure | Source |
 | --- | --- | --- |
-| **UK** | 15 million people (37%) had a problem with their latest delivery; 29% said the courier left before they reached the door | [Citizens Advice, Nov 2025](https://www.citizensadvice.org.uk/about-us/media-centre/press-releases/parcel-problems-reach-record-as-15-million-people-are-let-down-on-the/) |
+| **UK** | 15 million people (37%) had a problem with their latest delivery; 29% said the courier left before they reached the door, and 24% had a parcel left somewhere insecure | [Citizens Advice, Nov 2025](https://www.citizensadvice.org.uk/about-us/media-centre/press-releases/parcel-problems-reach-record-as-15-million-people-are-let-down-on-the/) |
 | **EU** | 35% of online shoppers hit a problem buying online; a late delivery, for 1 in 5, was the most common | [Eurostat, Mar 2026](https://ec.europa.eu/eurostat/web/products-eurostat-news/w/ddn-20260311-1) |
-| **US** | 3 in 10 adults, about 80 million people, have had a package stolen; an estimated $7.7 billion of parcels were stolen in the past year | [Security.org, Oct 2026](https://www.security.org/package-theft/annual-report/) |
-| **Disputes** | "Item not received" is 1 in 5 chargebacks in a normal week; over Black Friday 2025 it was 1 in 3 | [Chargeflow, about 3 million disputes, Oct 2026](https://www.chargeflow.io/data-lab/peak-season-part-1) |
+| **US** | 3 in 10 adults, about 80 million people, have had a package stolen; an estimated $7.7 billion of parcels were stolen in the past year, and 60% of recent victims took it to the store they bought from | [Security.org, Oct 2026](https://www.security.org/package-theft/annual-report/) |
+| **Card disputes** | "Item not received" is 1 in 5 card chargebacks in a normal week; over Black Friday 2025 it was 1 in 3 | [Chargeflow, about 3 million disputes, Oct 2026](https://www.chargeflow.io/data-lab/peak-season-part-1) |
+
+### What it is worth to a seller
+
+Every input is published, and the Control Room's plan strip shows the seller's own counts beside
+the sourced costs.
+
+| Per 1,000 orders a month | UK | US |
+| --- | --- | --- |
+| First deliveries that fail ([Loqate, 2021](https://info.loqate.com/hubfs/Loqate%202021/Fixing%20Failed%20Deliveries/Fixing%20Failed%20Deliveries%20-%20Final.pdf), retailers' figures) | 6%: 60 | 8%: 80 |
+| Average cost of each to the seller (same source) | £11.60 | $17.20 |
+| Doorstep's price (100 free, then 8p or 10c an order, capped) | £49 | $59 |
+| Pays for itself after | 5 failed deliveries prevented, 1 in 12 | 4 prevented, 1 in 20 |
+
+- **Measured in the product:** addresses fixed before payment, problems settled with no PayPal
+  dispute, refunds and their status, carrier claims prepared and paid, and PayPal's Seller
+  Protection verdict on every payment.
+- **Not claimed:** a "saved" total. Not every problem would have become a failed delivery or a
+  lost claim, so Doorstep shows counts and sourced costs, not a forecast.
+
+**Why pay when PayPal has Seller Protection?** Seller Protection covers a seller in a PayPal claim
+when tracking shows "delivered" to the address on the payment. It does not change the seller's
+duty to the buyer: in the UK the parcel stays at the seller's risk until the buyer holds it
+(Consumer Rights Act 2015, s.29), and an item-not-received claim filed with the buyer's card
+issuer is outside Seller Protection. A claim the seller loses costs £12 or $15 in PayPal fees
+([UK](https://www.paypal.com/uk/business/paypal-business-fees),
+[US](https://www.paypal.com/us/business/paypal-business-fees)), and a seller's dispute rate decides
+whether PayPal charges the higher fee. Doorstep shows PayPal's verdict beside the legal rule it
+applied, and settles fast when the law says the seller owes the buyer, before it becomes a claim.
 
 ## How it works
 
@@ -87,7 +116,7 @@ disputes and webhook verification use REST through one thin client (`app/paypal_
 **Proof it runs on PayPal.**
 
 - The live app's [`/healthz`](https://doorstep-ojmg.onrender.com/healthz) counts the verified
-  webhooks it has processed: 21 from PayPal (the latest a `PAYMENT.CAPTURE.REFUNDED`) and 54 from
+  webhooks it has processed: 23 from PayPal (the latest a `PAYMENT.CAPTURE.REFUNDED`) and 55 from
   Shippo, as of Nov 9, 2026.
 - `make smoke` runs the backend loop against the real sandbox: it pays an order with PayPal's test
   card, ships it, replays the "Delivered" event, reports "Not here" and refunds through the outbox.
@@ -196,13 +225,13 @@ signed delivery proof the assistant can check (see below).
 
 | Check | Result | Measured |
 | --- | --- | --- |
-| Unit and property tests (`make test`) | 1,710 passed | every push, in CI |
+| Unit and property tests (`make test`) | 1,816 passed | every push, in CI |
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% | every push, in CI |
-| Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 2,974; only wording changes may survive | full local run, Nov 6; CI re-runs it on every change to `app/policy`, and new money code is mutation-tested before it is committed |
+| Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 3,129; only wording changes may survive | CI run, Nov 9; CI re-runs it on every change to `app/policy`, and new money code is mutation-tested before it is committed |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease | every push, in CI |
 | API fuzzing, Schemathesis (`make fuzz`) | 49 API operations fuzzed from the OpenAPI schema, 0 failures | every push, in CI |
 | Browser tests, Playwright (`make e2e`) | 18 passed in Chromium | locally, against a running server |
-| Failure-point engine (`make evals`) | 96.7% agreement with the expected cause on 60 hand-written scenarios (target 85%); 95.0% on a 20-case hold-out. This measures rule consistency, not accuracy on real deliveries | recorded run, Nov 7 |
+| Failure-point engine (`make evals`) | 96.7% agreement with the expected cause on 60 hand-written scenarios, 30 situations each in the UK and the US (target 85%); 95.0% on a 20-case hold-out. This measures rule consistency, not accuracy on real deliveries | recorded run, Nov 7 |
 | Policy reader, Ragas (`make evals`) | faithfulness 0.91 (target 0.90) and context recall 0.97 on 30 questions over six seller policies | recorded run, Nov 7 |
 | Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks in 8 kinds: code checks caught 21 unsafe drafts, the other 43 answers were safe, 0 unsafe answers reached a buyer. With a stand-in model that obeys every attack, the refund still never changes | replays of recorded Claude Sonnet and Gemini answers, Nov 7 |
 
@@ -226,13 +255,30 @@ the next; the other rows are connectors that are not built yet.
 
 | Where the seller sells | How they use Doorstep | Market |
 | --- | --- | --- |
-| **Own shop with PayPal Checkout** (live) | Doorstep's checkout creates the PayPal order, as in the live demo, and runs all five stages end to end | 439 million active PayPal accounts in about 200 markets can pay there ([PayPal 10-K](https://www.sec.gov/Archives/edgar/data/1633917/000163391726000024/pypl-20251231.htm)) |
+| **Own shop with PayPal Checkout** (live) | Doorstep's checkout creates the PayPal order, as in the live demo, and runs all five stages end to end | 440 million active PayPal accounts ([PayPal, Q3 2026](https://www.sec.gov/Archives/edgar/data/0001633917/000163391726000086/pypl3q-26earningsrelease.htm)) can pay there |
 | **Shopify** | Would install the Doorstep app and connect PayPal once. Orders and tracking would arrive from Shopify; the seal would print with the packing slip; the buyer would report a problem from the shipping email; refunds would go through Shopify's refund API, so the Shopify order and the PayPal capture stay in step | Millions of merchants in more than 175 countries, 44% of them in the US; $378.4 billion sold in 2025 ([Shopify 10-K](https://www.sec.gov/Archives/edgar/data/1594805/000159480526000007/shop-20251231.htm)) |
 | **WooCommerce, Wix, Swappa** | Would connect with PayPal in one consent, dispute permission included, and follow captures and disputes on the seller's PayPal account | Every shop on these platforms that takes PayPal |
 | **eBay, Etsy, Amazon** | The marketplace holds the money and decides the case, so Doorstep would supply the proof: tracking and signature answers to "not received" inquiries, and carrier claim packs | 135 million active eBay buyers ([eBay 10-K](https://www.sec.gov/Archives/edgar/data/1065088/000106508826000027/ebay-20251231.htm)) |
 
 Each connector would sit on the same core: the platform's orders come through the verified inbox,
 and its rules are one more file in [`rules/`](rules/).
+
+**Designed next, on PayPal's own platform** (not built yet):
+
+- **Seller number two connects in minutes.** PayPal's multiparty onboarding (Partner Referrals,
+  then calls made for the seller with `PayPal-Auth-Assertion`) lets any PayPal seller grant
+  Doorstep its order, tracking and dispute permissions in one consent.
+- **Sellers who keep their own checkout.** A connect-only mode reads captures and disputes from the
+  seller's PayPal account (Transaction Search and the Disputes API). Prevention moves from checkout
+  to before the label; proof, settlement and recovery work as today.
+- **The address check inside PayPal's review page.** Server-side shipping callbacks
+  (`order_update_callback_config`) let Doorstep turn down an undeliverable postcode before the
+  buyer approves, with only the postcode district reaching Doorstep.
+- **Possession proof as a dispute signal.** The signed delivery proof is a standard JWS today; sent
+  with `provide-evidence`, it would give PayPal's item-not-received decision a fact it can check.
+- **A delivered-scan network across shops.** One shop sees one odd "Delivered" scan; many shops see
+  a depot marking 40 parcels delivered in a minute. The audit would weigh the carrier's scan,
+  never the buyer.
 
 ## Run it locally
 
