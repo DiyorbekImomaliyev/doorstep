@@ -107,6 +107,17 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
   return { data, error, status, reload: () => setTick((t) => t + 1), setData };
 }
 
+/** Reload every `ms` while `active` and the tab is visible, so a page follows a refund or a parcel
+ * without a refresh. The old data stays on screen while each reload runs. */
+export function usePoll(reload: () => void, active: boolean, ms = 3000) {
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") reload(); }, ms);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, ms]);
+}
+
 export function ErrorBox({ message }: { message: string }) {
   return <div className="notice bad" role="alert"><CircleAlert aria-hidden /><span>{message}</span></div>;
 }

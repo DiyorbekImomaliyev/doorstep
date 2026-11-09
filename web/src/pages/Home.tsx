@@ -19,9 +19,28 @@ const NAV = (
   </nav>
 );
 
+// The demo shop survives Back and a reload in this tab, so a judge who leaves the Control Room
+// comes back to the same shop, and Sam's report still reaches it.
+const SEED_KEY = "doorstep.demo-shop";
+
+function savedSeed(): SeedOut | null {
+  try {
+    const raw = sessionStorage.getItem(SEED_KEY);
+    return raw ? (JSON.parse(raw) as SeedOut) : null;
+  } catch { return null; }
+}
+
+function keepSeed(seed: SeedOut | null) {
+  try {
+    if (seed) sessionStorage.setItem(SEED_KEY, JSON.stringify(seed));
+    else sessionStorage.removeItem(SEED_KEY);
+  } catch { /* storage blocked: the shop lasts for this page */ }
+}
+
 export default function Home() {
   const health = useAsync(() => api.health(), []);
-  const [seed, setSeed] = useState<SeedOut | null>(null);
+  const [seed, setSeedState] = useState<SeedOut | null>(savedSeed);
+  const setSeed = (s: SeedOut | null) => { keepSeed(s); setSeedState(s); };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -37,7 +56,7 @@ export default function Home() {
       <header className="hero">
         <span className="eyebrow"><b>For PayPal sellers</b> UK and US</span>
         <h1>No buyer loses money.<br /><em>No honest seller</em> pays for a lost parcel.</h1>
-        <p className="lede">Doorstep refunds the buyer in minutes, proves who had the parcel, and makes the courier pay.</p>
+        <p className="lede">Doorstep refunds the buyer in minutes, proves who had the parcel, and drafts the claim to the courier.</p>
         <div className="ctas">
           <a className="btn primary lg" href="#demo">Try the live demo <ArrowRight size={17} /></a>
           <a className="btn lg" href="#how">How it works</a>

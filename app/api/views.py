@@ -17,11 +17,12 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.ai.explainer import money_text
 from app.ai.risk import RiskFeatures, load_model
 from app.cases.signals import EvidenceKind
 from app.checkout.risk import seller_case_rate, seller_order_count
 from app.geo import postcode_district  # re-exported: shown in the Control Room
-from app.money import MINOR_UNIT_EXPONENT, parse_currency
+from app.money import MINOR_UNIT_EXPONENT, Money, parse_currency
 from app.orders.enums import CaseState, MoneyActionKind, MoneyActionStatus, OrderState
 from app.orders.models import (
     AuditLog,
@@ -127,6 +128,44 @@ def money_status(ma: MoneyAction) -> str:
     if ma.status == MoneyActionStatus.FAILED.value and ma.paypal_status in OFFER_MAYBE_MADE:
         return "unconfirmed"
     return ma.status
+
+
+_REFUND_KINDS = (MoneyActionKind.REFUND.value, MoneyActionKind.PARTIAL_REFUND.value)
+_DEMO_REFUND = "This is a demo shop, so the refund is simulated: no real money moved."
+
+
+def buyer_outcome(s: Session, order: Order, case: Case) -> str | None:
+    """UI-01: what has happened to the buyer's money since the decision, in the buyer's words.
+
+    None until the case has a refund of its own, so the decision's message stands until then.
+    PR-08: a simulated refund (a demo order) says so and never claims PayPal sent it.
+    """
+    refund = s.scalars(
+        select(MoneyAction)
+        .where(
+            MoneyAction.case_id == case.id,
+            MoneyAction.kind.in_(_REFUND_KINDS),
+            MoneyAction.external.is_(False),
+        )
+        .order_by(MoneyAction.created_at.desc())
+    ).first()
+    if refund is None:
+        return None
+    amount = money_text(
+        Money(amount_minor=refund.amount_minor, currency=parse_currency(refund.currency))
+    )
+    simulated = is_simulated(order.capture_id)
+    if refund.status == MoneyActionStatus.COMPLETED.value:
+        when = refund.completed_at or refund.created_at
+        day = f"{when.day} {when:%b}"
+        if simulated:
+            return f"Your refund of {amount} was sent on {day}. {_DEMO_REFUND}"
+        return f"Your refund of {amount} was sent to your PayPal on {day}."
+    if refund.status == MoneyActionStatus.QUEUED.value:
+        if simulated:
+            return f"The seller approved your refund of {amount}. {_DEMO_REFUND}"
+        return f"The seller approved your refund of {amount}. It is on its way to your PayPal."
+    return "A person is checking the refund before it is sent. Nothing has been refused."
 
 
 class EvidenceScore(BaseModel):
@@ -423,6 +462,8 @@ def buyer_view(s: Session, order: Order) -> BuyerView:
     if decision is not None:
         explainer = decision.model_outputs.get("explainer") or {}
         message = explainer.get("buyer_message")
+    if case is not None:
+        message = buyer_outcome(s, order, case) or message
     reportable = {"IN_TRANSIT", "EXCEPTION", "DELIVERED", "PICKED_UP", "CONFIRMED"}
     return BuyerView(
         order_ref=order.id[:8].upper(),
@@ -856,7 +897,14 @@ def case_view(s: Session, case: Case) -> CaseView:
         for ma in actions_rows
     ]
     actions: list[str] = []
-    if case.state == CaseState.AWAITING_SELLER.value:
+    # UI-01: an approved refund owns the case until it lands, so nothing is offered twice.
+    on_its_way = any(
+        m.kind in _REFUND_KINDS and m.status == MoneyActionStatus.QUEUED.value
+        for m in actions_rows
+    )
+    if on_its_way:
+        pass
+    elif case.state == CaseState.AWAITING_SELLER.value:
         actions = ["approve", "decline"]
     elif case.state == CaseState.HOLD_FOR_REVIEW.value:
         # A blocked or failed refund cannot be approved again; a fresh decision can follow.
@@ -865,11 +913,7 @@ def case_view(s: Session, case: Case) -> CaseView:
             and m.status in (MoneyActionStatus.BLOCKED.value, MoneyActionStatus.FAILED.value)
             for m in actions_rows
         )
-        on_its_way = any(m.status == MoneyActionStatus.QUEUED.value for m in actions_rows)
-        if on_its_way:
-            actions = []  # the refund job owns the case until it lands
-        else:
-            actions = ["re-check"] if stopped else ["approve", "re-check"]
+        actions = ["re-check"] if stopped else ["approve", "re-check"]
     elif case.state == CaseState.DISPUTE_EVIDENCE.value and not any(
         m.kind == MoneyActionKind.EVIDENCE.value for m in money
     ):

@@ -4,7 +4,7 @@ import {
   ListChecks, MessageSquare, QrCode, RefreshCw, Scale, ScanLine, Send, Truck, Wallet, X, Zap,
 } from "lucide-react";
 import { api, type AgentRun, type CaseAction, type CaseView, type OrderRow, type PackingResult, type PolicyAnswer, type RecoveryView, type ScanAudit, type SealCard } from "../api";
-import { Badge, Bar, ErrorBox, Loading, SectionHead, Timeline, useAsync } from "../components/ui";
+import { Badge, Bar, ErrorBox, Loading, SectionHead, Timeline, useAsync, usePoll } from "../components/ui";
 import { FAILURE_POINT, METHOD, ROUTE, money, pct, riskTone, stateTone, when, type Tone } from "../format";
 
 const TEST_TRACKING = ["SHIPPO_DELIVERED", "SHIPPO_TRANSIT", "SHIPPO_FAILURE", "SHIPPO_PRE_TRANSIT", "SHIPPO_RETURNED"];
@@ -46,12 +46,16 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
   const { data: c, error, reload } = useAsync(() => api.casePage(token, caseId), [caseId]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // UI-01: an approved refund owns the case until it lands; follow it without a reopen.
+  const queued = c?.money.find((m) => (m.kind === "refund" || m.kind === "partial_refund") && m.status === "queued");
+  usePoll(reload, !!queued, 2000);
 
   async function act(action: CaseAction) {
     setBusy(true); setErr(null);
     try {
       await api.act(token, caseId, action);
-      onChanged(action === "approve" ? "Approved. The refund is on its way through PayPal."
+      onChanged(action === "approve"
+          ? (c?.order.simulated ? "Approved. This is a demo order, so the refund is simulated." : "Approved. The refund is on its way through PayPal.")
         : action === "send-evidence" ? "Evidence is on its way to the PayPal dispute."
         : action === "make-offer" ? "Your refund offer is on its way to the PayPal dispute."
         : action === "re-check" ? "Decided again with the latest evidence."
@@ -60,7 +64,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
     } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
 
-  if (error) return <div className="body"><ErrorBox message={error} /></div>;
+  if (error && !c) return <div className="body"><ErrorBox message={error} /></div>;
   if (!c) return <div className="body col" style={{ paddingTop: 24 }}><Loading /><Loading /></div>;
   const d = c.decision;
   const route = ROUTE[c.state];
@@ -126,10 +130,10 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
               <div key={i} className="money-row">
                 <span>{m.kind === "evidence" ? "Evidence to the PayPal dispute"
                   : m.kind === "offer" ? `Refund offered in the PayPal dispute ${money(m.amount_minor, m.currency)}`
-                  : `${m.kind.replace("_", " ")} ${money(m.amount_minor, m.currency)}`}</span>
+                  : `${m.kind === "partial_refund" ? "Partial refund" : "Refund"} ${money(m.amount_minor, m.currency)}${m.status === "simulated" ? " (demo)" : ""}`}</span>
                 <span className="row" style={{ gap: 8 }}>
                   {m.refund_id && <span className="mono faint">{m.refund_id}</span>}
-                  <Badge tone={m.status === "completed" ? "good" : m.status === "failed" || m.status === "blocked" || m.status === "unconfirmed" ? "warn" : "neutral"}>{m.status}</Badge>
+                  <Badge tone={m.status === "completed" || m.status === "simulated" ? "good" : m.status === "failed" || m.status === "blocked" || m.status === "unconfirmed" ? "warn" : "neutral"}>{MONEY_STATUS[m.status] ?? m.status}</Badge>
                 </span>
               </div>
             ))}
@@ -184,6 +188,15 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
         </section>
         <p className="faint" style={{ paddingTop: 4 }}>{c.disclaimer}</p>
       </div>
+      {queued && c.actions.length === 0 && (
+        <footer className="row" role="status" style={{ gap: 8 }}>
+          <RefreshCw size={15} className="spin" aria-hidden />
+          <span>
+            {c.order.simulated ? "Demo refund" : "Refund"} {money(queued.amount_minor, queued.currency)}{" "}
+            {c.order.simulated ? "is being simulated. No real money moves." : "is on its way through PayPal."}
+          </span>
+        </footer>
+      )}
       {c.actions.length > 0 && (
         <footer className="col" style={{ gap: 10 }}>
           {err && <ErrorBox message={err} />}
@@ -210,13 +223,19 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
             )}
           </div>
           {c.actions.includes("approve") && (
-            <span className="faint" style={{ textAlign: "right" }}>Paid through PayPal. PayPal keeps its fee.</span>
+            <span className="faint" style={{ textAlign: "right" }}>{c.order.simulated ? "Demo order: the refund is simulated. No real money moves." : "Paid through PayPal. PayPal keeps its fee."}</span>
           )}
         </footer>
       )}
     </>
   );
 }
+
+// Plain words for the money row's status (PR-08: a simulated refund never reads as a real one).
+const MONEY_STATUS: Record<string, string> = {
+  queued: "On its way", completed: "Sent", simulated: "Simulated", failed: "Failed",
+  blocked: "Held for review", unconfirmed: "Not confirmed",
+};
 
 const PROTECTION: Record<string, string> = {
   ELIGIBLE: "Eligible",

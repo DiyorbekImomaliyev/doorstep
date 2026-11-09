@@ -773,3 +773,6 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
   .pc-fix { grid-template-columns: 1fr; }
   .pc-fix .btn { justify-self: end; }
 }
+.spin { animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

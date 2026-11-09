@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Bot, Check, CircleCheck, History, House, LifeBuoy, Lock, MapPin, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
 import { api, type BuyerView } from "../api";
-import { Brand, ErrorBox, Loading, Timeline, Toast, useAsync } from "../components/ui";
+import { Brand, ErrorBox, Loading, Timeline, Toast, useAsync, usePoll } from "../components/ui";
 import { METHOD, REASONS, money } from "../format";
 
 const STEPS = [
@@ -40,6 +40,8 @@ export default function Buyer({ token }: { token: string }) {
   const [reporting, setReporting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The page follows the parcel and the case on its own until the order is finished.
+  usePoll(reload, !!v && (v.case_open || !["CONFIRMED", "RESOLVED"].includes(v.state)), 5000);
 
   async function run(fn: () => Promise<BuyerView | void>, done?: string) {
     setBusy(true);
@@ -55,10 +57,10 @@ export default function Buyer({ token }: { token: string }) {
     }
   }
 
-  if (error && status !== null && status < 500) {
+  if (error && !v && status !== null && status < 500) {
     return (<><Brand /><div className="narrow"><ErrorBox message="This link isn't valid or has expired. Ask the shop for a new one." /></div></>);
   }
-  if (error) {
+  if (error && !v) {
     // A server or network error is ours, not the buyer's: say so, and let them retry.
     return (
       <><Brand /><div className="narrow col">
@@ -143,7 +145,9 @@ export default function Buyer({ token }: { token: string }) {
           </section>
         )}
 
-        {reporting && (
+        {/* The poll can show the case before the report call returns (the model is still
+            writing the reply); the form closes as soon as the case exists. */}
+        {reporting && !v.case_open && v.state !== "RESOLVED" && (
           <Report
             busy={busy}
             onCancel={() => setReporting(false)}
