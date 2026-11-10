@@ -68,12 +68,18 @@ const currenciesShown = (api: GridApi<OrderRow>) => {
   return CURRENCY_COLS.filter((c) => seen.has(c.currency));
 };
 
+/** The grid grows with its rows, so AG may centre a chart below the fold: bring it into view. */
+function reveal<T extends { chartElement: HTMLElement } | undefined>(ref: T): T {
+  window.requestAnimationFrame(() => ref?.chartElement.closest<HTMLElement>(".ag-panel, .ag-dialog")?.scrollIntoView({ block: "center", behavior: "smooth" }));
+  return ref;
+}
+
 function openChart(api: GridApi<OrderRow>, category: string, series: string[], rows?: [number, number]) {
   const cur = currenciesShown(api);
   const cols = [category, ...series.filter((s) => s !== "money"), ...(series.includes("money") ? cur.map((c) => c.colId) : [])];
   if (cols.length < 2) return undefined;
   const sym = cur.map((c) => c.symbol).join(" and ");
-  return api.createRangeChart({
+  return reveal(api.createRangeChart({
     chartType: "groupedColumn",
     chartThemeName: "doorstep",
     cellRange: { columns: cols, ...(rows ? { rowStartIndex: rows[0], rowEndIndex: rows[1] } : {}) },
@@ -82,7 +88,7 @@ function openChart(api: GridApi<OrderRow>, category: string, series: string[], r
     chartThemeOverrides: sym && series.includes("money")
       ? { bar: { axes: { number: { title: { enabled: true, text: `At stake (${sym})` } } } } }
       : undefined,
-  });
+  }));
 }
 
 /** The seller's selection, charted. A "money" column becomes one series per currency. */
@@ -96,17 +102,29 @@ export function chartSelection(api: GridApi<OrderRow>) {
   openChart(api, category, series.length ? series : ["money"], [Math.min(a, b), Math.max(a, b)]);
 }
 
-/** One click: money at stake by delivery method, per currency. Cross-filter: a bar click filters the grid. */
+/**
+ * One click: money at stake by delivery method. Cross-filter: a bar click filters the grid. A
+ * cross-filter column chart stacks its series, which would add £ to $, so it charts one currency:
+ * the one with the most at stake (marked "£ only" when the view holds both).
+ */
 export function chartStakeByMethod(api: GridApi<OrderRow>) {
-  const cur = currenciesShown(api);
+  const totals = new Map<string, number>();
+  api.forEachNodeAfterFilter((n) => { if (n.data && !n.group) totals.set(n.data.currency, (totals.get(n.data.currency) ?? 0) + n.data.money_at_stake_minor); });
+  const cur = currenciesShown(api).sort((x, y) => (totals.get(y.currency) ?? 0) - (totals.get(x.currency) ?? 0));
   if (!cur.length) return undefined;
-  const sym = cur.map((c) => c.symbol).join(" and ");
-  return api.createCrossFilterChart({
+  const main = cur[0];
+  return reveal(api.createCrossFilterChart({
     chartType: "column",
     chartThemeName: "doorstep",
-    cellRange: { columns: ["methodName", ...cur.map((c) => c.colId)] },
+    cellRange: { columns: ["methodName", main.colId] },
     aggFunc: "sum",
     suppressChartRanges: true,
-    chartThemeOverrides: { common: { axes: { number: { title: { enabled: true, text: `At stake (${sym})` } } } } },
-  });
+    chartThemeOverrides: {
+      common: {
+        title: { enabled: true, text: `At stake by delivery (${main.symbol})` },
+        subtitle: { enabled: cur.length > 1, text: `${main.symbol} only` },
+        legend: { enabled: false },
+      },
+    },
+  }));
 }
