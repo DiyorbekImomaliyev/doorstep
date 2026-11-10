@@ -293,7 +293,7 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
           rows={2}
           maxLength={300}
           value={draft}
-          placeholder="e.g. Which carrier cost me most this month?"
+          placeholder="Ask about your orders"
           aria-label="Your question"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
@@ -302,7 +302,7 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
           ? <button className="btn icon-btn" type="button" aria-label="Stop" onClick={() => session?.cancel()}><Square size={14} aria-hidden /></button>
           : <button className="btn primary icon-btn" type="submit" aria-label="Ask" disabled={busy || draft.trim().length < 2}><ArrowUp size={16} aria-hidden /></button>}
       </form>
-      <p className="ask-foot">Sees chart settings and figures, never buyer details. Can't move money.</p>
+      <p className="ask-foot">No buyer details · Can't move money</p>
     </aside>
   );
 }
