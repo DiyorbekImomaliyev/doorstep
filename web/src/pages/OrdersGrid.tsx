@@ -33,6 +33,8 @@ import { guideParts } from "../grid/guide";
 import Doorstep3D from "../components/Doorstep3D";
 import type { DoorstepNote } from "../grid/notes";
 import { doorstepOwns, hasNote, notesFor, notesSource } from "../grid/notes";
+import { useGridViews } from "../grid/views";
+import { NewItem, bindSeen, doesExternalFilterPass, isExternalFilterPresent, newIds, syncSeen } from "../grid/seen";
 
 /**
  * The Control Room order grid, on AG Grid Enterprise. Patterns from AG Grid's own demos
@@ -242,13 +244,14 @@ function OrderCell(p: CustomCellRendererProps<OrderRow>) {
       <span className="item-tile" aria-hidden>{k.icon}</span>
       <span className="cell-two" style={{ gap: 4 }}>
         <span className="item-name">
+          {newIds.current.has(r.order_id) && <span className="new-dot phone-only" title="New" />}
           {p.api.findGetParts({ node: p.node, column: p.column ?? null, value: r.item }).map((x, i) => (
             x.match ? <mark key={i} className={`find-mark${x.activeMatch ? " active" : ""}`}>{x.value}</mark> : x.value
           ))}
         </span>
         <span className="order-meta">
           <span className="tag">{k.label}</span>
-          <span className="sub num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
+          <span className="sub num">{newIds.current.has(r.order_id) && <span className="new-dot" title="New" />}{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
         </span>
         {/* A phone shows two columns, Order and Next: the journey rides here; the rest is in the order. */}
         <span className={`order-journey phone-only tone-${journeyTone(r)}`}><span>{journeyLabel(r)}</span></span>
@@ -872,6 +875,8 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   const detailParams = useMemo(() => ({ onOpen }), [onOpen]);
   // AG Grid's Quick Access Toolbar: the grid's own tools, right-aligned. Kept stable (a new toolbar
   // rebuilds every item), so the hand-off callback is read through a ref.
+  const views = useGridViews();
+  useEffect(() => { syncSeen(rows); }, [rows]);
   const handoffRef = useRef(onHandoff);
   handoffRef.current = onHandoff;
   const toolbar = useMemo((): Toolbar => ({
@@ -879,6 +884,8 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     items: [
       // AG Grid's Row Group Panel, in the toolbar: the grouping as pills; drag a header in to group by it.
       { key: "groups", toolbarItem: "agRowGroupPanelToolbarItem", alignment: "left" },
+      views.item,
+      { key: "new", toolbarItem: NewItem },
       { key: "columns", icon: "columns", tooltip: "Columns and filters", action: ({ api: a }) => toggleColumnsPanel(a) },
       { key: "chart", icon: "chart", tooltip: "Chart", action: ({ api: a }) => chartStakeByMethod(a) },
       { key: "pivot", icon: "pivotPanel", tooltip: "Pivot", action: ({ api: a }) => togglePivot(a) },
@@ -886,7 +893,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       { key: "packing", icon: "csvExport", tooltip: "Packing list", action: ({ api: a }) => exportPackingList(a) },
       { key: "handoff", icon: "pdfExport", tooltip: "Download hand-off report", action: () => handoffRef.current?.() },
     ],
-  }), []);
+  }), [views.item]);
   // A search of two or more words that matches nothing is probably a question: say Enter asks it.
   const emptyParams = useMemo(() => ({
     text: !search ? empty : search.trim().includes(" ") ? "No match. Press Enter to ask it." : "No match.",
@@ -912,7 +919,9 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         getRowId={getRowId}
         defaultColDef={defaultColDef}
         quickFilterText={search}
-        onGridReady={(e) => { api.current = e.api; onReady(e.api); }}
+        onGridReady={(e) => { api.current = e.api; views.bind(e.api); bindSeen(e.api); syncSeen(rows); onReady(e.api); }}
+        isExternalFilterPresent={isExternalFilterPresent}
+        doesExternalFilterPass={doesExternalFilterPass}
         rowClassRules={rowClassRules}
         onRowClicked={onRowClicked}
         onCellKeyDown={onCellKeyDown}

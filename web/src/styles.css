@@ -1023,3 +1023,10 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 /* AG Grid Find: matches inside the order name. */
 .find-mark { background: #f3e3e7; color: inherit; border-radius: 3px; padding: 0 1px; box-shadow: 0 0 0 1px #e3c3cb; }
 .find-mark.active { background: #7b2d3d; color: #fff; box-shadow: none; }
+
+/* ===== GV: saved views and "new since last visit" ===== */
+.new-dot { display: inline-block; flex: none; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+.orders-grid .new-toggle { display: flex; gap: 4px; align-items: center; }
+.orders-grid .new-toggle .ag-toolbar-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.orders-grid .new-dot.phone-only { display: none; }
+@media (max-width: 640px) { .orders-grid .new-dot.phone-only { display: inline-block; } }
