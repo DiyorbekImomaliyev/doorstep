@@ -12,34 +12,27 @@ recover the loss from the carrier.
 orders
 
 [Design](#design-at-a-glance) · [Try it](#try-it-in-60-seconds) · [Why it matters](#why-it-matters) ·
-[What sellers say](#what-sellers-say) · [PayPal integration](#paypal-integration) ·
-[Product tour](#product-tour) · [What makes it different](#what-makes-it-different) ·
-[How it compares](#how-it-compares) · [Quality](#quality) · [Run it locally](#run-it-locally)
+[What sellers say](#what-sellers-say) · [PayPal integration](#paypal-integration) · [Product tour](#product-tour) · [What makes it
+different](#what-makes-it-different) · [How it compares](#how-it-compares) · [Quality](#quality) · [Run it locally](#run-it-locally)
 
 ## Overview
 
-A courier's "Delivered" scan wins every argument today. The buyer is told to wait, the honest
-seller pays for the parcel, and the carrier that lost it walks away. UK law already says the risk
-stays with the seller until the buyer **physically holds** the parcel
-([Consumer Rights Act 2015, s.29](https://www.legislation.gov.uk/ukpga/2015/15/section/29)), but
-nobody can cheaply prove possession.
+Today a courier's "Delivered" scan wins every argument. The buyer is told to wait, the honest seller pays for the parcel, and the carrier that lost it walks
+away. UK law says the risk stays with the seller until the buyer **physically holds** the parcel ([Consumer Rights Act 2015,
+s.29](https://www.legislation.gov.uk/ukpga/2015/15/section/29)), but nobody can cheaply prove possession.
 
-Doorstep closes that gap inside PayPal. It runs every order through five stages (prevent, prove,
-resolve, recover, learn) and settles the money through PayPal's own APIs when something still goes
-wrong.
+Doorstep closes that gap inside PayPal. It runs every order through five stages (prevent, prove, resolve, recover, learn). When something still goes wrong, it
+settles the money through PayPal's own APIs.
 
-**One case, start to finish.** Royal Mail scans Sam's £60 jacket "Delivered", and Sam taps **Not
-here**. Doorstep's audit finds the scan was made in E8 while the parcel was going to N1, in the same
-minute as two more of Maria's parcels to two other areas. Under the UK rule the parcel was still
-Maria's risk, so Doorstep recommends the refund and Maria approves it in one tap; the refund goes
-to Sam through PayPal. Maria gets a Royal Mail claim pack in which every sentence cites a checked
-fact, with the deadline from Royal Mail's own terms.
+**One case, start to finish.** Royal Mail scans Sam's £60 jacket "Delivered", and Sam taps **Not here**. The audit finds the scan was made in E8, but the parcel
+was going to N1. It was made in the same minute as two more of Maria's parcels to two other areas. The parcel was still Maria's risk, so Doorstep recommends a
+refund and Maria approves it in one tap. The refund goes to Sam through PayPal. Maria gets a Royal Mail claim pack, where every sentence cites a checked fact,
+with the deadline from Royal Mail's own terms.
 
 ## Design at a glance
 
-One FastAPI web service, one background worker and one Postgres, on Render. Models write words and
-plans; code decides who is liable and how much. Only `app/policy` can move money, and every PayPal
-write goes through an outbox with one idempotency key. Click a diagram to open it full size.
+One FastAPI web service, one background worker and one Postgres, on Render. Models write words and plans; code decides who is liable and how much. Only
+`app/policy` can move money, and every PayPal write goes through an outbox with one idempotency key. Click a diagram to open it full size.
 
 **System architecture:** who talks to what, and the one path money takes.
 
@@ -55,22 +48,19 @@ write goes through an outbox with one idempotency key. Click a diagram to open i
 
 ## Try it in 60 seconds
 
-1. Open the [live app](https://doorstep-ojmg.onrender.com) and press **Open my demo shop**. You get
-   a private shop with 16 orders that only you can see.
-2. **Be Sam.** The courier says "Delivered", but the jacket never arrived. Tap **Not here**: Doorstep
-   answers in seconds with the rule it applied and what happens next.
-3. **Open Maria's Control Room**, open the **Black jacket** case and **Approve** the refund. The
-   money row follows it to "Simulated" (a demo order), and Sam's page says it was sent and simulated.
-4. Press **verify** next to the signed receipts: a public page re-checks every receipt in the chain.
-5. On Sam's page, open **Signed delivery record**, then press **Change one character and check
-   again**: the same facts, one character different, fail the check.
-6. Back in the Control Room, type **lost parcels over £50, biggest first** into the search: the
-   grid becomes that view and shows how it read you. Open **Insights**, press **Ask Doorstep** and
-   ask **Which carrier cost me most this month?**, then open **Steps** under the answer.
+1. Open the [live app](https://doorstep-ojmg.onrender.com) and press **Open my demo shop**. You get a private shop with 16 orders that only you can see.
+2. **Be Sam.** The courier says "Delivered", but the jacket never came. Tap **Not here**. Doorstep answers in seconds with the rule it applied and what happens
+   next.
+3. **Open Maria's Control Room**, open the **Black jacket** case and **Approve** the refund. The money row moves to "Simulated" (a demo order), and Sam's page
+   says it was sent and simulated.
+4. Press **verify** next to the signed receipts. A public page re-checks every receipt in the chain.
+5. On Sam's page, open **Signed delivery record**, then press **Change one character and check again**. The same facts, one character different, fail the check.
+6. In the Control Room, type **lost parcels over £50, biggest first** into the search. The grid becomes that view and shows how it read you. Open **Insights**,
+   press **Ask Doorstep** and ask **Which carrier cost me most this month?**, then open **Steps** under the answer.
 
-**Buy with PayPal** runs a real sandbox checkout. It needs a PayPal sandbox personal account: sign
-in at [developer.paypal.com](https://developer.paypal.com/dashboard/accounts), open **Sandbox
-accounts**, and use the personal account's email and password (or create one there).
+**Buy with PayPal** runs a real sandbox checkout. It needs a PayPal sandbox personal account. Sign in at
+[developer.paypal.com](https://developer.paypal.com/dashboard/accounts), open **Sandbox accounts**, and use the personal account's email and password (or create
+one there).
 
 > **Real or simulated?**
 > - **Real, in the PayPal sandbox:** Orders v2, capture, tracking, refunds and dispute calls on
@@ -95,8 +85,7 @@ Parcel problems are common in the UK, the EU and the US, and they end on the sel
 
 ### What it is worth to a seller
 
-Every input is published, and the Control Room's plan strip shows the seller's own counts beside
-the sourced costs.
+Every input is published. The Control Room's plan strip shows the seller's own counts beside the sourced costs.
 
 | Per 1,000 orders a month | UK | US |
 | --- | --- | --- |
@@ -105,30 +94,24 @@ the sourced costs.
 | Doorstep's price (100 free, then 8p or 10c an order, capped) | £49 | $59 |
 | Pays for itself after | 5 failed deliveries prevented, 1 in 12 | 4 prevented, 1 in 20 |
 
-- **Measured in the product:** addresses fixed before payment, problems settled with no PayPal
-  dispute, refunds and their status, carrier claims prepared and paid, and PayPal's Seller
-  Protection verdict on every payment.
-- **Not claimed:** a "saved" total. Not every problem would have become a failed delivery or a
-  lost claim, so Doorstep shows counts and sourced costs, not a forecast.
+- **Measured in the product:** addresses fixed before payment, problems settled with no PayPal dispute, refunds and their status, carrier claims prepared and
+  paid, and PayPal's Seller Protection verdict on every payment.
+- **Not claimed:** a "saved" total. Not every problem would have become a failed delivery or a lost claim, so Doorstep shows counts and sourced costs, not a
+  forecast.
 
-**Why pay when PayPal has Seller Protection?** Seller Protection covers a seller in a PayPal claim
-when tracking shows "delivered" to the address on the payment. It does not change the seller's
-duty to the buyer: in the UK the parcel stays at the seller's risk until the buyer holds it
-(Consumer Rights Act 2015, s.29). A UK ombudsman upheld PayPal on tracking alone and still noted
-that "consumer law differs" ([Financial Ombudsman, DRN-6052873, Jan 2026](https://www.financial-ombudsman.org.uk/decision/DRN-6052873.pdf)).
-An item-not-received claim filed with the buyer's card
-issuer is outside Seller Protection. A claim the seller loses costs £12 or $15 in PayPal fees
-([UK](https://www.paypal.com/uk/business/paypal-business-fees),
-[US](https://www.paypal.com/us/business/paypal-business-fees)), and a seller's dispute rate decides
-whether PayPal charges the higher fee. Doorstep shows PayPal's verdict beside the legal rule it
-applied, and settles fast when the law says the seller owes the buyer, before it becomes a claim.
+**Why pay when PayPal has Seller Protection?** Seller Protection covers a seller in a PayPal claim when tracking shows "delivered" to the address on the
+payment. It does not change the seller's duty to the buyer. In the UK the parcel stays at the seller's risk until the buyer holds it (Consumer Rights Act 2015,
+s.29). A UK ombudsman upheld PayPal on tracking alone and still noted that "consumer law differs" ([Financial Ombudsman, DRN-6052873, Jan
+2026](https://www.financial-ombudsman.org.uk/decision/DRN-6052873.pdf)). A claim filed with the buyer's card issuer is outside Seller Protection. A claim the
+seller loses costs £12 or $15 in PayPal fees ([UK](https://www.paypal.com/uk/business/paypal-business-fees),
+[US](https://www.paypal.com/us/business/paypal-business-fees)). A seller's dispute rate decides whether PayPal charges the higher fee. Doorstep shows PayPal's
+verdict beside the legal rule it applied. When the law says the seller owes the buyer, it settles fast, before it becomes a claim.
 
 ## What sellers say
 
-We read what small sellers say in public, in November 2026: 60 Reddit threads (52 from sellers,
-quotes checked word for word against the [Arctic Shift](https://arctic-shift.photon-reddit.com/)
-archive) and the transcripts of 25 YouTube videos. Counts are threads and videos read, not market
-shares. Usernames are left out.
+In November 2026 we read what small sellers say in public: 60 Reddit threads (52 from sellers, quotes checked word for word against the [Arctic
+Shift](https://arctic-shift.photon-reddit.com/) archive) and the transcripts of 25 YouTube videos. Counts are threads and videos read, not market shares.
+Usernames are left out.
 
 | What sellers do or lose today | Seen in | What Doorstep does |
 | --- | --- | --- |
@@ -154,12 +137,12 @@ shares. Usernames are left out.
 > "always, always, always film yourself packaging up the items that you're selling"
 > UK seller, [The Monica Way, 231,179 views, Oct 2026](https://www.youtube.com/watch?v=YviHjr5YduQ)
 
-**What the research changed.** It added the "where to look" step and the late-delivery handling.
-It reframed the pitch: on PayPal, a "Delivered" scan to the payment address usually wins an
-item-not-received claim, so the open risks are the card chargeback and the buyer's legal rights,
-and Doorstep's job is a fair, final settlement rather than winning disputes. And it kept the QR
-seal optional: no seller asked for one; it answers the UK rule that a parcel is the seller's risk
-until the buyer holds it.
+**What the research changed.**
+
+- It added the "where to look" step and the late-delivery handling.
+- It changed the pitch. On PayPal, a "Delivered" scan to the payment address usually wins an item-not-received claim. The open risks are the card chargeback and
+  the buyer's legal rights. So Doorstep aims for a fair, final settlement, not for winning disputes.
+- It kept the QR seal optional. No seller asked for one. It answers the UK rule that a parcel is the seller's risk until the buyer holds it.
 
 ## How it works
 
@@ -183,18 +166,16 @@ until the buyer holds it.
 | Events | Webhooks | `CHECKOUT.ORDER.APPROVED` (completes a checkout the buyer left), `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED` (also confirms a pending refund), `PAYMENT.CAPTURE.REVERSED` (recorded as money back with the buyer; a case that could still pay goes to a person), `PAYMENT.CAPTURE.DECLINED / DENIED` (a pending payment that failed: the buyer pays another way), `CUSTOMER.DISPUTE.CREATED / UPDATED / RESOLVED` (a resolved dispute closes its case), each verified with `verify-webhook-signature` |
 | Agent | PayPal Agent Toolkit | Read-only allowlist: orders get, shipment get, disputes list and get |
 
-Orders and Payments use the official PayPal Server SDK models, generated by APIMatic; tracking,
-disputes and webhook verification use REST through one thin client (`app/paypal_client`).
+Orders and Payments use the official PayPal Server SDK models, generated by APIMatic. Tracking, disputes and webhook verification use REST through one thin
+client (`app/paypal_client`).
 
 **Proof it runs on PayPal.**
 
-- The live app's [`/healthz`](https://doorstep-ojmg.onrender.com/healthz) counts the verified
-  webhooks it has processed: 23 from PayPal (the latest a `PAYMENT.CAPTURE.REFUNDED`) and 55 from
-  Shippo, as of Nov 9, 2026.
-- `make smoke` runs the backend loop against the real sandbox: it pays an order with PayPal's test
-  card, ships it, replays the "Delivered" event, reports "Not here" and refunds through the outbox.
-  The Nov 9 run refunded capture `23K84665PL4219118` with PayPal refund `1HF202669T516105X`
-  (COMPLETED) and verified the receipt chain.
+- The live app's [`/healthz`](https://doorstep-ojmg.onrender.com/healthz) counts the verified webhooks it has processed: 23 from PayPal (the latest a
+  `PAYMENT.CAPTURE.REFUNDED`) and 55 from Shippo, as of Nov 9, 2026.
+- `make smoke` runs the backend loop against the real sandbox. It pays an order with PayPal's test card, ships it, replays the "Delivered" event, reports "Not
+  here" and refunds through the outbox. The Nov 9 run refunded capture `23K84665PL4219118` with PayPal refund `1HF202669T516105X` (COMPLETED) and verified the
+  receipt chain.
 
 ## Product tour
 
@@ -202,147 +183,113 @@ Each screenshot opens with a click.
 
 ### Control Room
 
-The seller's home. KPI cards count the orders that need the seller, parcels in transit, money at
-stake and money recovered from carriers; a click filters the grid. A prevention tip comes from the
-seller's own cases, and the greeting names the next thing to do.
+The seller's home. KPI cards count the orders that need the seller, parcels in transit, money at stake and money recovered from carriers. A click filters the
+grid. A prevention tip comes from the seller's own cases, and the greeting names the next thing to do.
 
 <details>
 <summary>Screenshot: the Delivery Control Room</summary>
-
 <img src="docs/img/screens/control-room.png" alt="The Delivery Control Room: KPI cards, a prevention tip and the orders that need the seller" width="100%">
-
 </details>
 
 ### Order grid
 
 | Column | What it shows |
 | --- | --- |
-| **Order** | Names the item, its category, the order id and the postcode district. |
-| **Journey** | Tracks the order through five steps and marks a problem in red. |
-| **Risk** | Scores the chance of a delivery failure before shipping; hover shows the reasons. |
-| **Proof** | Counts the proof on file: address check, packing photo, tracking, delivered scan, possession. |
-| **At stake** | Shows the money still at stake, in the order's own currency: £ and $ are never added. |
-| **Due** | Counts down the days left on the order's carrier claim, from the carrier's own terms. |
-| **Delivery** | Shows the method the buyer chose: home, locker or signature. |
-| **Next** | Starts the one action the order needs now: pack, review, approve or send evidence. |
+| **Order** | The item, its category, the order id and the postcode district. |
+| **Journey** | The order's five steps; a problem is marked in red. |
+| **Risk** | The chance of a delivery failure before shipping; hover shows the reasons. |
+| **Proof** | The proof on file: address check, packing photo, tracking, delivered scan, possession. |
+| **At stake** | The money still at stake, in the order's own currency: £ and $ are never added. |
+| **Due** | The days left on the order's carrier claim, from the carrier's own terms. |
+| **Delivery** | The method the buyer chose: home, locker or signature. |
+| **Next** | The one action the order needs now: pack, review, approve or send evidence. |
 
-Each row opens a detail panel without leaving the table, and the grid does a seller's work itself:
+Each row opens a detail panel without leaving the table. The grid also does a seller's work:
 
-- **Ask the grid.** A plain sentence in the search box ("lost parcels over £50, biggest first")
-  becomes filters and a sort, shown as chips the seller can remove one by one, with Undo.
-- **Doorstep notes.** The anomaly scan pins its findings to the exact cell: a "Delivered" scan
-  from the wrong district, a risk score that jumped. Sellers add their own notes beside them.
+- **Ask the grid.** A plain sentence in the search box ("lost parcels over £50, biggest first") becomes filters and a sort. They show as chips the seller can
+  remove one by one, with Undo.
+- **Doorstep notes.** The anomaly scan pins its findings to the exact cell: a "Delivered" scan from the wrong district, a risk score that jumped. Sellers add
+  their own notes beside them.
 - **One guide row.** The pinned first row says what to do first and starts it in one tap.
-- **A toolbar that sells.** Saved views (Needs me, At stake, By delivery, the seller's own), a
-  New-since-last-visit filter, one-click charts that follow the grid's filters, a pivot of
-  delivery by journey, a packing-list PDF and a hand-off PDF.
-- **Money done right.** Group by delivery or journey and the totals stay per currency, with a
-  share of money at stake; select cells and the status bar sums them.
-- **Every hand.** Keyboard, Find that marks matches in place, Excel export, and on a phone each
-  order becomes one card in the same grid.
+- **A toolbar that sells.** Saved views (Needs me, At stake, By delivery, the seller's own), a New-since-last-visit filter, one-click charts that follow the
+  grid's filters, a pivot of delivery by journey, a packing-list PDF and a hand-off PDF.
+- **Money done right.** Group by delivery or journey and the totals stay per currency, with a share of money at stake. Select cells and the status bar sums
+  them.
+- **Every hand.** Keyboard, Find that marks matches in place, Excel export, and on a phone each order becomes one card in the same grid.
 
 <details>
 <summary>Screenshot: an order with its detail panel open</summary>
-
 <img src="docs/img/screens/grid-detail.png" alt="The order grid with one row's detail open: journey, proof on file, delivery risk and case" width="100%">
-
 </details>
 
 <details>
 <summary>Screenshot: money at stake by delivery method, charted from the grid</summary>
-
 <img src="docs/img/screens/grid-chart.png" alt="An integrated chart over the grid: money at stake by delivery method; a bar click filters the rows" width="100%">
-
 </details>
 
 ### Case
 
-- **Decision** states the likely cause, the confidence and the refund, with the rule file and
-  version it used.
-- **What would have changed this** names the proof that would have moved the risk to the buyer.
-- **Courier's "Delivered" scan** shows the audit. Here the scan came from another district, in
-  the same minute as two other parcels.
-- **Recover from the carrier** shows the claim pack, its fact chips and its deadline.
-- **Money** lists every PayPal write with its id and status.
-- **Timeline** records each step and links to the signed receipts.
+- **Decision:** the likely cause, the confidence and the refund, with the rule file and version used.
+- **What would have changed this:** the proof that would have moved the risk to the buyer.
+- **Courier's "Delivered" scan:** the audit. Here the scan came from another district, in the same minute as two other parcels.
+- **Recover from the carrier:** the claim pack, its fact chips and its deadline.
+- **Money:** every PayPal write with its id and status.
+- **Timeline:** each step, with links to the signed receipts.
 
 <details>
 <summary>Screenshot: Sam's case, with the contradicted delivered scan</summary>
-
 <img src="docs/img/screens/case.png" alt="A case: likely cause, rule, delivered-scan audit and carrier recovery" width="520">
-
 </details>
 
 ### Buyer's page
 
-- **Reports** a problem with taps; a note is optional. When the courier says "Delivered", it first
-  lists where parcels usually turn up: a neighbour, the post room, a porch or meter box.
-- **Says "It arrived"** in one tap if the courier scans the parcel delivered after the report.
-  The seller sees it on the case: an unsent courier claim is withdrawn, and a refund that has not
-  gone out is held for the seller to decide again, since a scan alone is not the buyer holding it.
-- **Answers** within seconds with the regional rule and the buyer's rights, and shows each next
-  step.
+- **Reports** a problem with taps; a note is optional. When the courier says "Delivered", it first lists where parcels usually turn up: a neighbour, the post
+  room, a porch or meter box.
+- **Says "It arrived"** in one tap if the courier scans the parcel delivered after the report. The seller sees it on the case. An unsent courier claim is
+  withdrawn. A refund that has not gone out is held for the seller to decide again, since a scan alone is not the buyer holding it.
+- **Answers** within seconds with the regional rule and the buyer's rights, and shows each next step.
 - **Opens** from a signed link, with no account and no login.
 
 <details>
 <summary>Screenshot: the buyer reports a problem, and gets an answer</summary>
-
-<p>
-  <img src="docs/img/screens/buyer-report.png" alt="The buyer reports a problem with taps" width="260">
-  &nbsp;
-  <img src="docs/img/screens/buyer-answer.png" alt="The buyer gets an answer within seconds" width="260">
-</p>
-
+<p><img src="docs/img/screens/buyer-report.png" alt="The buyer reports a problem with taps" width="260"> &nbsp; <img src="docs/img/screens/buyer-answer.png" alt="The buyer gets an answer within seconds" width="260"></p>
 </details>
 
-Buyers' AI assistants use the same process through the MCP server at `/agent/mcp`: one tool reads
-the delivery status, one reports a problem. Neither can move money. Every status answer carries a
-signed delivery proof the assistant can check (see below).
+Buyers' AI assistants use the same process through the MCP server at `/agent/mcp`. One tool reads the delivery status, one reports a problem. Neither can move
+money. Every status answer carries a signed delivery proof the assistant can check (see below).
 
 ### Insights
 
 Reports on AG Studio, with an agent that reads them and builds them.
 
-- **The brief.** The Overview opens with one sentence ("2,052 of 2,107 orders arrived with no
-  problem"), a ring, two signals (what moved in four weeks, the next claim and its days left) and
-  up to three things to do, each one a button.
-- **Reports** orders, case rate, prevention rate and net delivery loss week by week; where
-  deliveries failed; where the money went; which carrier to trust; and an **Areas** report with a
-  3D atlas of postcode areas (height is orders, colour is failures; a click filters the page).
-- **Ask Doorstep.** Studio's agent, in view mode. A question gets a figure, a chart or a page:
-  "Which carrier cost me most this month?" answers in words with the chart beside it; "Chase
-  Evri" plans a page and lets Studio's own page and widget agents build it. Every change the agent
-  makes is listed, attributed and one click from undone. **Steps** under each reply shows how it
-  worked it out. It sees no buyer details and cannot move money.
-- **Doorstep's widgets** (the brief, the parcel journey, money flow, the claim clock, the evidence
-  meter, failure points, the atlas) are Studio widgets with AI descriptions, so the agent can add
-  them to a page like any chart.
+- **The brief.** The Overview opens with one sentence ("2,052 of 2,107 orders arrived with no problem"), a ring, two signals (what moved in four weeks, the next
+  claim and its days left) and up to three things to do, each one a button.
+- **Reports** orders, case rate, prevention rate and net delivery loss week by week; where deliveries failed; where the money went; which carrier to trust; and
+  an **Areas** report with a 3D atlas of postcode areas (height is orders, colour is failures; a click filters the page).
+- **Ask Doorstep.** Studio's agent, in view mode. A question gets a figure, a chart or a page. "Which carrier cost me most this month?" answers in words with
+  the chart beside it. "Chase Evri" plans a page and lets Studio's own page and widget agents build it. Every change the agent makes is listed, attributed and
+  one click from undone. **Steps** under each reply shows how it worked it out. It sees no buyer details and cannot move money.
+- **Doorstep's widgets** (the brief, the parcel journey, money flow, the claim clock, the evidence meter, failure points, the atlas) are Studio widgets with AI
+  descriptions, so the agent can add them to a page like any chart.
 
 <details>
 <summary>Screenshot: the Overview's brief and KPIs</summary>
-
 <img src="docs/img/screens/insights.png" alt="Insights on AG Studio: the brief with its ring, signals and Do next rows, then the KPIs" width="100%">
-
 </details>
 
 <details>
 <summary>Screenshot: the Delivery atlas on the Areas report</summary>
-
 <img src="docs/img/screens/atlas.png" alt="The Delivery atlas: postcode areas as 3D tiles, height is orders, colour is the failed rate, with a tooltip" width="100%">
-
 </details>
 
 <details>
 <summary>Screenshot: Ask Doorstep, with Steps open</summary>
-
 <img src="docs/img/screens/ask.png" alt="Ask Doorstep answers a question in words with the chart beside it; Steps lists how it worked it out" width="100%">
-
 </details>
 
 ### Built on AG Grid and AG Studio
 
-The Control Room is AG Grid 36 Enterprise and Insights is AG Studio 3.1. Each feature uses the
-platform's own capability, with Doorstep's rules on top.
+The Control Room is AG Grid 36 Enterprise and Insights is AG Studio 3.1. Each feature uses the platform's own capability, with Doorstep's rules on top.
 
 | Feature | AG capability | Doorstep's rule |
 | --- | --- | --- |
@@ -365,48 +312,35 @@ platform's own capability, with Doorstep's rules on top.
 
 - **Signs** every money decision with Ed25519 and chains it to the previous receipt by hash.
 - **Re-checks** the whole chain on a public page, `/verify/{case}`. Any edit breaks it.
-- **Signs the delivery facts** as a compact JWS (EdDSA, RFC 8037): the carrier's delivered scan,
-  the seal scanned after it, the scan-audit verdict, the case's rule and the head of its receipt
-  chain. Facts only: no address, no name, never who is at fault. The buyer opens it from their
-  page, a buyer's AI assistant gets it from `get_delivery_status`, and anyone checks it at `/proof`
-  against the public key at `/.well-known/jwks.json`. One changed character fails the check.
+- **Signs the delivery facts** as a compact JWS (EdDSA, RFC 8037): the carrier's delivered scan, the seal scanned after it, the scan-audit verdict, the case's
+  rule and the head of its receipt chain. Facts only: no address, no name, never who is at fault.
+- **Lets anyone check it.** The buyer opens it from their page. A buyer's AI assistant gets it from `get_delivery_status`. Anyone checks it at `/proof` against
+  the public key at `/.well-known/jwks.json`. One changed character fails the check.
 
 <details>
 <summary>Screenshot: the public receipt check and the delivery proof check</summary>
-
-<p>
-  <img src="docs/img/screens/receipts.png" alt="Public receipt check: every receipt in the chain verified" width="440">
-  &nbsp;
-  <img src="docs/img/screens/proof.png" alt="Public proof check: a signed delivery record shown as genuine, with its facts" width="220">
-</p>
-
+<p><img src="docs/img/screens/receipts.png" alt="Public receipt check: every receipt in the chain verified" width="440"> &nbsp; <img src="docs/img/screens/proof.png" alt="Public proof check: a signed delivery record shown as genuine, with its facts" width="220"></p>
 </details>
 
 ## What makes it different
 
-- **Proves possession with the buyer's own phone.** A QR seal inside the box records "I have it"
-  in one tap: no app, no login, no tracker hardware. A scan proves possession only after the
-  carrier's own "Delivered" scan, and a scan from the seller's own browser never counts.
-- **Audits the carrier's "Delivered" scan with the carrier's own data.** Checks the scan's
-  location, its order in the tracking history and batch scans across the seller's parcels, in
-  deterministic code.
-- **Prepares the carrier claim.** Drafts a claim pack where every sentence cites a checked fact,
-  with the deadline from the carrier's own terms. Code drops any sentence that cites an unknown
-  fact or adds a number; the seller files it.
-- **Reads the law from versioned files.** Applies the UK, EU or US rule from `rules/*.yaml`; every
-  decision stores the rule id and version, so it can be replayed.
-- **Moves money exactly once.** Sends every PayPal write through a transactional outbox with one
-  idempotency key, and asks PayPal live for the capture and open disputes right before a refund.
-  A refund counts as sent only when PayPal says COMPLETED; a pending one waits for PayPal.
-- **Signs every money decision.** Chains Ed25519-signed receipts by hash; a public page re-checks
-  the whole chain.
-- **Signs what happened at the door, for AI assistants too.** Agent-payment mandates (AP2) sign
-  what a shopper authorised and paid, and "a valid AP2 mandate does not prove that delivery
-  occurred" ([VCAP-AP2, an individual Internet-Draft, Sep 2026](https://datatracker.ietf.org/doc/html/draft-stone-vcap-ap2-binding-01)).
-  Doorstep's delivery proof is a working answer for parcels: a standard JWS any assistant can
-  verify against a published key, without trusting whoever passed it on.
-- **Keeps AI away from money by construction.** Models write words and plans; code decides
-  liability and limits. Import contracts in CI prove no AI code can reach a PayPal write.
+- **Proves possession with the buyer's own phone.** A QR seal inside the box records "I have it" in one tap: no app, no login, no tracker hardware. A scan
+  proves possession only after the carrier's own "Delivered" scan. A scan from the seller's own browser never counts.
+- **Audits the carrier's "Delivered" scan with the carrier's own data.** Checks the scan's location, its order in the tracking history and batch scans across
+  the seller's parcels, in deterministic code.
+- **Prepares the carrier claim.** Every sentence of the claim pack cites a checked fact, with the deadline from the carrier's own terms. Code drops any sentence
+  that cites an unknown fact or adds a number. The seller files it.
+- **Reads the law from versioned files.** Applies the UK, EU or US rule from `rules/*.yaml`. Every decision stores the rule id and version, so it can be
+  replayed.
+- **Moves money exactly once.** Sends every PayPal write through a transactional outbox with one idempotency key. Asks PayPal live for the capture and open
+  disputes right before a refund. A refund counts as sent only when PayPal says COMPLETED; a pending one waits for PayPal.
+- **Signs every money decision.** Chains Ed25519-signed receipts by hash; a public page re-checks the whole chain.
+- **Signs what happened at the door, for AI assistants too.** Agent-payment mandates (AP2) sign what a shopper authorised and paid, and "a valid AP2 mandate
+  does not prove that delivery occurred" ([VCAP-AP2, an individual Internet-Draft, Sep
+  2026](https://datatracker.ietf.org/doc/html/draft-stone-vcap-ap2-binding-01)). Doorstep's delivery proof is a working answer for parcels: a standard JWS any
+  assistant can verify against a published key, without trusting whoever passed it on.
+- **Keeps AI away from money by construction.** Models write words and plans; code decides liability and limits. Import contracts in CI prove no AI code can
+  reach a PayPal write.
 
 ## How it compares
 
@@ -420,11 +354,9 @@ platform's own capability, with Doorstep's rules on top.
 | PayPal Seller Protection | PayPal | Free with PayPal | After a claim; covers "Delivered" tracking to the payment address |
 | **Doorstep** | | The seller: 100 orders a month free, then 8p or 10c an order, capped | **Before and at the door**: checks the address, proves the handoff, settles on the law, prepares the carrier claim |
 
-The others pay out or fight once something has gone wrong. Doorstep works earlier and on the
-seller's legal duty, and it sits beside them: its claim packs and signed proof are the evidence
-those claims ask for. Prices: [WiserReview, Jul 2026](https://wiserreview.com/blog/route-alternatives/),
-[Shipsurance](https://shipsurance.com/shipping-insurance); carrier cover from
-[`rules/carriers/carrier_claims_v1.yaml`](rules/carriers/carrier_claims_v1.yaml).
+The others pay out or fight once something has gone wrong. Doorstep works earlier, on the seller's legal duty, and sits beside them: its claim packs and signed
+proof are the evidence those claims ask for. Prices: [WiserReview, Jul 2026](https://wiserreview.com/blog/route-alternatives/),
+[Shipsurance](https://shipsurance.com/shipping-insurance); carrier cover from [`rules/carriers/carrier_claims_v1.yaml`](rules/carriers/carrier_claims_v1.yaml).
 
 ## Quality
 
@@ -440,23 +372,19 @@ those claims ask for. Prices: [WiserReview, Jul 2026](https://wiserreview.com/bl
 | Policy reader, Ragas (`make evals`) | faithfulness 0.91 (target 0.90) and context recall 0.97 on 30 questions over six seller policies | recorded run, Nov 7 |
 | Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks in 8 kinds: code checks caught 21 unsafe drafts, the other 43 answers were safe, 0 unsafe answers reached a buyer. With a stand-in model that obeys every attack, the refund still never changes | replays of recorded Claude Sonnet and Gemini answers, Nov 7 |
 
-- **Names tests by requirement**, for example `test_PO_05_…`, so every rule in the code maps to
-  the tests that prove it.
+- **Names tests by requirement**, for example `test_PO_05_…`, so every rule maps to its tests.
 - **Locks the tests before the code.** CI fails if a locked test changes.
-- **Runs the property tests with a fixed seed** (Hypothesis), so a gate never depends on luck.
-- **Counts database queries in tests.** The Control Room went from 158 queries to 11 for 16
-  orders, and a test fails if it grows again.
+- **Runs property tests with a fixed seed** (Hypothesis), so a gate never depends on luck.
+- **Counts database queries in tests.** The Control Room went from 158 queries to 11 for 16 orders, and a test fails if it grows again.
 
-CI runs lint, types, import contracts, tests with coverage, the locked-test check, Postgres tests,
-API fuzzing, a secrets scan and the web build on every push
+CI runs lint, types, import contracts, tests with coverage, the locked-test check, Postgres tests, API fuzzing, a secrets scan and the web build on every push
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Where it goes next
 
-The live app runs Doorstep's own PayPal checkout (the first row). Any small seller who takes
-PayPal and ships parcels could use the same core: one policy gate for money, one outbox for PayPal
-writes, one verified webhook inbox. Only the way orders arrive would change from one platform to
-the next; the other rows are connectors that are not built yet.
+The live app runs Doorstep's own PayPal checkout (the first row). Any small seller who takes PayPal and ships parcels could use the same core: one policy gate
+for money, one outbox for PayPal writes, one verified webhook inbox. Only the way orders arrive would change. The other rows are connectors that are not built
+yet.
 
 | Where the seller sells | How they use Doorstep | Market |
 | --- | --- | --- |
@@ -465,31 +393,25 @@ the next; the other rows are connectors that are not built yet.
 | **WooCommerce, Wix, Swappa** | Would connect with PayPal in one consent, dispute permission included, and follow captures and disputes on the seller's PayPal account | Every shop on these platforms that takes PayPal |
 | **eBay, Etsy, Amazon** | The marketplace holds the money and decides the case, so Doorstep would supply the proof: tracking and signature answers to "not received" inquiries, and carrier claim packs | 135 million active eBay buyers ([eBay 10-K](https://www.sec.gov/Archives/edgar/data/1065088/000106508826000027/ebay-20251231.htm)) |
 
-Each connector would sit on the same core: the platform's orders come through the verified inbox,
-and its rules are one more file in [`rules/`](rules/).
+Each connector would sit on the same core. The platform's orders come through the verified inbox, and its rules are one more file in [`rules/`](rules/).
 
 **Designed next, on PayPal's own platform** (not built yet):
 
-- **Seller number two connects in minutes.** PayPal's multiparty onboarding (Partner Referrals,
-  then calls made for the seller with `PayPal-Auth-Assertion`) lets any PayPal seller grant
-  Doorstep its order, tracking and dispute permissions in one consent.
-- **Sellers who keep their own checkout.** A connect-only mode reads captures and disputes from the
-  seller's PayPal account (Transaction Search and the Disputes API). Prevention moves from checkout
-  to before the label; proof, settlement and recovery work as today.
-- **The address check inside PayPal's review page.** Server-side shipping callbacks
-  (`order_update_callback_config`) let Doorstep turn down an undeliverable postcode before the
-  buyer approves, with only the postcode district reaching Doorstep.
-- **Possession proof as a dispute signal.** The signed delivery proof is a standard JWS today; sent
-  with `provide-evidence`, it would give PayPal's item-not-received decision a fact it can check.
-- **A delivered-scan network across shops.** One shop sees one odd "Delivered" scan; many shops see
-  a depot marking 40 parcels delivered in a minute. The audit would weigh the carrier's scan,
-  never the buyer.
+- **Seller number two connects in minutes.** Multiparty onboarding (Partner Referrals, then calls with `PayPal-Auth-Assertion`) gives Doorstep order, tracking
+  and dispute permissions in one consent.
+- **Sellers who keep their own checkout.** A connect-only mode reads captures and disputes (Transaction Search and the Disputes API). Prevention moves to before
+  the label.
+- **The address check inside PayPal's review page.** Server-side shipping callbacks (`order_update_callback_config`) turn down an undeliverable postcode before
+  the buyer approves. Only the postcode district reaches Doorstep.
+- **Possession proof as a dispute signal.** Sent with `provide-evidence`, the signed delivery proof gives PayPal's item-not-received decision a fact it can
+  check.
+- **A delivered-scan network across shops.** Many shops see a depot marking 40 parcels delivered in a minute. The audit would weigh the carrier's scan, never
+  the buyer.
 
 ## Run it locally
 
-Needs Python 3.12 with [uv](https://docs.astral.sh/uv/) and Node 20 or newer. Postgres 16 is
-optional: leave `DATABASE_URL` blank to use SQLite. With no keys the app still runs: checkout
-answers 503, and explanations use templates instead of a model.
+Needs Python 3.12 with [uv](https://docs.astral.sh/uv/) and Node 20 or newer. Postgres 16 is optional: leave `DATABASE_URL` blank to use SQLite. With no keys
+the app still runs: checkout answers 503, and explanations use templates instead of a model.
 
 ```bash
 cp .env.example .env      # sandbox and test keys only; every key is optional
@@ -500,182 +422,11 @@ make demo                 # in a second terminal: seed the demo shop and print i
 make lint test            # lint, types, import contracts, tests
 ```
 
-**Deploy:** `render.yaml` creates the web service, the worker and Postgres in one step. Secrets are
-set in the Render dashboard, never in the repository.
+**Deploy:** `render.yaml` creates the web service, the worker and Postgres in one step. Secrets are set in the Render dashboard, never in the repository.
 
 ## Design in detail
 
-The diagrams are at the [top](#design-at-a-glance). People reach Doorstep through signed links,
-buyers' AI assistants through MCP, and PayPal and Shippo through verified webhooks. Open a section
-for the detail.
-
-<details>
-<summary><b>One order, end to end</b></summary>
-
-1. **Checkout.** The buyer picks home, locker or signature; Doorstep creates the PayPal order with
-   those shipping options. This is one of two synchronous PayPal writes, because the buyer is
-   waiting on PayPal's page.
-2. **Address check.** After approval, Shippo validates the address; the buyer adds a missing flat
-   number with one tap; Doorstep PATCHes the order before capture. The country PayPal returns
-   picks the legal rule set.
-3. **Capture.** A worker job captures the payment. Every PayPal write from here on is an outbox
-   job with a `PayPal-Request-Id`.
-4. **Pack and ship.** A vision check compares the packing photo with the order. Worker jobs add
-   tracking to the PayPal capture and register the parcel with Shippo.
-5. **Watch.** Shippo and PayPal events are verified, stored in the inbox, acknowledged, then
-   processed once by the worker. Carrier events drive the order state machine.
-6. **"Not here".** The buyer reports from a link, the seal page or an AI assistant. The engine
-   names the failure point, the scan audit checks the carrier's data, the rule file decides who
-   is liable, and the policy picks the route: automatic refund under the seller's limit, the
-   seller's one-tap approval, a person's review, or dispute evidence. The decision, the money
-   action, its job and a signed receipt commit in **one transaction**.
-7. **Refund.** The worker re-checks live state with PayPal, then sends the refund. A retry reuses
-   the same key, so PayPal returns the first result instead of refunding twice.
-8. **Recover.** For a carrier fault, the seller gets a claim pack, submits it on the carrier's
-   site, and marks it paid or refused.
-
-</details>
-
-<details>
-<summary><b>Design decisions: the problem, the choice, what it replaced and why</b></summary>
-
-| Problem | Choice | Instead of | Why |
-| --- | --- | --- | --- |
-| A refund must happen exactly once | Transactional outbox, one `PayPal-Request-Id` per money action, our id in PayPal's `custom_id` | Calling PayPal inside the request; two-phase commit | A timeout in the request leaves no way to know whether money moved, and PayPal cannot join our transaction. Exactly-once *effect* comes from at-least-once retries plus idempotency. |
-| Webhooks arrive late, twice or out of order | Verify, store in `webhook_inbox` (unique `event_id`), return 2xx, process in the worker | Processing inside the webhook request | A crash mid-way would lose the event; a duplicate becomes a no-op. |
-| Webhooks can be missing when money moves | Ask PayPal live for the capture and for disputes right before a refund | Trusting the tables webhooks fill | A late dispute webhook could let a refund out during a dispute. A failed read sends nothing. |
-| Work must commit with the state that causes it | A Postgres `jobs` table claimed with `FOR UPDATE SKIP LOCKED` | Redis, RabbitMQ or SQS | The job commits in the same transaction as its business row; one system to run; parallel workers stay safe. |
-| Two writers can race on one order | Row locks, with unique constraints as the last line | Optimistic locking with retries | A lost race can mean money. The database refuses a second refund row even if the code above has a bug. |
-| Buyers will not create accounts | HMAC-signed links, scoped to one order or seller, with an expiry | Accounts; server sessions | No friction for an upset buyer; a stateless web tier scales by adding copies. |
-| History must be tamper-evident | Ed25519-signed receipts on one hash chain | A plain audit table; a blockchain | Editing any receipt breaks verification. Consensus would solve a trust problem one service does not have. |
-| Law changes; code should not | Rules as versioned YAML with `id`, `version` and `source` | Rules in code or in prompts | Every decision is replayable; a rule change is a reviewed pull request; no model can skip a rule. |
-| AI must be useful but never decide money | A coded state machine with narrow AI steps, each with a schema and a fallback | A free-roaming agent | Predictable, testable and cheap. The worst a prompt injection can do is ask for the refund the policy would allow anyway. |
-| One person runs it | A modular monolith | Microservices | One local transaction covers a state change and its work; one blueprint deploys everything. |
-
-</details>
-
-<details>
-<summary><b>System design: data model, state machines, failure handling, scale, health</b></summary>
-
-**Data model.** One Postgres is the source of truth; constraints do the coordination.
-
-| Group | Tables | The constraint that matters |
-| --- | --- | --- |
-| Orders | `sellers`, `orders`, `shipments`, `tracking_events`, `evidence` | state changes only through `app/orders/state.py`, under a row lock |
-| Cases | `cases`, `decisions`, `approvals`, `disputes`, `recoveries` | one open case per order; `paypal_dispute_id` unique |
-| Money | `money_actions`, `jobs` | **unique (decision_id, kind)**: one refund per decision, ever |
-| Events | `webhook_inbox` | **unique `event_id`**: a replayed webhook is a no-op |
-| Proof | `receipts`, `audit_log` | receipts chain by unique `seq`; audit rows are append-only |
-| Cost | `model_usage` | one row per day and provider, incremented under a row lock |
-
-All money is integer minor units plus an ISO 4217 code (GBP or USD), never floats.
-
-**State machines.** Illegal transitions raise; every transition writes an audit row in the same
-transaction.
-
-- **Order:** `CREATED → PAID → PACKED → SHIPPED → IN_TRANSIT → DELIVERED / PICKED_UP → CONFIRMED`,
-  with `EXCEPTION`, and `CASE_OPEN → RESOLVED`.
-- **Case:** `OPEN → GATHERING_EVIDENCE → DECIDED → AUTO_REFUND | AWAITING_SELLER | HOLD_FOR_REVIEW |
-  DISPUTE_EVIDENCE → SETTLED | CLOSED`. A case never settles without a recorded decision,
-  approval and, for a refund, PayPal's COMPLETED. Only a person closes a held case without a
-  refund; PayPal's resolution closes a disputed one.
-
-**Failure handling.**
-
-| What fails | What happens |
-| --- | --- |
-| PayPal times out, or returns 5xx or 429 | Retried with the same `PayPal-Request-Id`: 30 s, doubling, 5 attempts |
-| PayPal refunded but our commit was lost | The next attempt finds our `custom_id` on the capture, records it and sends nothing |
-| A dispute opens while a refund waits | The live re-check blocks the refund and moves the case to dispute evidence |
-| Evidence changes after the decision | The fingerprint differs; the refund is blocked for a person |
-| A refund fails for good | Marked failed, never retried with a new key; the case goes to a person |
-| PayPal answers a refund as PENDING | Counted as on its way, so it is never sent twice; the case settles when PayPal confirms it (webhook, or the worker's 5-minute sweep reads PayPal) |
-| PayPal resolves a dispute | The case that waited on it closes; PayPal's decision stands |
-| A forged PayPal webhook | Signature check fails; nothing is stored |
-| The worker crashes mid-job | The row lock is released; the job is claimed again; the key makes it safe |
-| The main model is down or over budget | Gemini once, then a template; the page says which |
-
-**Scale.** Sized for 10,000 sellers at 1,000 orders a month: about 115 tracking webhooks a second
-at peak, and under one refund a second. So the money path is tuned for correctness and the
-intake for throughput. The next steps, each with its trigger:
-
-1. Adds web instances (the tier is stateless) and workers (`SKIP LOCKED` makes parallel claims
-   safe).
-2. Puts PgBouncer in front of Postgres, then sends Control Room reads to a replica.
-3. Partitions `tracking_events` and `webhook_inbox` by month (about 90 GB a month each).
-4. Splits the receipt chain per seller, anchored in a global chain.
-5. Shards by `seller_id`: every query is already scoped to one seller.
-
-**Health.** `/healthz` reports pipeline signals with no personal data: webhooks waiting, jobs late,
-failed writes in the last hour, money held for a person, and paid model calls against the daily
-cap.
-
-</details>
-
-<details>
-<summary><b>AI components and guardrails</b></summary>
-
-| Component | Model | Returns (validated) | Checked in code by | Fallback |
-| --- | --- | --- | --- | --- |
-| Packing check | Vision model | match, item, colour, size seen, confidence | below a confidence floor it is "check", never a pass | "Please check" |
-| Explainer | LLM | summary, buyer message and claim letter | must match the rule outcome; no accusation, no new amount, no echo of or answer to the buyer's note, no promise or claim of a refund before it happens | template from the decision |
-| Claim pack | LLM | sentences, each citing fact ids | unknown fact or a number not in its facts → sentence dropped | template built from facts |
-| Case agent | LLM planner + PayPal Agent Toolkit | one read-only step at a time; each read becomes a typed observation | tool allowlist; code reacts to what PayPal showed (a listed dispute is recorded and routed to evidence, missing tracking re-queues the tracking job, an unreceived payment holds the case); the refund tool asks the policy only when PayPal agrees with Doorstep | Doorstep's own plan, step by step on the same observations |
-| Policy check | LLM | misleading lines in the seller's policy | quotes must be word for word; numbers must be in the facts | "unchecked" |
-| Policy reader | BM25, then LLM | answer with cited passages | every cited id must be one retrieved | the rule file quoted |
-| Ask Doorstep | LLM | a chart plan from a fixed menu; no data rows sent | the browser computes every number from the seller's rows | keyword match on the menu |
-| Risk score | XGBoost with monotone constraints, trained on synthetic data ([model card](docs/MODEL_CARD_risk.md)) | calibrated probability and reasons (TreeSHAP) | a locker or signature can never raise risk | rule of thumb |
-
-**Guardrails, in the order a call meets them:**
-
-- **Builds prompts from facts in the database.** The rule outcome is decided before any model
-  runs.
-- **Sends the minimum.** Removes emails and phone numbers; cuts UK postcodes to the district and
-  US ZIP+4 to ZIP5.
-- **Keeps no photos.** Stores only a packing photo's SHA-256 fingerprint, so there is nothing to
-  leak or delete later.
-- **Treats buyer text as data.** Puts it in an escaped, delimited block that is never an
-  instruction.
-- **Calls models through one adapter** (`app/ai/llm.py`): structured output, a 20 s bound, a daily
-  paid-call cap shared by both processes, and one fallback to the other provider (Claude Sonnet
-  or Gemini). Opus models are refused.
-- **Retries invalid output once,** then uses the component's fallback.
-
-</details>
-
-<details>
-<summary><b>Project structure</b></summary>
-
-```
-app/
-  *.py            app factory, ASGI entry, settings, database, money and clock
-  api/            FastAPI routes: checkout, buyer, seller, seal, webhooks, verify
-  orders/         tables, enums and the two state machines (state.py)
-  checkout/       address check, delivery options, risk rule of thumb
-  shipping/       Shippo client, tracking events, packing step
-  cases/          failure-point engine, delivered-scan audit, case pipeline, recovery
-  policy/         rule loader and money decisions: the only path to a refund
-  paypal_client/  thin PayPal client: OAuth, reads, writes built from SDK models
-  worker/         job runner, webhook inbox, job handlers, sweep
-  ai/             model adapter, explainer, claim pack, packing check, policy reader, risk model
-  agent/          case agent on the PayPal Agent Toolkit (read-only)
-  mcp/            MCP server for buyers' AI assistants
-  proof/          signed receipts, signed delivery proof, possession seal, Seller Protection status
-  security/       signed links, rate limits
-  ops/            pipeline health signals for /healthz, seller economics
-  demo/           seeded demo and per-visitor scratch shops
-rules/            UK, EU and US liability rules, money limits, carrier claim terms, prices (YAML)
-tuning/           engine weights: the only file an automated tuning loop may change
-web/              React + Vite app: Control Room (AG Grid), Insights (AG Studio), buyer pages
-tests/            unit, property, integration (Postgres, recorded PayPal), browser; fixtures
-evals/            failure-point, red-team and RAG evals with their datasets
-scripts/          demo seed, sandbox smoke test, risk-model training, mutation and lock gates
-docs/             architecture diagrams, screenshots, risk model card
-.github/          CI on every push; mutation testing whenever app/policy changes
-render.yaml       Render blueprint: web service, worker, Postgres
-```
-
-</details>
+One order end to end, the design decisions, the system design, the AI components and the project structure are in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Stack
 
@@ -690,9 +441,10 @@ render.yaml       Render blueprint: web service, worker, Postgres
 
 ## Licences
 
-- **AG Grid Enterprise and AG Studio** read their licence keys from `AG_GRID_LICENSE_KEY` and
-  `AG_STUDIO_LICENSE_KEY` at build time. The keys never enter the repository.
-- **Ask Doorstep**, the Insights agent, is built into Doorstep: it runs on the app's model adapter, so it shares
-  the daily call cap, the strict schemas and the fallbacks of every other AI step.
+- **AG Grid Enterprise and AG Studio** read their licence keys from `AG_GRID_LICENSE_KEY` and `AG_STUDIO_LICENSE_KEY` at build time. The keys never enter the
+  repository.
+- **Ask Doorstep**, the Insights agent, is built into Doorstep. It runs on the app's model adapter, so it shares the daily call cap, the strict schemas and the
+  fallbacks of every other AI step.
 
 Doorstep itself is released under the [MIT licence](LICENSE).
+
