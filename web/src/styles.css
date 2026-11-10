@@ -1007,6 +1007,19 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .detail-timeline .timeline-more { margin-top: 6px; height: 28px; padding: 0 10px; font-size: 12.5px; }
 .detail-timeline .ag-cell > span { display: block; overflow: hidden; text-overflow: ellipsis; }
 
+/* One card per order under 600 px (grid/OrderCard.tsx). */
+.order-card { display: grid; grid-template-rows: auto auto 1fr; gap: 6px; height: 100%; padding: 12px 0; min-width: 0; align-content: space-between; white-space: normal; }
+.order-card .oc-top { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.order-card .item-tile { width: 32px; height: 32px; }
+.order-card .oc-item { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.order-card .oc-money { flex: none; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.order-card .oc-money.none { color: var(--text-3); font-weight: 500; }
+.order-card .oc-meta { font-size: 12.5px; color: var(--text-3); padding-left: 42px; line-height: 1.2; }
+.order-card .oc-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding-left: 42px; }
+.order-card .oc-bottom .journey-cell { flex: 1; min-width: 0; height: auto; }
+.order-card .oc-bottom .row-action { flex: none; height: 36px; min-width: 112px; }
+.orders-grid .ag-row .ag-cell[col-id="card"] { padding-left: 14px; padding-right: 14px; line-height: normal; }
+
 /* AG Grid Find: matches inside the order name. */
 .find-mark { background: #f3e3e7; color: inherit; border-radius: 3px; padding: 0 1px; box-shadow: 0 0 0 1px #e3c3cb; }
 .find-mark.active { background: #7b2d3d; color: #fff; box-shadow: none; }

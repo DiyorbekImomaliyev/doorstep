@@ -12,7 +12,7 @@ import {
 } from "ag-grid-community";
 import {
   CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, NewFiltersToolPanelModule, LicenseManager,
-  MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
+  MasterDetailModule, PivotModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
   AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, AggregationModule, RowGroupingPanelModule, ShowValuesAsModule, IntegratedChartsModule, FindModule,
 } from "ag-grid-enterprise";
 import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
@@ -22,6 +22,8 @@ import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTon
 import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
 import { chartSelection, chartStakeByMethod, chartThemeOverrides, chartThemes, currencyColumns, customChartThemes, methodNameColumn } from "../grid/charts";
+import { isPivoting, pivotColumns, togglePivot } from "../grid/pivot";
+import { CARD_HEIGHT, CARD_QUERY, withCard } from "../grid/OrderCard";
 import { afterGlide, useMedia, useReducedMotion } from "../motion";
 import { Says, type Part } from "../components/ai";
 import DetailPanel from "../grid/DetailPanel";
@@ -46,7 +48,7 @@ ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
   ColumnsToolPanelModule, NewFiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
   StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, CellSelectionModule, ClipboardModule,
-  AggregationModule, RowGroupingPanelModule, ShowValuesAsModule, FindModule,
+  AggregationModule, RowGroupingPanelModule, ShowValuesAsModule, FindModule, PivotModule,
   IntegratedChartsModule.with(AgChartsEnterpriseModule),
 ]);
 
@@ -593,6 +595,7 @@ const gridIcons = {
   excelExport: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 9v12"/><path d="M15 9v12"/>'),
   pdfExport: lucide(`${PAGE}<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`),
   filter: lucide('<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"/>'),
+  pivotPanel: lucide('<path d="M15 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/>'),
   chart: lucide('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/>'),
   doorstep: lucide('<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>'),
 };
@@ -680,8 +683,9 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   const api = useRef<GridApi | null>(null);
   const reduced = useReducedMotion();
   const phone = useMedia("(max-width: 640px)");
-  const getRowHeight = useCallback((p: { node: IRowNode }) => (isGuide(p.node) ? (phone ? 84 : 64) : p.node.group || p.node.footer ? 44 : undefined), [phone]);
-  useEffect(() => { const a = api.current; if (a && !a.isDestroyed()) a.resetRowHeights(); }, [phone]);
+  const card = useMedia(CARD_QUERY);
+  const getRowHeight = useCallback((p: { node: IRowNode }) => (isGuide(p.node) ? (phone ? 84 : 64) : p.node.group || p.node.footer ? 44 : card ? CARD_HEIGHT : undefined), [phone, card]);
+  useEffect(() => { const a = api.current; if (a && !a.isDestroyed()) a.resetRowHeights(); }, [phone, card]);
   const railed = useRef<Set<string>>(new Set());
   const rowClassRules = useMemo(() => ({ "row-changed": (p: { data?: OrderRow }) => !!p.data && railed.current.has(p.data.order_id) }), []);
   useEffect(() => {
@@ -780,6 +784,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     methodNameColumn,
     ...currencyColumns(),
+    ...pivotColumns(),
     {
       colId: "next", headerName: "Next step", hide: true, width: 160,
       valueGetter: (p) => (p.data ? routeLabel(p.data) || nextAction(p.data).label : ""), filter: "agSetColumnFilter", enableRowGroup: true,
@@ -799,9 +804,11 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
   ], [grouped, onOpen, scored, phone]);
 
+  // Under 600 px: one card column in place of the others.
+  const cardColumns = useMemo(() => withCard(columns, card, ActionCell, onOpen, (r) => (r ? haystack(r) : "")), [columns, card, onOpen]);
   // The Doorstep row: hidden while the seller searches (the rows below are then a search result).
   const guideText = useMemo(() => (guide && !search ? guideParts(rows, urgency, byUrgency) : null), [guide, search, rows]);
-  const pinnedTop = useMemo(() => (guideText ? [GUIDE] : undefined), [guideText]);
+  const pinnedTop = useMemo(() => (guideText && !(api.current && isPivoting(api.current)) ? [GUIDE] : undefined), [guideText]);
   // Start: the first order that needs the seller, in the grid's own order (so it follows a sort).
   const onStart = useCallback(() => {
     let first: OrderRow | null = null;
@@ -869,6 +876,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       { key: "groups", toolbarItem: "agRowGroupPanelToolbarItem", alignment: "left" },
       { key: "columns", icon: "columns", tooltip: "Columns and filters", action: ({ api: a }) => toggleColumnsPanel(a) },
       { key: "chart", icon: "chart", tooltip: "Chart", action: ({ api: a }) => chartStakeByMethod(a) },
+      { key: "pivot", icon: "pivotPanel", tooltip: "Pivot", action: ({ api: a }) => togglePivot(a) },
       { key: "excel", icon: "excelExport", tooltip: "Export to Excel", action: ({ api: a }) => exportExcel(a) },
       { key: "handoff", icon: "pdfExport", tooltip: "Download hand-off report", action: () => handoffRef.current?.() },
     ],
@@ -894,7 +902,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       <AgGridReact<OrderRow>
         theme={gridTheme}
         rowData={rows}
-        columnDefs={columns}
+        columnDefs={cardColumns}
         getRowId={getRowId}
         defaultColDef={defaultColDef}
         quickFilterText={search}
