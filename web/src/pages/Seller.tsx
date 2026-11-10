@@ -118,7 +118,7 @@ function AutopilotCard({ token, data, statement, onChange, onOpen }: {
         <div className="col grow" style={{ gap: 3, minWidth: 0 }}>
           <span className="ap-title">Auto-refund {kind} up to {max}?</span>
           <span className="ap-text">
-            You approved {s.approved} of {s.approved} in {s.window_days} days. Disputes and larger refunds still come to you.
+            You approved {s.approved} of {s.approved} in {s.window_days} days. Disputes, held cases and anything over {max} still come to you.
           </span>
           {err && <ErrorBox message={err} />}
         </div>
@@ -163,7 +163,7 @@ function StatementLine({ s, onOpen }: { s: AutopilotStatement; onOpen: (orderId:
     <div className="ap-statement" aria-label="Autopilot statement">
       {s.totals.map((t) => (
         <span key={t.currency}>
-          <strong>{s.days} days: {plural(t.refunds, "automatic refund")}, {money(t.refunded_minor, t.currency)}</strong>
+          <strong>Last {s.days} days: {plural(t.refunds, "automatic refund")}, {money(t.refunded_minor, t.currency)}</strong>
           {t.claimable_minor > 0 && <> · {money(t.claimable_minor, t.currency)} to claim back{t.ready_to_send > 0 && ` (${plural(t.ready_to_send, "claim")} ready to send)`}</>}
           {t.recovered_minor > 0 && <> · {money(t.recovered_minor, t.currency)} recovered</>}
         </span>
