@@ -29,7 +29,7 @@ const title = (text: string): Widget => ({
 });
 
 const caption = (text: string) => ({ enabled: true, text, wrapping: true });
-const head = (text: string, sub: string) => ({ title: { enabled: true, text }, subtitle: { enabled: true, text: sub, wrapping: true } });
+const head = (text: string, sub?: string) => ({ title: { enabled: true, text }, subtitle: sub ? { enabled: true, text: sub, wrapping: true } : { enabled: false } });
 
 /** A headline number, its weekly trend, and one line saying exactly what it counts. */
 export const kpi = (id: string, what: string): Widget => ({
@@ -58,7 +58,7 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "calendar::week" }], valueKey: [{ id: "order_count" }], secondaryValueKey: [{ id: "case_rate" }] },
     sort: [{ field: { id: "calendar::week" }, direction: "asc" }],
     format: {
-      ...head("Orders and case rate, week by week", "Bars: orders. Line: case rate. Complete weeks only."),
+      ...head("Orders and cases"),
       style: { theme: { ...legendBottom, line: { series: { marker: { enabled: false }, interpolation: { type: "smooth" } } } } },
     },
   },
@@ -70,7 +70,7 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "orders.method" }], valueKey: [{ id: "order_count" }] },
     sort: [{ field: { id: "order_count" }, direction: "desc" }],
     format: {
-      ...head("How buyers chose delivery", "Share of orders"),
+      ...head("Delivery choice", "Share of orders"),
       style: { theme: legendBottom, custom: sliceLabels },
     },
   },
@@ -79,7 +79,7 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "orders.method" }], valueKey: [{ id: "case_rate" }] },
     sort: [{ field: { id: "case_rate" }, direction: "desc" }],
     format: {
-      ...head("Case rate by delivery method", "Proof of handover means fewer cases"),
+      ...head("Case rate by method"),
       style: { theme: { ...noLegend, ...barLabels } },
     },
   },
@@ -88,14 +88,14 @@ export const W = {
   evidenceByCarrier: {
     type: "doorstep-evidence-meter",
     dataMapping: { category: [{ id: "orders.carrier" }], value: [{ id: "evidence_avg" }] },
-    format: head("Proof on file, by carrier", "Average proof per order"),
+    format: head("Proof by carrier"),
   },
   costByCarrier: {
     type: "bar-chart-grouped",
     dataMapping: { categoryKey: [{ id: "cases.carrier" }], valueKey: [{ id: "paid_out" }, { id: "recovered" }] },
     sort: [{ field: { id: "paid_out" }, direction: "desc" }],
     format: {
-      ...head("Which carrier cost you most", "Refunded vs recovered. Right-click for a report"),
+      ...head("Cost by carrier", "Refunded vs recovered"),
       style: { theme: legendBottom },
     },
   },
@@ -109,7 +109,7 @@ export const W = {
     },
     sort: [{ field: { id: "net_loss" }, direction: "desc" }],
     format: {
-      ...head("Money by carrier", "Worst first"),
+      ...head("Money by carrier"),
       style: { grandTotalRow: { enabled: true }, animateValueChanges: true },
     },
   },
@@ -118,7 +118,7 @@ export const W = {
     dataMapping: { categoryKey: [{ id: "cases.carrier" }], valueKey: [{ id: "case_count" }], legendKey: [{ id: "cases.failure_point" }] },
     sort: [{ field: { id: "case_count" }, direction: "desc" }],
     format: {
-      ...head("What goes wrong, by carrier", "Cases by likely cause"),
+      ...head("Causes by carrier"),
       style: { theme: legendWrap },
     },
   },
@@ -133,7 +133,7 @@ export const W = {
     },
     sort: [{ field: { id: "order_count" }, direction: "desc" }],
     format: {
-      ...head("Service by carrier", "Volume, case rate, proof and speed"),
+      ...head("Carrier scorecard"),
       style: { grandTotalRow: { enabled: true }, animateValueChanges: true },
     },
   },
@@ -142,7 +142,7 @@ export const W = {
     dataMapping: { rows: [{ id: "recoveries.status" }], columns: [], values: [{ id: "claim_count" }, { id: "claim_value" }, { id: "claim_paid" }] },
     sort: [{ field: { id: "claim_count" }, direction: "desc" }],
     format: {
-      ...head("Where your claims stand", "Doorstep prepares; you file"),
+      ...head("Claims by status"),
       style: { grandTotalRow: { enabled: true } },
     },
   },
@@ -155,20 +155,20 @@ export const W = {
       ],
     },
     // Rows arrive ordered (data.ts): open claims by soonest deadline, then closed ones.
-    format: head("Carrier claims", "Soonest deadline first"),
+    format: head("Carrier claims"),
   },
   casesByMonth: {
     type: "column-chart-stacked",
     dataMapping: { categoryKey: [{ id: "calendar::month" }], valueKey: [{ id: "case_count" }], legendKey: [{ id: "cases.failure_point" }] },
     sort: [{ field: { id: "calendar::month" }, direction: "asc" }],
-    format: { ...head("Cases by month", "By likely cause"), style: { theme: legendWrap } },
+    format: { ...head("Cases by month"), style: { theme: legendWrap } },
   },
   decisions: {
     type: "bar-chart-grouped",
     dataMapping: { categoryKey: [{ id: "cases.route" }], valueKey: [{ id: "case_count" }] },
     sort: [{ field: { id: "case_count" }, direction: "desc" }],
     format: {
-      ...head("How cases were decided", "Rules decide; conflicts go to a person"),
+      ...head("How cases were decided"),
       style: { theme: { ...noLegend, ...barLabels } },
     },
   },
@@ -181,7 +181,7 @@ export const W = {
       ],
     },
     sort: [{ field: { id: "cases.opened_at" }, direction: "desc" }],
-    format: head("Every case", "Newest first. Click a row to filter"),
+    format: head("Every case"),
   },
   /** S1: Doorstep's brief, the Overview's first words (widgets.tsx). Method is there to filter by. */
   brief: {
@@ -240,10 +240,10 @@ export const overviewPage: Page = {
     t: bare(W.brief),
     period: bare(W.filterQuarter),
     src: bare(W.filterSource),
-    k1: kpi("order_count", "Every order in the period"),
-    k2: kpi("case_rate", "Orders with a reported problem"),
-    k3: kpi("prevention_rate", "Locker, signature or fixed address"),
-    k4: kpi("net_loss", "Refunds minus carrier payments"),
+    k1: kpi("order_count", "All orders"),
+    k2: kpi("case_rate", "Orders with a problem"),
+    k3: kpi("prevention_rate", "Locker, signed or fixed address"),
+    k4: kpi("net_loss", "Refunds minus recoveries"),
     journey: W.journey,
     trend: W.ordersAndCaseRate, flow: W.moneyFlow,
     fp: W.failurePoints, mix: W.methodMix,
@@ -270,10 +270,10 @@ export const carriersPage: Page = {
   id: "carriers",
   widgets: {
     t: title("Carriers"),
-    k1: kpi("claimed", "Claims for lost or damaged parcels"),
-    k2: kpi("recovered", "What carriers actually paid"),
+    k1: kpi("claimed", "Lost or damaged parcels"),
+    k2: kpi("recovered", "Paid by carriers"),
     k3: kpi("recovery_rate", "Recovered ÷ claimed"),
-    k4: kpi("transit_days", "From label to delivered, on average"),
+    k4: kpi("transit_days", "Label to delivered"),
     clock: W.claimClock,
     cost: W.costByCarrier, rate: W.failuresByCarrier,
     money: W.moneyByCarrier,
@@ -300,9 +300,9 @@ export const casesPage: Page = {
   widgets: {
     t: title("Cases"),
     f1: W.filterLiable, f2: W.filterFailure,
-    k1: kpi("case_count", "Problems buyers reported"),
-    k2: kpi("open_cases", "Not settled or closed yet"),
-    k3: kpi("paid_out", "Refunds completed through PayPal"),
+    k1: kpi("case_count", "Problems reported"),
+    k2: kpi("open_cases", "Not yet settled"),
+    k3: kpi("paid_out", "Refunded via PayPal"),
     month: W.casesByMonth, route: W.decisions, fp: W.failurePoints,
     grid: W.casesGrid,
   },
@@ -329,9 +329,9 @@ export const carrierDrillPage: Page = {
 };
 
 export const REPORTS = [
-  { id: "overview", name: "Overview", hint: "Are deliveries working, and what did failures cost?" },
-  { id: "carriers", name: "Carriers", hint: "Which carrier cost you most, and what you won back" },
-  { id: "cases", name: "Cases", hint: "What went wrong, how it was decided, who paid" },
+  { id: "overview", name: "Overview", hint: "Delivery health and cost" },
+  { id: "carriers", name: "Carriers", hint: "Cost and recovery" },
+  { id: "cases", name: "Cases", hint: "Causes and decisions" },
 ];
 
 export const reportState: AgReportState<DoorstepRegistry> = {

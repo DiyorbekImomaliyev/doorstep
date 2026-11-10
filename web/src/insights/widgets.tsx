@@ -172,7 +172,7 @@ export function Journey(params: AgWidgetParams<JourneyDef>) {
   const nodes = ([
     { id: "orders", label: "Paid orders", v: N, col: 0, tone: "base", of: N },
     { id: "shipped", label: "Shipped", v: S, col: 1, tone: "base", of: N },
-    { id: "unshipped", label: "Not shipped yet", v: Math.max(0, N - S), col: 1, tone: "muted", of: N },
+    { id: "unshipped", label: "Not shipped", v: Math.max(0, N - S), col: 1, tone: "muted", of: N },
     { id: "delivered", label: "Delivered, no problem", v: D, col: 2, tone: "good", of: N },
     { id: "onway", label: "On the way", v: W, col: 2, tone: "muted", of: N },
     { id: "case", label: "Problem reported", v: C, col: 2, tone: "bad", of: N },
@@ -288,7 +288,7 @@ export function Journey(params: AgWidgetParams<JourneyDef>) {
  * Studio's page agent): the mapping and title the built reports use, so it never arrives blank.
  * reports.ts builds its pages from the same objects.
  */
-const titled = (text: string, sub: string) => ({ title: { enabled: true, text }, subtitle: { enabled: true, text: sub, wrapping: true } });
+const titled = (text: string) => ({ title: { enabled: true, text }, subtitle: { enabled: false } });
 export const DEFAULTS = {
   journey: {
     dataMapping: {
@@ -296,26 +296,26 @@ export const DEFAULTS = {
       onWay: [{ id: "stage_on_way" }], cases: [{ id: "orders_with_case" }], refunded: [{ id: "stage_refunded" }],
       recovered: [{ id: "stage_recovered" }],
     },
-    format: titled("Every order, from payment to who paid", "Widths follow the number of orders; orders with a problem are zoomed in"),
+    format: titled("Order journey"),
   } satisfies Partial<JourneyDef>,
   moneyFlow: {
     dataMapping: { refunded: [{ id: "paid_out" }], recovered: [{ id: "recovered" }], pending: [{ id: "claims_pending" }] },
-    format: titled("Where the money went", "Refunded, recovered, net loss"),
+    format: titled("Where the money went"),
   } satisfies Partial<FlowDef>,
   claimClock: {
     dataMapping: {
       carrier: [{ id: "recoveries.carrier" }], deadline: [{ id: "recoveries.deadline_at" }],
       amount: [{ id: "recoveries.claimed" }], step: [{ id: "recoveries.next_step" }],
     },
-    format: titled("Claim deadlines", "Open carrier claims, soonest first. Doorstep prepares; you file"),
+    format: titled("Claim deadlines"),
   } satisfies Partial<ClockDef>,
   evidence: {
     dataMapping: { category: [{ id: "orders.method" }], value: [{ id: "evidence_avg" }] },
-    format: titled("Proof on file, by delivery method", "Seal, signature or locker code"),
+    format: titled("Proof by method"),
   } satisfies Partial<MeterDef>,
   failurePoints: {
     dataMapping: { category: [{ id: "cases.failure_point" }], value: [{ id: "case_count" }], money: [{ id: "paid_out" }] },
-    format: titled("Where deliveries failed", "Cases by likely cause"),
+    format: titled("Failure points"),
   } satisfies Partial<FailureDef>,
 };
 
@@ -438,8 +438,8 @@ export function MoneyFlow(params: AgWidgetParams<FlowDef>) {
         <div><strong>{fmt(net)}</strong><span>Net delivery loss</span></div>
       </div>
       <p className="ds-flow-note">
-        Carriers paid back <strong>{share}%</strong> of what you refunded.
-        {pending > 0 && <> <span className="ds-wf-hatch" aria-hidden /> <strong>{fmt(pending)}</strong> is still claimable.</>}
+        Carriers repaid <strong>{share}%</strong>.
+        {pending > 0 && <> <span className="ds-wf-hatch" aria-hidden /> <strong>{fmt(pending)}</strong> still claimable.</>}
       </p>
     </div>
   );
@@ -489,7 +489,7 @@ export function ClaimClock(params: AgWidgetParams<ClockDef>) {
     .filter(({ r, at }) => String(r[step.key]) !== "Done" && Number.isFinite(at) && at >= now - DAY)
     .sort((a, b) => a.at - b.at)
     .slice(0, 8);
-  if (!open.length) return <p className="ds-clock-empty">No open claims. Doorstep prepares one when a carrier loses or damages a parcel.</p>;
+  if (!open.length) return <p className="ds-clock-empty">No open claims.</p>;
   return (
     <ul className="ds-clock">
       {open.map(({ r, at }) => {

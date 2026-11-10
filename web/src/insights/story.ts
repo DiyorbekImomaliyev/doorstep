@@ -21,7 +21,7 @@ const day = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numer
 
 /** "2,052 of 2,107 orders arrived with no problem (97%)." */
 export function headline(orders: number, delivered: number): Part[] {
-  if (orders <= 0) return ["No orders in this period yet."];
+  if (orders <= 0) return ["No orders yet."];
   return [{ b: `${count(delivered)} of ${count(orders)}` }, ` orders arrived with no problem (${share(delivered, orders)}).`];
 }
 
@@ -69,11 +69,11 @@ export function brief(p: Prepared, now = new Date()): Brief {
   const soon = claims[0];
 
   const line: Part[] = [];
-  if (top) line.push(`Last 4 weeks: ${whose(top.facts)} rose to `, { b: pct1(top.facts.now) }, ` (${pct1(top.facts.before)} before).`);
-  else line.push("Last 4 weeks: nothing stands out.");
+  if (top) line.push(`4 weeks: ${whose(top.facts)} rose to `, { b: pct1(top.facts.now) }, ` (was ${pct1(top.facts.before)}).`);
+  else line.push("4 weeks: nothing stands out.");
   if (soon) {
     const days = Math.max(0, Math.ceil((soon.due - now.getTime()) / DAY));
-    line.push(` Next claim deadline: ${soon.carrier}, `, { b: money(soon.amount, p.home) }, `, in ${days} day${days === 1 ? "" : "s"}.`);
+    line.push(` Next claim: ${soon.carrier}, `, { b: money(soon.amount, p.home) }, `, in ${days} day${days === 1 ? "" : "s"}.`);
   }
 
   const next: DoNext[] = [];
@@ -90,7 +90,7 @@ export function brief(p: Prepared, now = new Date()): Brief {
   if (carrier) {
     const f = carrier.facts;
     next.push({
-      key: `carrier-${f.key}`, what: `${f.key} · ${count(f.cases)} of ${count(f.orders)} orders had a problem in 4 weeks`,
+      key: `carrier-${f.key}`, what: `${f.key} · ${count(f.cases)} of ${count(f.orders)} orders had a problem`,
       action: { kind: "carrier", label: `Open ${f.key} report`, carrier: f.key },
     });
   }
