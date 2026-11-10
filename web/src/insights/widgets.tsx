@@ -21,7 +21,8 @@ import type {
 import { Says } from "../components/ai";
 import Doorstep3D from "../components/Doorstep3D";
 import type { Prepared } from "./data";
-import { brief, headline, type DoNext } from "./story";
+import { brief, headline, share, type DoNext, type Signal } from "./story";
+import { ArrowRight, CircleCheck, Clock, FileText, SlidersHorizontal, TrendingDown, TrendingUp, Truck } from "lucide-react";
 
 // ---------------------------------------------------------------- types
 
@@ -727,27 +728,35 @@ export function Brief(params: AgWidgetParams<BriefDef, unknown, BriefContext>) {
     else if (n.action.kind === "chase") ctx?.chase?.(n.action.carrier);
     else toggle(n.action.method);
   };
+  const ICON = { case: <FileText />, carrier: <FileText />, chase: <Truck />, method: <SlidersHorizontal /> } as const;
   return (
     <section className="ds-brief" aria-label="Doorstep's brief">
       <div className="ds-brief-top">
+        <HealthRing value={orders > 0 ? delivered / orders : 0} label={orders > 0 ? share(delivered, orders) : "—"} />
         <div className="ds-brief-words">
           <h2 className="ds-brief-head"><Says parts={headline(orders, delivered)} /></h2>
-          {story && <p className="ds-brief-line"><Says parts={story.line} /></p>}
+          {story && <ul className="ds-signals">{story.signals.map((g) => <SignalChip key={g.kind} s={g} />)}</ul>}
         </div>
         <Doorstep3D className="ds-brief-3d" />
       </div>
       {story && story.next.length > 0 && (
         <div className="ds-brief-next">
-          <div className="ds-brief-label">Do next</div>
+          <div className="ds-brief-label"><span>Do next</span><span className="ds-brief-count num" aria-hidden>{story.next.length}</span></div>
           <ol>
-            {story.next.map((n) => {
+            {story.next.map((n, i) => {
               const on = n.action.kind === "method" && picked.has(n.action.method);
               return (
-                <li key={n.key}>
-                  <span className="ds-brief-what">{n.what}{isNew(n) && <span className="ds-new">New</span>}</span>
-                  <span className="ds-brief-meta num">{[n.money, n.when].filter(Boolean).join(" · ")}</span>
+                <li key={n.key} style={{ "--i": i } as React.CSSProperties} data-kind={n.action.kind}>
+                  <span className="ds-next-ix num" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
+                  <span className="ds-next-ico" aria-hidden>{ICON[n.action.kind]}</span>
+                  <span className="ds-next-text">
+                    <span className="ds-brief-what">{n.what}{isNew(n) && <span className="ds-new">New</span>}</span>
+                    {n.sub && <span className="ds-brief-meta num">{n.sub}</span>}
+                  </span>
+                  {n.days !== undefined ? <DaysLeft days={n.days} /> : <span />}
                   <button type="button" className="ds-brief-btn" aria-pressed={n.action.kind === "method" ? on : undefined} onClick={() => run(n)}>
                     {n.action.kind === "method" ? (on ? "Clear filter" : "Filter the page") : n.action.label}
+                    <ArrowRight aria-hidden />
                   </button>
                 </li>
               );
@@ -757,6 +766,54 @@ export function Brief(params: AgWidgetParams<BriefDef, unknown, BriefContext>) {
       )}
       <span className="sr-only" aria-live="polite">{notice}</span>
     </section>
+  );
+}
+
+/** Delivered with no problem, as a ring that fills on arrival and on every live update. */
+function HealthRing({ value, label }: { value: number; label: string }) {
+  const R = 26, C = 2 * Math.PI * R;
+  const [shown, setShown] = useState(0);
+  useEffect(() => { const id = requestAnimationFrame(() => setShown(Math.max(0, Math.min(1, value)))); return () => cancelAnimationFrame(id); }, [value]);
+  const a = shown * 2 * Math.PI - Math.PI / 2;
+  return (
+    <div className="ds-ring" aria-hidden>
+      <svg viewBox="0 0 64 64" width="64" height="64">
+        <circle cx="32" cy="32" r={R} className="ds-ring-track" />
+        <circle cx="32" cy="32" r={R} className="ds-ring-arc" strokeDasharray={C} strokeDashoffset={C * (1 - shown)} />
+        <circle cx={32 + R * Math.cos(a)} cy={32 + R * Math.sin(a)} r="3" className="ds-ring-dot" style={{ opacity: shown > 0 ? 1 : 0 }} />
+      </svg>
+      <span className="ds-ring-v num">{label}</span>
+    </div>
+  );
+}
+
+/** One signal chip: a carrier or method trend, or the next claim with a countdown bar. */
+function SignalChip({ s }: { s: Signal }) {
+  if (s.kind === "steady") return <li className="ds-signal ok" title="Last 4 weeks"><CircleCheck aria-hidden /><span>Steady</span><em>4 wk</em></li>;
+  if (s.kind === "rate") {
+    return (
+      <li className={`ds-signal ${s.up ? "up" : "down"}`} title={`Case rate, last 4 weeks (was ${s.before})`}>
+        {s.up ? <TrendingUp aria-hidden /> : <TrendingDown aria-hidden />}
+        <span>{s.who}</span><b className="num">{s.now}</b><em className="num">was {s.before}</em>
+      </li>
+    );
+  }
+  return (
+    <li className="ds-signal claim" title={`${s.carrier} claim due ${s.date}`}>
+      <Clock aria-hidden /><span>Next claim</span><b className="num">{s.money}</b>
+      <DaysLeft days={s.days} />
+    </li>
+  );
+}
+
+/** Days left on a claim window: a thin bar (30 days full) that turns amber under 7, red under 3. */
+function DaysLeft({ days }: { days: number }) {
+  const tone = days < 3 ? "hot" : days < 7 ? "warm" : "cool";
+  return (
+    <span className={`ds-days ${tone}`} title={days === 0 ? "Due today" : `${days} days left`}>
+      <i style={{ "--p": Math.min(1, days / 30) } as React.CSSProperties} />
+      <span className="num">{days === 0 ? "Today" : `${days}d`}</span>
+    </span>
   );
 }
 

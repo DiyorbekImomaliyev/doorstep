@@ -47,9 +47,9 @@ export function openClaims(p: Prepared, now = Date.now()): Claim[] {
     .sort((a, b) => a.due - b.due);
 }
 
-/** One thing to do: what, its money and date, and the one button. */
+/** One thing to do: what, one quiet detail line, days left (claims), and the one button. */
 export type DoNext = {
-  key: string; what: string; money?: string; when?: string;
+  key: string; what: string; sub?: string; days?: number; money?: string; when?: string;
   action:
     | { kind: "case"; label: "Open case"; orderId: string }
     | { kind: "carrier"; label: string; carrier: string }
@@ -57,7 +57,13 @@ export type DoNext = {
     | { kind: "method"; label: "Show these orders"; method: string };
 };
 
-export type Brief = { line: Part[]; next: DoNext[]; findings: Finding[] };
+/** The brief's two signals, as chips: what moved in four weeks, and the next claim deadline. */
+export type Signal =
+  | { kind: "rate"; who: string; now: string; before: string; up: boolean }
+  | { kind: "steady" }
+  | { kind: "claim"; carrier: string; money: string; days: number; date: string };
+
+export type Brief = { line: Part[]; signals: Signal[]; next: DoNext[]; findings: Finding[] };
 
 /** The second line and the "Do next" rows, from the last four weeks and the open claims. */
 export function brief(p: Prepared, now = new Date()): Brief {
@@ -70,10 +76,17 @@ export function brief(p: Prepared, now = new Date()): Brief {
   const soon = claims[0];
 
   const line: Part[] = [];
+  const signals: Signal[] = [];
+  const days = soon ? Math.max(0, Math.ceil((soon.due - now.getTime()) / DAY)) : 0;
+  if (top) {
+    const f = top.facts;
+    const who = f.field === "method" ? METHOD_NAME[f.key] ?? f.key : f.field === "carrier" ? f.key : "All orders";
+    signals.push({ kind: "rate", who, now: pct1(f.now), before: pct1(f.before), up: f.now >= f.before });
+  } else signals.push({ kind: "steady" });
+  if (soon) signals.push({ kind: "claim", carrier: soon.carrier, money: money(soon.amount, p.home), days, date: day(soon.due) });
   if (top) line.push(`4 weeks: ${whose(top.facts)} rose to `, { b: pct1(top.facts.now) }, ` (was ${pct1(top.facts.before)}).`);
   else line.push("4 weeks: nothing stands out.");
   if (soon) {
-    const days = Math.max(0, Math.ceil((soon.due - now.getTime()) / DAY));
     line.push(` Next claim: ${soon.carrier}, `, { b: money(soon.amount, p.home) }, `, in ${days} day${days === 1 ? "" : "s"}.`);
   }
 
@@ -81,7 +94,8 @@ export function brief(p: Prepared, now = new Date()): Brief {
   if (soon) {
     next.push({
       key: "claim",
-      what: soon.step === "File it with the carrier" ? `File the ${soon.carrier} claim` : `${soon.carrier} claim: waiting for the carrier`,
+      what: soon.step === "File it with the carrier" ? `File ${soon.carrier} claim` : `${soon.carrier} claim · waiting`,
+      sub: `${money(soon.amount, p.home)} · due ${day(soon.due)}`, days,
       money: money(soon.amount, p.home), when: `due ${day(soon.due)}`,
       action: soon.example || !soon.orderId
         ? { kind: "carrier", label: `Open ${soon.carrier} report`, carrier: soon.carrier }
@@ -91,16 +105,16 @@ export function brief(p: Prepared, now = new Date()): Brief {
   if (carrier) {
     const f = carrier.facts;
     next.push({
-      key: `carrier-${f.key}`, what: `${f.key} · ${count(f.cases)} of ${count(f.orders)} orders had a problem`,
+      key: `carrier-${f.key}`, what: f.key, sub: `${count(f.cases)} of ${count(f.orders)} had a problem`,
       action: { kind: "chase", label: `Chase ${f.key}`, carrier: f.key },
     });
   }
   if (method) {
     const f = method.facts;
     next.push({
-      key: `method-${f.key}`, what: `${METHOD_NAME[f.key] ?? f.key} · case rate up to ${pct1(f.now)}`,
+      key: `method-${f.key}`, what: METHOD_NAME[f.key] ?? f.key, sub: `Case rate up to ${pct1(f.now)}`,
       action: { kind: "method", label: "Show these orders", method: f.key },
     });
   }
-  return { line, next: next.slice(0, 3), findings: scan.findings };
+  return { line, signals, next: next.slice(0, 3), findings: scan.findings };
 }

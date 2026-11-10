@@ -231,7 +231,7 @@ type Layout = NonNullable<Page["widgetLayout"]>;
 /** The same layout, moved down `n` tracks (room for something new on top). */
 const below = (layout: Layout, n: number): Layout =>
   Object.fromEntries(Object.entries(layout).map(([k, l]) => [k, l && { ...l, yTrack: l.yTrack + n }])) as Layout;
-const BRIEF_H = 17;
+const BRIEF_H = 20;
 
 export const overviewPage: Page = {
   id: "overview",

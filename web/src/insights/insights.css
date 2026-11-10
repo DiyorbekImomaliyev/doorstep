@@ -244,37 +244,84 @@ button.ds-meter-row:hover, .ds-fp li > button:hover { background: color-mix(in s
 .ag-studio-layout-widget-container:has(.ds-brief),
 .ag-studio-layout-widget-container:has(.ag-studio-button-filter-widget) { background: transparent; border-color: transparent; box-shadow: none; }
 .ds-brief { height: 100%; display: flex; flex-direction: column; gap: 12px; padding: 6px 4px 0; overflow: hidden; container-type: inline-size; }
-.ds-brief-top { display: flex; align-items: flex-start; gap: 20px; }
-.ds-brief-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ds-brief-top { display: flex; align-items: center; gap: 18px; }
+.ds-brief-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .ds-brief-head { margin: 0; font-family: var(--serif); font-size: 26px; line-height: 32px; font-weight: 450; letter-spacing: -0.015em; color: var(--text); text-wrap: balance; }
 .ds-brief-head strong { font-weight: 600; font-variant-numeric: tabular-nums; }
-.ds-brief-line { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
-.ds-brief-line strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .ds-brief-3d { margin: -8px 4px -18px 0; }
+
+/* The ring: delivered with no problem. Fills on arrival, eases to each live value. */
+.ds-ring { position: relative; flex: none; width: 64px; height: 64px; display: grid; place-items: center; }
+.ds-ring svg { position: absolute; inset: 0; transform: rotate(0deg); overflow: visible; }
+.ds-ring-track { fill: none; stroke: var(--line); stroke-width: 5; }
+.ds-ring-arc { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 32px 32px; transition: stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1); filter: drop-shadow(0 1px 3px rgba(123,45,61,.25)); }
+.ds-ring-dot { fill: var(--surface); stroke: var(--accent); stroke-width: 2; transition: cx 1.1s cubic-bezier(.2,.8,.2,1), cy 1.1s cubic-bezier(.2,.8,.2,1), opacity .3s; }
+.ds-ring-v { position: relative; font-size: 15px; font-weight: 650; letter-spacing: -.01em; color: var(--text); }
+
+/* Signals: two quiet chips in place of a sentence. */
+.ds-signals { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.ds-signal { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; color: var(--text-2); box-shadow: var(--shadow-sm); animation: ds-rise .5s var(--ease) both; }
+.ds-signal:nth-child(2) { animation-delay: 80ms; }
+.ds-signal svg { width: 15px; height: 15px; flex: none; }
+.ds-signal span { color: var(--text); font-weight: 500; }
+.ds-signal b { color: var(--text); font-weight: 650; }
+.ds-signal em { font-style: normal; color: var(--text-3); font-size: 12px; }
+.ds-signal.up svg { color: var(--accent); }
+.ds-signal.down svg, .ds-signal.ok svg { color: #2f6f73; }
+.ds-signal.claim svg { color: var(--text-3); }
+
+/* Days left: a thin bar that empties as the deadline nears. */
+.ds-days { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.ds-days i { position: relative; width: 34px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.ds-days i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: currentColor; transform-origin: left; transform: scaleX(var(--p)); animation: ds-fill .9s cubic-bezier(.2,.8,.2,1) both .25s; }
+.ds-days.cool { color: #2f6f73; } .ds-days.warm { color: var(--warn); } .ds-days.hot { color: #a3312f; }
+
+/* Do next: numbered action rows that arrive one after another. */
 .ds-brief-next { display: flex; flex-direction: column; }
-.ds-brief-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); padding-bottom: 4px; }
+.ds-brief-label { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); padding-bottom: 6px; }
+.ds-brief-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; letter-spacing: 0; }
 .ds-brief-next ol { list-style: none; margin: 0; padding: 0; }
-.ds-brief-next li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 16px; min-height: 40px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.ds-brief-next li { position: relative; display: grid; grid-template-columns: 22px 32px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; min-height: 50px; padding: 0 8px 0 10px; border-top: 1px solid var(--line); border-radius: 0; font-size: 13.5px; animation: ds-rise .45s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms + 140ms); transition: background var(--dur-fast) var(--ease); }
 .ds-brief-next li:last-child { border-bottom: 1px solid var(--line); }
-.ds-brief-what { color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ds-brief-meta { color: var(--text-2); font-size: 13px; white-space: nowrap; }
-.ds-brief-btn { height: 28px; padding: 0 12px; border: 1px solid var(--accent-line); border-radius: 7px; background: var(--surface); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
-.ds-brief-btn:hover { background: var(--accent-soft); border-color: var(--accent-3); }
+.ds-brief-next li::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 2px; background: var(--accent); transform: scaleY(0); transition: transform var(--dur) var(--ease); }
+.ds-brief-next li:hover, .ds-brief-next li:focus-within { background: linear-gradient(90deg, var(--accent-soft), transparent 70%); }
+.ds-brief-next li:hover::before, .ds-brief-next li:focus-within::before { transform: scaleY(1); }
+.ds-next-ix { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); letter-spacing: .02em; }
+.ds-next-ico { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); color: var(--accent); box-shadow: var(--shadow-sm); }
+.ds-next-ico svg { width: 16px; height: 16px; }
+li[data-kind="chase"] .ds-next-ico { color: var(--text-2); }
+li[data-kind="method"] .ds-next-ico { color: #2f6f73; }
+.ds-next-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ds-brief-what { color: var(--text); font-weight: 550; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-brief-meta { color: var(--text-3); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-brief-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 12px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--surface); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.ds-brief-btn svg { width: 14px; height: 14px; transition: transform var(--dur) var(--ease); }
+.ds-brief-btn:hover { background: var(--accent-soft); border-color: var(--accent-3); box-shadow: var(--shadow-sm); }
+.ds-brief-btn:hover svg, .ds-brief-btn:focus-visible svg { transform: translateX(2px); }
 .ds-brief-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .ds-new { margin-left: 8px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; vertical-align: 1px; }
+@keyframes ds-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ds-fill { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .ds-signal, .ds-brief-next li, .ds-days i::after { animation: none; }
+  .ds-ring-arc, .ds-ring-dot { transition: none; }
+}
 /* A narrow canvas (a 1280 laptop, or the Ask panel open): the sentence keeps the width. */
 @container (max-width: 820px) {
   .ds-brief-3d { display: none; }
   .ds-brief-head { font-size: 23px; line-height: 29px; }
-  .ds-brief-line { font-size: 14px; }
 }
 @media (max-width: 640px) {
-  .ds-brief-3d { display: none; }
-  .ds-brief-head { font-size: 21px; line-height: 27px; }
-  .ds-brief-line { font-size: 14px; }
-  .ds-brief-next li { grid-template-columns: 1fr auto; gap: 4px 12px; padding: 8px 0; }
-  .ds-brief-meta { grid-row: 2; }
-  .ds-brief-btn { grid-row: 1 / span 2; grid-column: 2; }
+  .ds-brief-3d, .ds-next-ix { display: none; }
+  .ds-brief-top { align-items: flex-start; gap: 12px; }
+  .ds-ring { width: 52px; height: 52px; }
+  .ds-ring svg { width: 52px; height: 52px; }
+  .ds-ring-v { font-size: 13px; }
+  .ds-brief-head { font-size: 20px; line-height: 26px; }
+  .ds-signal.claim, .ds-next-ico { display: none; }
+  .ds-brief-next li { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; min-height: 52px; padding: 6px 4px; }
+  .ds-brief-next li > .ds-days, .ds-brief-next li > span:empty { display: none; }
+  .ds-brief-btn { padding: 0 10px; }
 }
 
 /* S7: in view mode a widget card lifts a little under the pointer (not the brief or the bare filters). */
