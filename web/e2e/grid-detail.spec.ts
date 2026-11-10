@@ -24,7 +24,7 @@ test("GD-01 the detail panel of an order with a case shows a timeline grid with 
   expect(found).toBe(true);
   const grid = page.locator(".detail-timeline .timeline-grid").first();
   await expect(grid.getByRole("columnheader", { name: "When" })).toBeVisible();
-  const first = grid.locator(".ag-center-cols-container [role=row]").first();
+  const first = grid.locator(".ag-row").first();
   await expect(first).toBeVisible();
   await expect(first.locator("[col-id=at]")).toContainText(/ago|just now/);
   await expect(first.locator("[col-id=title]")).not.toBeEmpty();
