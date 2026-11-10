@@ -957,3 +957,18 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 /* The seller's own notes get a quiet corner; Doorstep's (Journey, Delivery) keep the maroon one. */
 .ag-has-cell-notes { --ag-note-indicator-color: #b7aca6; }
 .ag-has-cell-notes[col-id="status"], .ag-has-cell-notes[col-id="method"] { --ag-note-indicator-color: var(--accent); }
+
+/* ===== GT: AG Grid's Quick Access Toolbar, in Doorstep's look (the grid's own tools) ===== */
+.orders-grid .ag-toolbar { min-height: 48px; padding: 0 14px 0 18px; gap: 6px; background: #fcfbfa; border-bottom: 1px solid var(--line); }
+.orders-grid .ag-toolbar-button-wrapper { height: auto; border-radius: var(--r-sm); background: none; }
+.orders-grid .ag-toolbar-button-wrapper:hover { background: none; }
+.orders-grid .ag-toolbar-button {
+  height: 32px; min-width: 32px; padding: 0 8px; justify-content: center; gap: 6px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text-2); font: 550 12.5px/1 var(--font); transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+}
+.orders-grid .ag-toolbar-button:hover { background: var(--surface-2); border-color: var(--line-2); color: var(--text); }
+.orders-grid .ag-toolbar-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+.orders-grid .ag-toolbar-button[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.orders-grid .ag-toolbar-button .ds-icon { width: 15px; height: 15px; }
+.orders-grid .ag-toolbar-separator { margin: 12px 4px; border-color: var(--line); }
+@media (max-width: 640px) { .orders-grid .ag-toolbar { display: none; } }

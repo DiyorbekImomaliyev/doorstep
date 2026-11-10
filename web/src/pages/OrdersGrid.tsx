@@ -6,12 +6,12 @@ import {
 import {
   AllCommunityModule, ModuleRegistry,
   type ColDef, type DefaultMenuItem, type ExcelStyle, type GetContextMenuItemsParams, type GridApi, type IRowNode,
-  type MenuItemDef, type RowClickedEvent, type SideBarDef, type StatusPanelDef,
+  type MenuItemDef, type RowClickedEvent, type SideBarDef, type StatusPanelDef, type Toolbar,
 } from "ag-grid-community";
 import {
   ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
   MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
-  AiToolkitModule, NotesModule, PdfExportModule,
+  AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule,
 } from "ag-grid-enterprise";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
 import type { OrderRow } from "../api";
@@ -31,7 +31,8 @@ import { doorstepOwns, hasNote, notesFor, notesSource } from "../grid/notes";
  *  - HR demo: calm uppercase headers, light column lines; rows grouped by who acts next.
  *  - Inventory demo: product cell with a category tag, a verb per row, master/detail.
  *  - Finance demo: tooltips, cell flash on live updates, right-aligned money.
- * Plus: Set filters, Columns/Filters side bar, right-click menu, Excel export.
+ * Plus: Set filters, Columns/Filters side bar, right-click menu, Excel export, and AG Grid 36's
+ * Quick Access Toolbar for the grid's own tools.
  */
 
 if (__AG_GRID_LICENSE_KEY__) LicenseManager.setLicenseKey(__AG_GRID_LICENSE_KEY__);
@@ -39,7 +40,7 @@ if (__AG_GRID_LICENSE_KEY__) LicenseManager.setLicenseKey(__AG_GRID_LICENSE_KEY_
 ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
   ColumnsToolPanelModule, FiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
-  StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule,
+  StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule,
 ]);
 
 
@@ -500,6 +501,16 @@ export function toggleColumnsPanel(api: GridApi) {
 
 // ---------- the grid ----------
 
+/** Lucide's strokes for the icons AG Grid draws in the toolbar and side bar, so they match the page's. */
+const lucide = (body: string) =>
+  `<svg class="ds-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const PAGE = '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>';
+const gridIcons = {
+  columns: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>'),
+  excelExport: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 9v12"/><path d="M15 9v12"/>'),
+  pdfExport: lucide(`${PAGE}<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`),
+};
+
 const sideBar: SideBarDef = {
   toolPanels: [
     {
@@ -707,6 +718,18 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     if (e.data) onOpen(e.data);
   }, [onOpen]);
   const detailParams = useMemo(() => ({ onOpen }), [onOpen]);
+  // AG Grid's Quick Access Toolbar: the grid's own tools, right-aligned. Kept stable (a new toolbar
+  // rebuilds every item), so the hand-off callback is read through a ref.
+  const handoffRef = useRef(onHandoff);
+  handoffRef.current = onHandoff;
+  const toolbar = useMemo((): Toolbar => ({
+    alignment: "right",
+    items: [
+      { key: "columns", icon: "columns", tooltip: "Columns and filters", action: ({ api: a }) => toggleColumnsPanel(a) },
+      { key: "excel", icon: "excelExport", tooltip: "Export to Excel", action: ({ api: a }) => exportExcel(a) },
+      { key: "handoff", icon: "pdfExport", tooltip: "Download hand-off report", action: () => handoffRef.current?.() },
+    ],
+  }), []);
   // A search of two or more words that matches nothing is probably a question: say Enter asks it.
   const emptyParams = useMemo(() => ({
     text: !search ? empty : search.trim().includes(" ") ? "No orders contain those words. Press Enter and Doorstep will read it as a question." : "No orders match your search.",
@@ -756,6 +779,8 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         detailRowAutoHeight
         // Enterprise furniture: side bar (hidden until asked), right-click menu, Excel export.
         sideBar={sideBar}
+        toolbar={toolbar}
+        icons={gridIcons}
         getContextMenuItems={getContextMenuItems}
         excelStyles={excelStyles}
         statusBar={statusBar}

@@ -518,18 +518,6 @@ export default function Seller({ token }: { token: string }) {
                       {search.trim().includes(" ") && <span className="ask-hint" aria-hidden>↵ Ask</span>}
                       <button type="button" className="kbd-hint" onClick={() => setCmd(true)} title="Command bar" aria-label="Open the command bar">⌘K</button>
                     </label>
-                    <button className="btn icon-btn" title="Columns and filters" aria-label="Columns and filters"
-                      onClick={() => gridApi.current && toggleColumnsPanel(gridApi.current)}>
-                      <Columns3 size={15} aria-hidden />
-                    </button>
-                    <button className="btn icon-btn" title="Export what you see to Excel" aria-label="Export to Excel"
-                      onClick={() => gridApi.current && exportExcel(gridApi.current)}>
-                      <Download size={15} aria-hidden />
-                    </button>
-                    <button className="btn icon-btn" title="Hand-off report (PDF): what you see, with links to each case's signed receipts" aria-label="Download hand-off report"
-                      onClick={handoff}>
-                      <FileText size={15} aria-hidden />
-                    </button>
                   </div>
                 </div>
                 {asking && <div className="ds-sweep grid-sweep" />}
