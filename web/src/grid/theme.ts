@@ -23,6 +23,11 @@ export const gridTheme = themeQuartz.withParams({
   columnBorder: false,
   rowHoverColor: C.hover,
   selectedRowBackgroundColor: C.accentSoft,
+  // Cell selection (drag for a live sum): a maroon outline over a faint maroon wash.
+  rangeSelectionBorderColor: C.accent,
+  rangeSelectionBackgroundColor: "rgb(123 45 61 / .07)",
+  rangeSelectionHighlightColor: C.accentTint,
+  rangeHeaderHighlightColor: C.hover,
   accentColor: C.accent,
   iconColor: C.grey,
   wrapperBorder: false,

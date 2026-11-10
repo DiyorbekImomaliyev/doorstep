@@ -5,11 +5,12 @@ import {
 } from "ag-grid-react";
 import {
   AllCommunityModule, ModuleRegistry,
-  type ColDef, type DefaultMenuItem, type ExcelStyle, type GetContextMenuItemsParams, type GridApi, type IRowNode,
-  type MenuItemDef, type RowClickedEvent, type SideBarDef, type StatusPanelDef, type Toolbar,
+  type CellKeyDownEvent, type ColDef, type DefaultMenuItem, type ExcelStyle, type FullWidthCellKeyDownEvent, type GetContextMenuItemsParams,
+  type GridApi, type IRowNode, type IStatusPanelValueFormatterParams, type MenuItemDef, type ProcessCellForExportParams,
+  type RowClickedEvent, type SideBarDef, type StatusPanelDef, type Toolbar,
 } from "ag-grid-community";
 import {
-  ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
+  CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
   MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
   AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule,
 } from "ag-grid-enterprise";
@@ -40,7 +41,7 @@ if (__AG_GRID_LICENSE_KEY__) LicenseManager.setLicenseKey(__AG_GRID_LICENSE_KEY_
 ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
   ColumnsToolPanelModule, FiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
-  StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule,
+  StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, CellSelectionModule, ClipboardModule,
 ]);
 
 
@@ -202,16 +203,68 @@ function ProofCell({ data: r }: CustomCellRendererProps<OrderRow>) {
   );
 }
 
-function MoneyCell({ data: r }: CustomCellRendererProps<OrderRow>) {
+/**
+ * At stake: one number per row, the cell's own value, so a selection's sum is what the seller sees.
+ * The order's amount rides underneath when only part of it (or none) is at stake. In "% of total"
+ * the share leads and the money moves underneath.
+ */
+function MoneyCell(p: CustomCellRendererProps<OrderRow>) {
+  const r = p.data;
   if (!r) return null;
+  const stake = r.money_at_stake_minor;
+  const share = p.column?.getShowValuesAs() ? p.valueFormatted : null;
+  const sub = share != null ? money(stake, r.currency) : stake === r.amount_minor ? null : `of ${money(r.amount_minor, r.currency)}`;
   return (
-    <div className="money-cell">
-      <span className="amt">{money(r.amount_minor, r.currency)}</span>
-      {r.money_at_stake_minor > 0
-        ? <span className="stake">{money(r.money_at_stake_minor, r.currency)} at stake</span>
-        : <span className="sub">nothing at stake</span>}
+    <div className={`money-cell ${stake ? "" : "none"}`}>
+      <span className="amt num">{share ?? money(stake, r.currency)}</span>
+      {sub && <span className="sub num">{sub}</span>}
     </div>
   );
+}
+
+/** Money cells in the selected ranges, per currency: a pound is never added to a dollar. */
+function selectedStake(api: GridApi): { by: Record<string, number>; n: Record<string, number> } {
+  const by: Record<string, number> = {}, n: Record<string, number> = {};
+  const seen = new Set<string>();
+  for (const range of api.getCellRanges() ?? []) {
+    const { startRow: a, endRow: b } = range;
+    if (!a || !b || a.rowPinned || b.rowPinned || !range.columns.some((c) => c.getColId() === "money")) continue;
+    for (let i = Math.min(a.rowIndex, b.rowIndex); i <= Math.max(a.rowIndex, b.rowIndex); i++) {
+      const node = api.getDisplayedRowAtIndex(i);
+      const r = node && !node.group ? (node.data as OrderRow | undefined) : undefined;
+      if (!r || seen.has(r.order_id)) continue;
+      seen.add(r.order_id);
+      by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor;
+      n[r.currency] = (n[r.currency] ?? 0) + 1;
+    }
+  }
+  return { by, n };
+}
+
+/** AG Grid's aggregation panel, in money: Sum and Average of the selected At-stake cells per currency. */
+export function selectionFormatter(p: IStatusPanelValueFormatterParams): string {
+  if (p.key === "count") return String(p.value ?? 0);
+  const { by, n } = selectedStake(p.api);
+  const cur = Object.keys(by);
+  if (!cur.length) return p.value == null ? "" : Number(p.value).toLocaleString("en-GB", { maximumFractionDigits: 2 });
+  return cur.map((c) => money(p.key === "avg" ? Math.round(by[c] / n[c]) : by[c], c)).join(p.key === "avg" ? " · " : " + ");
+}
+
+/** Copy (Ctrl/Cmd+C) pastes what the cell says; money as a plain number a spreadsheet can add. */
+function clipboardValue(q: ProcessCellForExportParams<OrderRow>): string {
+  const r = q.node?.data;
+  if (!r || q.node?.group) return q.value == null ? "" : String(q.value);
+  const id = q.column.getColId();
+  if (id === "money") return (r.money_at_stake_minor / 100).toFixed(2);
+  if (id === "action") return nextAction(r).label;
+  return exportValue(id, r, q.value);
+}
+
+/** A click that ends a drag across cells (or extends a selection) selects; it does not open the order. */
+function isSelecting(api: GridApi, e: MouseEvent | KeyboardEvent | null | undefined): boolean {
+  if (e && (e.shiftKey || e.metaKey || e.ctrlKey)) return true;
+  const ranges = api.getCellRanges() ?? [];
+  return ranges.length > 1 || ranges.some((g) => g.columns.length > 1 || g.startRow?.rowIndex !== g.endRow?.rowIndex);
 }
 
 function ActionCell(p: CustomCellRendererProps<OrderRow> & { onOpen: (r: OrderRow) => void }) {
@@ -405,7 +458,7 @@ function exportValue(id: string, r: OrderRow, v: unknown): string {
     case "method": return r.method ? METHOD[r.method] ?? r.method : "";
     case "risk": return r.delivery_risk == null ? "" : pct(r.delivery_risk);
     case "proof": return `${r.evidence.present.length} of ${r.evidence.present.length + r.evidence.missing.length}`;
-    case "money": return money(r.amount_minor, r.currency) + (r.money_at_stake_minor ? ` (${money(r.money_at_stake_minor, r.currency)} at stake)` : "");
+    case "money": return money(r.money_at_stake_minor, r.currency) + (r.money_at_stake_minor === r.amount_minor ? "" : ` of ${money(r.amount_minor, r.currency)}`);
     case "buyer": return `${r.buyer_area} ${r.buyer_country}`.trim();
     case "updated": return r.last_update;
     default: return v == null ? "" : String(v);
@@ -464,10 +517,6 @@ export function exportHandoffPdf(api: GridApi, o: { shop: string; region: string
       const r = q.node?.data as OrderRow | undefined;
       if (r && q.column.getColId() === "updated") {
         return new Date(r.last_update).toLocaleString(o.region === "US" ? "en-US" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-      }
-      // "£58 at stake" when all of it is at stake; the long form only when part of it is.
-      if (r && q.column.getColId() === "money" && r.money_at_stake_minor === r.amount_minor) {
-        return pdfSafe(`${money(r.amount_minor, r.currency)} at stake`);
       }
       return pdfSafe(p.processCellCallback(q));
     },
@@ -539,6 +588,7 @@ const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppr
   suppressNoteActions: (p) => doorstepOwns(liveNotes.current, p.data?.order_id, p.column.getColId()) };
 const noteText = { addNote: "Add note", editNote: "Edit note", viewNote: "View note", deleteNote: "Delete note", notePlaceholder: "Note" };
 const rowStyle = { cursor: "pointer" };
+const cellSelection = { enableHeaderHighlight: true } as const;
 
 export type OrdersGridProps = {
   rows: OrderRow[];
@@ -646,7 +696,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: ProofCell,
     },
     {
-      colId: "money", headerName: "Value", width: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
+      colId: "money", headerName: "At stake", width: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
       filter: "agNumberColumnFilter",
       comparator: (_a, _b, x, y) =>
@@ -715,6 +765,14 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     if (isGuide(e.node)) return;
     if (e.node.group) { e.node.setExpanded(!e.node.expanded); return; }
     if ((e.event?.target as HTMLElement | null)?.closest("[data-own-click]")) return;
+    if (isSelecting(e.api, e.event as MouseEvent | null)) return;
+    if (e.data) onOpen(e.data);
+  }, [onOpen]);
+  // Keyboard: arrows move between cells (AG Grid); Enter on a row opens the order, or a lane.
+  const onCellKeyDown = useCallback((e: CellKeyDownEvent<OrderRow> | FullWidthCellKeyDownEvent<OrderRow>) => {
+    const k = e.event as KeyboardEvent | null | undefined;
+    if (k?.key !== "Enter" || isGuide(e.node) || (k.target as HTMLElement | null)?.closest("button, input")) return;
+    if (e.node.group) { e.node.setExpanded(!e.node.expanded); return; }
     if (e.data) onOpen(e.data);
   }, [onOpen]);
   const detailParams = useMemo(() => ({ onOpen }), [onOpen]);
@@ -740,6 +798,8 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
     statusPanels: [
       { statusPanel: SourcePanel, statusPanelParams: { text: source }, align: "left" },
+      // Drag across At-stake cells: AG Grid's live Sum, Count and Average of the selection.
+      { statusPanel: "agAggregationComponent", statusPanelParams: { aggFuncs: ["avg", "count", "sum"], valueFormatter: selectionFormatter }, align: "right" },
       { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" },
       { statusPanel: StakePanel, align: "right" },
     ],
@@ -757,7 +817,11 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         onGridReady={(e) => { api.current = e.api; onReady(e.api); }}
         rowClassRules={rowClassRules}
         onRowClicked={onRowClicked}
+        onCellKeyDown={onCellKeyDown}
         rowStyle={rowStyle}
+        // Cell selection: drag across cells for AG Grid's live sum; Ctrl/Cmd+C copies them.
+        cellSelection={cellSelection}
+        processCellForClipboard={clipboardValue}
         // Row grouping: lanes in a fixed order, open by default, drawn as one full-width row.
         groupDisplayType="groupRows"
         groupRowRenderer={LaneRow}
@@ -795,7 +859,6 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         noteTrigger="hover"
         localeText={noteText}
         noteShowDelay={300}
-        suppressCellFocus
         domLayout="autoHeight"
       />
     </div>
