@@ -13,11 +13,14 @@
  */
 import type {
   AgAiConversationItem, AgAiEvent, AgAiOutputItem, AgAiPromptStarter, AgAiTool, AgAnyAiAgentDefinition, AgConditionDefinition, AgLlmAdapter,
-  AgLlmRequest, AgLlmResponse, AgStudioApi,
+  AgLlmRequest, AgLlmResponse, AgPageState, AgReportState, AgStudioApi,
 } from "ag-studio";
 import { createAiHarness, directLlmRunner } from "ag-studio";
 import { answer, askDoorstep, type Asked } from "./ask";
 import type { Prepared } from "./data";
+import { explainWidget, widgetNames } from "./explain";
+import { W, kpi } from "./reports";
+import type { DoorstepRegistry } from "./widgets";
 
 // ---------------------------------------------------------------- the adapter
 
@@ -68,8 +71,21 @@ const OFFLINE = "I can't reach Doorstep just now. Your reports keep updating liv
 const LOCAL = "local-";
 const MONEY_ASK = /\b(refund|reimburse|compensat|pay (me|out|back)|send (me )?money|transfer|charge back|chargeback|ignore (the|all|your|previous) (rules|instructions))/i;
 const SCAN_ASK = /what changed|unusual|wrong|anything/i;
+/** S4: "Chase Evri", "build me a page to chase…": with no model, Doorstep's template builds it. */
+const CHASE_ASK = /\bchase\b|\bbuild\b.*\bpage\b/i;
+/** S6: the toolbar's "Explain this chart" sends `Explain “<name>”`. */
+const EXPLAIN_ASK = /^explain\b/i;
 
-export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnOut) => void): AgLlmAdapter {
+/** What the offline lead needs from the board to route a chase or an explain. */
+export type LocalRoutes = { chase: (words: string) => string | undefined; charts: () => string[] };
+
+/** The name inside the first pair of quotes, matched against the known names. */
+const quoted = (text: string, names: string[]) => {
+  const q = text.match(/[“"']([^”"']+)[”"']/)?.[1]?.trim().toLowerCase();
+  return names.find((n) => n.toLowerCase() === q) ?? names.find((n) => text.toLowerCase().includes(n.toLowerCase()));
+};
+
+export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnOut) => void, routes?: LocalRoutes): AgLlmAdapter {
   return {
     executeTurn(request, options) {
       const signal = options?.signal;
@@ -106,6 +122,14 @@ export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnO
           })
           .then((t): TurnOut => {
             if (!lead || t.mode !== "fallback" || t.calls.length || last?.kind !== "user") return t;
+            if (routes && EXPLAIN_ASK.test(last.text) && offers("explain_chart")) {
+              const name = quoted(last.text, routes.charts());
+              if (name) return { message: "", calls: [call("offline", "explain_chart", { name })], mode: "fallback" };
+            }
+            if (routes && CHASE_ASK.test(last.text) && offers("build_report_template")) {
+              const carrier = routes.chase(last.text);
+              if (carrier) return { message: "", calls: [call("offline", "build_report_template", { carrier })], mode: "fallback" };
+            }
             const name = SCAN_ASK.test(last.text) && offers("scan_for_anomalies") ? "scan_for_anomalies" : offers("answer_question") ? "answer_question" : null;
             if (!name) return t;
             return { message: "", calls: [call("offline", name, name === "answer_question" ? { question: last.text.slice(0, 300) } : {})], mode: "fallback" };
@@ -284,7 +308,65 @@ export type AgentActions = {
   addAnswer: (asked: Asked) => string;
   openReport: (id: "overview" | "carriers" | "cases") => void;
   openCarrier: (condition: AgConditionDefinition) => void;
+  /** S4: names a report an agent made, so the rail lists it ("by Doorstep"). */
+  nameReport: (pageId: string, name: string) => void;
 };
+
+// ---------------------------------------------------------------- S4: a page to chase a carrier
+
+/** The carriers the seller's orders went with, as the reports name them. */
+export const liveCarriers = (p: Prepared) =>
+  [...new Set(tableRows(p, "orders").map((r) => String(r.carrier)))].filter((k) => k && !/^Not /.test(k)).sort();
+
+/**
+ * Which carrier to chase: the one named in her words, else the one the scan flags, else the one
+ * with the most money in open claims.
+ */
+export function chaseCarrier(p: Prepared, words = ""): string | undefined {
+  const known = liveCarriers(p);
+  const said = ` ${words.toLowerCase().replace(/[^a-z0-9()]+/g, " ")} `;
+  const named = known.find((k) => said.includes(` ${k.toLowerCase().replace(/[^a-z0-9()]+/g, " ").trim()} `));
+  if (named) return named;
+  const flagged = scanAnomalies(p).findings.find((f) => f.facts?.kind === "rate" && f.facts.field === "carrier")?.carrier;
+  if (flagged && known.includes(flagged)) return flagged;
+  const open = new Map<string, number>();
+  for (const r of tableRows(p, "recoveries")) {
+    if (r.next_step !== "Done") open.set(String(r.carrier), (open.get(String(r.carrier)) ?? 0) + Number(r.claimed ?? 0));
+  }
+  return [...open.entries()].filter(([k]) => known.includes(k)).sort((x, y) => y[1] - x[1])[0]?.[0] ?? known[0];
+}
+
+type Page = AgPageState<DoorstepRegistry>;
+let pageSeq = 0;
+const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "report";
+const carrierFilter = (carrier: string | null | undefined): Page["filter"] =>
+  carrier ? { page: [{ field: { id: "orders.carrier" }, model: { operator: "equals", value: carrier } }] } : {};
+
+/** Doorstep's template for chasing one carrier: what was claimed and won, deadlines, causes, proof. */
+export function templatePage(id: string, carrier: string): Page {
+  return {
+    id,
+    widgets: {
+      k1: kpi("claimed", "Claims filed"), k2: kpi("recovered", "Paid back"),
+      clock: W.claimClock, fp: W.failurePoints, ev: W.evidenceByCarrier,
+    },
+    widgetLayout: {
+      k1: { xTrack: 0, yTrack: 0, xSpan: 12, ySpan: 11 }, k2: { xTrack: 12, yTrack: 0, xSpan: 12, ySpan: 11 },
+      clock: { xTrack: 0, yTrack: 11, xSpan: 24, ySpan: 15 },
+      fp: { xTrack: 0, yTrack: 26, xSpan: 13, ySpan: 20 }, ev: { xTrack: 13, yTrack: 26, xSpan: 11, ySpan: 20 },
+    },
+    filter: carrierFilter(carrier),
+  };
+}
+
+/** The console's plan for a build: each line ticks when its tool call completes. */
+export const BUILD_PLAN = [
+  { key: "report", label: "New report" },
+  { key: "doorstep-claim-clock", label: "Claim deadlines" },
+  { key: "doorstep-failure-points", label: "What goes wrong" },
+  { key: "doorstep-evidence-meter", label: "Proof on file" },
+  { key: "check", label: "Check the page" },
+] as const;
 
 const LEAD = `You are Doorstep's analyst, working inside a small online seller's Insights reports.
 The reports: Overview (orders, case rate, money), Carriers (claims, recovery, deadlines), Cases.
@@ -296,6 +378,11 @@ The reports: Overview (orders, case rate, money), Carriers (claims, recovery, de
 - To change how an existing chart looks (chart type, sorting, labels, title), delegate to the
   widget agent. To add, move or remove widgets or filters on a page, delegate to the page agent.
   Doorstep's own widgets are in its catalogue; ask it to prefer them for claims, causes and proof.
+- To build a page for a carrier ("chase Evri"): create_report, delegate to the page agent with its
+  pageId to add doorstep-claim-clock, doorstep-failure-points and doorstep-evidence-meter,
+  check_page, then one sentence. If no carrier is named, use the one scan_for_anomalies flags.
+- "Explain “…”": call explain_chart with that name, then say in two sentences what it shows and
+  how to read it.
 - Anything about refunds, payments or contacting someone: call answer_question with the seller's
   words. It says what Doorstep can and can't do. Never promise an action.
 Never compute or guess a number yourself. Two or three short sentences per reply.`;
@@ -311,7 +398,10 @@ export const STARTERS: AgAiPromptStarter[] = [
   { label: "What changed in the last four weeks?", prompt: "What changed in the last four weeks? Anything I should act on?" },
   { label: "Which carrier cost me most this month?", prompt: "Which carrier cost me most this month?" },
   { label: "Make the case rate chart a bar chart", prompt: "On the Overview, make 'Case rate by delivery method' a horizontal bar chart." },
+  { label: "Build a page to chase a carrier", prompt: "Build me a page to chase a carrier" },
 ];
+/** What the brief's "Chase <carrier>" button and the console's chase starter send. */
+export const chaseQuestion = (carrier: string) => `Build me a page to chase ${carrier}'s claims`;
 
 export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActions }, onTurn?: (agent: string, t: TurnOut) => void) {
   const a = () => actions.current;
@@ -366,7 +456,77 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
     },
   });
 
-  const adapterFor = (agent: string) => doorstepAdapter(a().token, agent, (t) => onTurn?.(agent, t));
+  const carriers = () => liveCarriers(a().prepared());
+  type Ctx = { run: { agentId?: string } };
+  const by = (ctx: Ctx) => ({ type: "ai" as const, agent: ctx.run.agentId ?? "doorstep" });
+  /** Adds a page, opens it, and records it in Studio's history as Doorstep's change. */
+  const addPage = (page: Page, name: string, label: string, ctx: Ctx) => {
+    a().nameReport(page.id, name);
+    const s = api.getState() as AgReportState<DoorstepRegistry>;
+    api.setState({ ...s, pages: [...s.pages, page], selectedPageId: page.id } as AgReportState,
+      { historyLabel: label, historyLabelVariableValues: { name }, source: by(ctx) });
+  };
+  const reportName = (name: unknown, carrier: string | null | undefined) =>
+    String(name ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || (carrier ? `${carrier} recovery` : "New report");
+
+  const createReport: AgAiTool = api.defineAiTool({
+    name: "create_report",
+    description: "Create a new, empty report page, optionally filtered to one carrier, and open it. Returns its pageId: then delegate to the page agent with that pageId to add widgets.",
+    params: (s) => s.object({
+      name: s.string({ description: "A short name, e.g. 'Evri recovery'" }),
+      carrier: s.enum(() => carriers()).nullable(),
+    }),
+    execute: (args: { name: string; carrier: string | null }, ctx) => {
+      const name = reportName(args.name, args.carrier);
+      const id = `ai-${slug(name)}-${++pageSeq}`;
+      addPage({ id, widgets: {}, widgetLayout: {}, filter: carrierFilter(args.carrier) }, name, "dsHistoryNewReport", ctx);
+      return ctx.success(
+        `Created report '${name}'${args.carrier ? `, filtered to ${args.carrier},` : ""} and opened it. It is empty: delegate to the page agent with pageId '${id}' to add widgets.`,
+        { pageId: id, name, carrier: args.carrier },
+      );
+    },
+  });
+  const checkPage: AgAiTool = api.defineAiTool({
+    name: "check_page",
+    description: "Check the open page for widgets that are incomplete or badly placed. Returns the issues, if any.",
+    params: (s) => s.object({}),
+    execute: async (_args, ctx) => {
+      // Studio scores each check from 0 to 1; a style nudge (alignment 0.75) is not a broken widget.
+      const report = await api.getAiContext().health.page();
+      const issues = report.issues.filter((i) => i.score < 0.6);
+      const minor = report.issues.filter((i) => i.score >= 0.6 && i.score < 1);
+      const list = (xs: typeof issues) => xs.slice(0, 5).map((i) => i.description).join("; ");
+      const text = [
+        issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"}: ${list(issues)}` : "No issues.",
+        minor.length ? `Minor, no action needed: ${list(minor)}` : "",
+      ].filter(Boolean).join("\n");
+      return ctx.success(text, { issues: issues.length });
+    },
+  });
+  const template: AgAiTool = api.defineAiTool({
+    name: "build_report_template",
+    description: "Build Doorstep's ready-made page for chasing one carrier (claims, deadlines, causes, proof) in one step, filtered to that carrier, and open it.",
+    params: (s) => s.object({ carrier: s.enum(() => carriers()) }),
+    execute: (args: { carrier: string }, ctx) => {
+      const name = reportName(undefined, args.carrier);
+      const id = `ai-${slug(name)}-${++pageSeq}`;
+      addPage(templatePage(id, args.carrier), name, "dsHistoryTemplate", ctx);
+      return ctx.success(`Built '${name}' from Doorstep's template and opened it.`, { pageId: id, name, carrier: args.carrier });
+    },
+  });
+  const explain: AgAiTool = api.defineAiTool({
+    name: "explain_chart",
+    description: "Describe one widget on the open page: what it measures, how it is grouped and sorted, and its filters. Reads settings only, never data rows.",
+    params: (s) => s.object({ name: s.enum(() => widgetNames(api)) }),
+    execute: (args: { name: string }, ctx) => {
+      const out = explainWidget(api, String(args.name ?? ""));
+      return out ? ctx.success(out.text, out) : ctx.error(`No widget called ${String(args.name)} on this page.`);
+    },
+  });
+
+  const routes: LocalRoutes = { chase: (words) => chaseCarrier(a().prepared(), words), charts: () => widgetNames(api) };
+  const adapterFor = (agent: string) =>
+    doorstepAdapter(a().token, agent, (t) => onTurn?.(agent, t), agent === "doorstep" ? routes : undefined);
   return createAiHarness(api, ({ tools, builtIn }) => ({
     agents: [
       directLlmRunner({
@@ -374,7 +534,8 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
         name: "Doorstep",
         description: "Doorstep's analyst: finds what changed, answers questions with charts, and hands chart edits to Studio's agents.",
         instructions: () => LEAD,
-        tools: () => [scan, ask, report, carrier, tools.studio.viewReport(), tools.studio.viewPage(), tools.delegateTo(["widget", "page"])],
+        tools: () => [scan, ask, report, carrier, createReport, checkPage, template, explain,
+          tools.studio.viewReport(), tools.studio.viewPage(), tools.delegateTo(["widget", "page"])],
         maxTurns: 8,
         adapter: adapterFor("doorstep"),
       }),

@@ -61,7 +61,7 @@ export type BriefDef = {
 
 /** What the brief needs from the board (Studio's `context`): the newest rows, and two ways out. */
 export type BriefContext = {
-  brief?: { latest: () => Prepared; open: (orderId: string) => void; drill: (carrier: string) => void };
+  brief?: { latest: () => Prepared; open: (orderId: string) => void; drill: (carrier: string) => void; chase?: (carrier: string) => void };
 };
 
 export interface DoorstepRegistry extends AgBaseRegistry {
@@ -724,6 +724,7 @@ export function Brief(params: AgWidgetParams<BriefDef, unknown, BriefContext>) {
   const run = (n: DoNext) => {
     if (n.action.kind === "case") ctx?.open(n.action.orderId);
     else if (n.action.kind === "carrier") ctx?.drill(n.action.carrier);
+    else if (n.action.kind === "chase") ctx?.chase?.(n.action.carrier);
     else toggle(n.action.method);
   };
   return (

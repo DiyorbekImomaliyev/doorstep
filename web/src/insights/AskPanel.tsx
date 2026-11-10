@@ -12,14 +12,97 @@ import type {
   AgAiChatMessage, AgAiChatMessagePart, AgAiChatSession, AgAiHarness, AgAiRunStatus, AgAiToolCallView, AgAiToolDetailParams,
   AgAiToolDisplayStatus, AgAiToolResult,
 } from "ag-studio";
-import { ArrowUp, ChevronDown, Square, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Redo2, Square, Undo2, X } from "lucide-react";
 import { ReadBy } from "../components/ai";
-import { STARTERS } from "./agent";
+import { BUILD_PLAN, STARTERS, chaseQuestion } from "./agent";
 import { AnswerActionsContext, doorstepToolDisplay, type AnswerActions } from "./agentDisplay";
 
 const NO_MESSAGES: ReadonlyArray<AgAiChatMessage> = [];
-/** Steps whose detail opens by itself: the findings and the answer are the point of the turn. */
-const OPEN = new Set(["scan_for_anomalies", "answer_question"]);
+/** Steps whose detail opens by itself: the findings, the answer and the explanation are the point. */
+const OPEN = new Set(["scan_for_anomalies", "answer_question", "explain_chart"]);
+const BUILDS = new Set(["create_report", "build_report_template"]);
+
+/** S4/S5: what the console can do with a build it made (the board's ledger). */
+export type BuildActions = { has: (pageId: string) => boolean; undo: (pageId: string) => void; redo: () => void; canRedo: boolean };
+
+/**
+ * Every tool call in a turn, the delegated runs' included (Studio's page agent adds the widgets),
+ * re-read as any of those sessions changes.
+ */
+function useTurnCalls(harness: AgAiHarness, parts: ReadonlyArray<AgAiChatMessagePart>): AgAiToolCallView[] {
+  const [, bump] = useState(0);
+  const calls: AgAiToolCallView[] = [];
+  const subs: AgAiChatSession[] = [];
+  const walk = (ps: ReadonlyArray<AgAiChatMessagePart>) => {
+    for (const p of ps) {
+      if (p.type !== "tool_call") continue;
+      calls.push(p.toolCall);
+      const s = p.toolCall.childThreadId ? harness.getSession?.(p.toolCall.childThreadId) : undefined;
+      if (s && !subs.includes(s)) { subs.push(s); walk(s.messages.filter((m) => m.role === "assistant").flatMap((m) => m.parts)); }
+    }
+  };
+  walk(parts);
+  const key = subs.map((s) => s.threadId).join("|");
+  useEffect(() => {
+    const on = () => bump((n) => n + 1);
+    harness.addEventListener("changed", on);
+    subs.forEach((s) => s.addEventListener("changed", on));
+    return () => { harness.removeEventListener("changed", on); subs.forEach((s) => s.removeEventListener("changed", on)); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [harness, key]);
+  return calls;
+}
+
+const complete = (c: AgAiToolCallView) => c.status === "complete" && (c.result as AgAiToolResult | undefined)?.success !== false;
+
+/** The build's plan, ticking as Doorstep and Studio's page agent finish each step. */
+function PlanCard({ calls, running }: { calls: AgAiToolCallView[]; running: boolean }) {
+  const template = calls.some((c) => c.name === "build_report_template" && complete(c));
+  const done = (key: string) => template || calls.some((c) => complete(c) && (
+    key === "report" ? c.name === "create_report" : key === "check" ? c.name === "check_page" : c.name === "add_widget" && c.args.type === key));
+  const states = BUILD_PLAN.map((s) => done(s.key));
+  const next = running ? states.indexOf(false) : -1;
+  const n = states.filter(Boolean).length;
+  return (
+    <div className="ask-plan" role="group" aria-label="Plan">
+      <div className="ask-plan-head"><span>Plan</span><span className="num">{n}/{BUILD_PLAN.length}</span></div>
+      <ol>
+        {BUILD_PLAN.map((s, i) => {
+          const state = states[i] ? "done" : i === next ? "now" : running ? "todo" : "skipped";
+          return (
+            <li key={s.key} data-state={state}>
+              <span className="ask-plan-mark" aria-hidden>{states[i] && <Check size={11} strokeWidth={3} />}</span>
+              {s.label}
+              {state === "done" && <span className="sr-only"> (done)</span>}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** A turn: the question, the plan card if it builds a page, each step, and Undo this build. */
+function Turn({ question, parts, harness, names, busy, build }: {
+  question: string; parts: ReadonlyArray<AgAiChatMessagePart>; harness: AgAiHarness; names: Names; busy: boolean; build?: BuildActions;
+}) {
+  const calls = useTurnCalls(harness, parts);
+  const made = calls.find((c) => BUILDS.has(c.name));
+  const pageId = made && complete(made) ? (made.result as { data?: { pageId?: string } }).data?.pageId : undefined;
+  return (
+    <div className="ask-turn">
+      <p className="ask-q">{question}</p>
+      {made && <PlanCard calls={calls} running={busy} />}
+      <Parts parts={parts} harness={harness} names={names} />
+      {busy && !parts.length && <p className="ask-thinking"><span className="ins-spinner" aria-hidden />Reading your question…</p>}
+      {pageId && build && !busy && (
+        build.has(pageId)
+          ? <div className="ask-actions"><button type="button" className="btn ghost" onClick={() => build.undo(pageId)}><Undo2 size={14} aria-hidden />Undo this build</button></div>
+          : build.canRedo && <div className="ask-actions"><button type="button" className="btn ghost" onClick={build.redo}><Redo2 size={14} aria-hidden />Redo this build</button></div>
+      )}
+    </div>
+  );
+}
 
 /** A session's messages and status, re-read whenever it changes. */
 function useSession(s: AgAiChatSession | null | undefined): { messages: ReadonlyArray<AgAiChatMessage>; status: AgAiRunStatus } {
@@ -114,7 +197,7 @@ function turnsOf(messages: ReadonlyArray<AgAiChatMessage>) {
   return turns;
 }
 
-export function AskPanel({ harness, session, onSession, pending, onPendingSent, actions, names, mode, onClose }: {
+export function AskPanel({ harness, session, onSession, pending, onPendingSent, actions, names, mode, onClose, build, chase }: {
   harness: AgAiHarness | null;
   /** The live conversation, kept by the board so closing the panel keeps it. */
   session: AgAiChatSession | null;
@@ -127,6 +210,10 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
   /** How the lead agent's last turn was read: by the model, or by keywords. */
   mode: "model" | "fallback" | null;
   onClose: () => void;
+  /** Undo or redo a page the console built (S4, S5). */
+  build?: BuildActions;
+  /** The carrier the chase starter names (the one the scan flags). */
+  chase?: () => string | undefined;
 }) {
   const { messages, status } = useSession(session);
   const running = status === "running";
@@ -137,7 +224,8 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
   const turns = turnsOf(messages);
 
   useEffect(() => { input.current?.focus(); }, []);
-  useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" }); }, [messages]);
+  // Also when the run ends: the final card's Undo this build appears then.
+  useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" }); }, [messages, status]);
 
   const send = useCallback(async (text: string) => {
     const q = text.trim().replace(/\s+/g, " ");
@@ -172,9 +260,9 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
           {turns.length > 0 && <button type="button" className="btn ghost ask-new" onClick={newChat} disabled={busy}>New chat</button>}
           <button className="btn icon-btn" aria-label="Close Ask Doorstep" onClick={onClose}><X size={16} aria-hidden /></button>
         </div>
-        <p>
-          Figures become charts on <strong>Answers</strong>. Chart and page changes go to AG Studio's agents.
-          {mode && <> <ReadBy mode={mode === "model" ? "model" : "keywords"} />.</>}
+        <p title="Figures become charts on the Answers report. Chart and page changes go to AG Studio's own agents.">
+          Figures, charts and page edits.
+          {mode && <> <ReadBy mode={mode === "model" ? "model" : "keywords"} /></>}
         </p>
       </div>
       {busy && <div className="ds-sweep ask-sweep" aria-hidden />}
@@ -184,18 +272,17 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
           {turns.length === 0 && (
             <div className="ask-start">
               <p className="ask-start-title">Try one of these</p>
-              {STARTERS.map((s) => (
-                <button key={s.label} className="ask-starter" onClick={() => send(s.prompt)} disabled={busy || !harness}>{s.label}</button>
-              ))}
+              {STARTERS.map((s) => {
+                // The chase starter names the carrier the scan flags, so one click builds its page.
+                const carrier = s.prompt.includes("chase") ? chase?.() : undefined;
+                const label = carrier ? `Build a page to chase ${carrier}` : s.label;
+                return <button key={s.label} className="ask-starter" onClick={() => send(carrier ? chaseQuestion(carrier) : s.prompt)} disabled={busy || !harness}>{label}</button>;
+              })}
               <p className="ask-start-more">Or ask for a figure, a breakdown, or a change to any chart on the page.</p>
             </div>
           )}
-          {turns.map((t) => (
-            <div key={t.id} className="ask-turn">
-              <p className="ask-q">{t.question}</p>
-              {harness && <Parts parts={t.parts} harness={harness} names={names} />}
-              {busy && t === last && !t.parts.length && <p className="ask-thinking"><span className="ins-spinner" aria-hidden />Reading your question…</p>}
-            </div>
+          {harness && turns.map((t) => (
+            <Turn key={t.id} question={t.question} parts={t.parts} harness={harness} names={names} busy={busy && t === last} build={build} />
           ))}
         </div>
       </AnswerActionsContext.Provider>

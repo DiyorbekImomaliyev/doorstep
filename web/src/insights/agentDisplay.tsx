@@ -11,6 +11,7 @@ import { Chips, ReadBy } from "../components/ai";
 import type { Answered, Finding } from "./agent";
 import { answer } from "./ask";
 import type { Prepared } from "./data";
+import type { Explained } from "./explain";
 
 /** Raised by a card's button; the Insights board opens the report. */
 export const OPEN_EVENT = "doorstep:open-report";
@@ -91,6 +92,20 @@ function AnswerDetail(p: AgAiToolDetailParams) {
   );
 }
 
+/** S6: a widget's settings as short labelled lines (what it shows, by what, in which order). */
+function ExplainDetail(p: AgAiToolDetailParams) {
+  const e = dataOf<Explained>(p);
+  if (!e) return null;
+  return (
+    <div className="ask-a ask-explain" data-testid="ask-explain">
+      <p className="ask-explain-kind">{e.kind}</p>
+      <dl>
+        {e.lines.map((l) => <div key={l.label}><dt>{l.label}</dt><dd>{l.value}</dd></div>)}
+      </dl>
+    </div>
+  );
+}
+
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const REPORT = { overview: "Overview", carriers: "Carriers", cases: "Cases" } as const;
 
@@ -121,6 +136,27 @@ export const doorstepToolDisplay: Record<string, AgAiToolDisplay> = {
   },
   open_carrier_report: {
     label: ({ args, status }) => ({ text: `${status === "done" ? "Opened" : "Opening"} the ${String(args.carrier ?? "carrier")} report` }),
+  },
+  // S4: the build. The pill names the carrier the page is filtered to.
+  create_report: {
+    label: ({ args, result }) => {
+      const d = result?.success ? (result as { data?: { name?: string } }).data : undefined;
+      return { text: `New report ‘${String(d?.name ?? args.name ?? "")}’`, pill: args.carrier ? String(args.carrier) : undefined };
+    },
+  },
+  check_page: {
+    label: ({ status, result }) => {
+      const n = result?.success ? (result as { data?: { issues?: number } }).data?.issues : undefined;
+      return { text: status === "done" ? "Checked the page" : "Checking the page", pill: n == null ? undefined : n ? count(n, "issue") : "no issues" };
+    },
+  },
+  build_report_template: {
+    label: ({ args, status }) => ({ text: status === "done" ? "Built from template" : "Building from template", pill: args.carrier ? String(args.carrier) : undefined }),
+  },
+  // S6: Explain this chart.
+  explain_chart: {
+    label: ({ args, status }) => ({ text: `${status === "done" ? "Read" : "Reading"} “${String(args.name ?? "").slice(0, 48)}”` }),
+    detail: ExplainDetail,
   },
   // Studio's own agents, in plain words. Reading steps are not shown: they change nothing.
   add_widget: { label: ({ args, status }) => ({ text: `${status === "done" ? "Added" : "Adding"} ${widgetLabel(args.type)}` }) },

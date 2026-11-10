@@ -53,6 +53,7 @@ export type DoNext = {
   action:
     | { kind: "case"; label: "Open case"; orderId: string }
     | { kind: "carrier"; label: string; carrier: string }
+    | { kind: "chase"; label: string; carrier: string }
     | { kind: "method"; label: "Show these orders"; method: string };
 };
 
@@ -91,7 +92,7 @@ export function brief(p: Prepared, now = new Date()): Brief {
     const f = carrier.facts;
     next.push({
       key: `carrier-${f.key}`, what: `${f.key} · ${count(f.cases)} of ${count(f.orders)} orders had a problem`,
-      action: { kind: "carrier", label: `Open ${f.key} report`, carrier: f.key },
+      action: { kind: "chase", label: `Chase ${f.key}`, carrier: f.key },
     });
   }
   if (method) {

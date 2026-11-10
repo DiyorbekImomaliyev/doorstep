@@ -313,3 +313,52 @@ button.ds-meter-row:hover, .ds-fp li > button:hover { background: color-mix(in s
 /* a run handed to one of Studio's agents */
 .ask-sub { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 2px 2px; padding: 8px 10px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--line); }
 .ask-sub-head { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+
+/* ---------- S4 · the build's plan card, ticking as each step lands ---------- */
+.ask-plan { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.ask-plan-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.ask-plan-head .num { letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.ask-plan ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.ask-plan li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-3); transition: color var(--dur) var(--ease); }
+.ask-plan-mark { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line-2); background: var(--surface); color: #fff; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.ask-plan li[data-state="done"] { color: var(--text); }
+.ask-plan li[data-state="done"] .ask-plan-mark { background: var(--good); border-color: var(--good); }
+.ask-plan li[data-state="now"] { color: var(--text); font-weight: 550; }
+.ask-plan li[data-state="now"] .ask-plan-mark { border-color: var(--accent); animation: ask-plan-pulse 1.4s infinite; }
+@keyframes ask-plan-pulse { 70% { box-shadow: 0 0 0 5px rgba(123, 45, 61, 0); } 0% { box-shadow: 0 0 0 0 rgba(123, 45, 61, .35); } }
+.ask-plan li[data-state="skipped"] { text-decoration: line-through; text-decoration-color: var(--line-2); }
+@media (prefers-reduced-motion: reduce) { .ask-plan li[data-state="now"] .ask-plan-mark { animation: none; } }
+.rb-by { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-2); }
+.rb-tips li { display: flex; align-items: center; gap: 7px; }
+.rb-tips li svg { flex: none; color: var(--text-3); }
+
+/* ---------- S5 · the change ledger ---------- */
+.ledger { position: relative; display: flex; align-items: center; gap: 4px; }
+.ledger .icon-btn { width: 32px; height: 32px; }
+.ledger-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-left: 2px; padding: 0 10px; border: 1px solid var(--accent-line); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background var(--dur-fast), border-color var(--dur-fast); }
+.ledger-pill:hover, .ledger-pill[aria-expanded="true"] { border-color: var(--accent-3); background: #f3e3e7; }
+.ledger-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: 320px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-lg); animation: ledger-in var(--dur-fast) var(--ease); }
+@keyframes ledger-in { from { opacity: 0; transform: translateY(-4px); } }
+.ledger-head { padding: 10px 14px 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--line); }
+.ledger-rows { list-style: none; margin: 0; padding: 4px; max-height: 320px; overflow: auto; }
+.ledger-row { width: 100%; display: flex; flex-direction: column; gap: 1px; padding: 7px 10px 7px 22px; border: 0; border-radius: 8px; background: transparent; font: inherit; text-align: left; cursor: pointer; position: relative; }
+.ledger-row::before { content: ""; position: absolute; left: 9px; top: 13px; width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
+.ledger-row[data-who="ai"]::before { background: var(--accent); }
+.ledger-row:hover, .ledger-row:focus-visible { background: var(--surface-2); outline: none; }
+.ledger-what { font-size: 13px; color: var(--text); line-height: 1.35; }
+.ledger-meta { font-size: 11.5px; color: var(--text-3); }
+.ledger-foot { padding: 8px; border-top: 1px solid var(--line); }
+.ledger-all { width: 100%; height: 32px; font-size: 12.5px; color: var(--accent); border-color: var(--accent-line); }
+@media (max-width: 640px) {
+  .ledger-pill { font-size: 0; gap: 0; width: 28px; padding: 0; justify-content: center; } /* the icon alone; the name stays for screen readers */
+  .ledger-pill svg { width: 14px; height: 14px; }
+  .ledger-pop { position: fixed; top: auto; left: 16px; right: 16px; width: auto; max-width: none; margin-top: 8px; }
+}
+
+/* ---------- S6 · Explain this chart ---------- */
+.ask-explain { gap: 8px; }
+.ask-explain-kind { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.ask-explain dl { margin: 0; display: grid; gap: 4px; }
+.ask-explain dl div { display: grid; grid-template-columns: 64px 1fr; gap: 8px; font-size: 12.5px; }
+.ask-explain dt { color: var(--text-3); }
+.ask-explain dd { margin: 0; color: var(--text); }

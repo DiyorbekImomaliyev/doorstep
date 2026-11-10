@@ -16,17 +16,19 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  AgConditionDefinition, AgContextMenuItem, AgFilterDefinition, AgGetContextMenuParams, AgResponsiveLayoutBreakpoint,
-  AgAiChatSession, AgAiHarness, AgStudioApi, AgStudioProperties, AgWidgetLayoutState,
+  AgConditionDefinition, AgContextMenuItem, AgDefaultWidgetAction, AgFilterDefinition, AgGetContextMenuParams, AgResponsiveLayoutBreakpoint,
+  AgAiChatSession, AgAiHarness, AgReportState, AgStudioApi, AgStudioProperties, AgWidgetLayoutState, AgWidgetToolbarButton,
 } from "ag-studio";
 import { AgStudioAiModule, AgStudioLicenseManager, enableStudioDevValidations } from "ag-studio";
 import { AgStudio, createWidgets } from "ag-studio-react";
-import { BarChart3, Eye, FilePlus2, Pause, Pencil, Play, Sparkles, X } from "lucide-react";
-import { doorstepHarness, type AgentActions } from "./agent";
+import { BarChart3, Eye, FilePlus2, MousePointer2, MousePointerClick, Pause, Pencil, Play, Sparkles, X } from "lucide-react";
+import { chaseCarrier, chaseQuestion, doorstepHarness, type AgentActions } from "./agent";
 import { OPEN_EVENT, doorstepToolDisplay, type AnswerActions, type OpenDetail } from "./agentDisplay";
 import { ANSWERS_PAGE, withAnswer, withoutAnswer, type Asked } from "./ask";
-import { AskPanel } from "./AskPanel";
+import { AskPanel, type BuildActions } from "./AskPanel";
 import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
+import { widgetNameById } from "./explain";
+import { LedgerBar, useLedger } from "./Ledger";
 import { REPORTS, carrierDrillPage, reportState } from "./reports";
 import { paperTheme } from "./theme";
 import { doorstepWidgetTypes, withDoorstepDefaults, type BriefContext, type DoorstepRegistry } from "./widgets";
@@ -37,20 +39,42 @@ if (__AG_STUDIO_LICENSE_KEY__) AgStudioLicenseManager.setLicenseKey(__AG_STUDIO_
 if (import.meta.env.DEV) enableStudioDevValidations();
 
 type Props = AgStudioProperties<DoorstepRegistry>;
+/** Anything on the page can open the console with a question: `{ question }`. */
+export const ASK_EVENT = "doorstep:ask";
+const askEvent = (question: string) => window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: { question } }));
+
+/**
+ * S6: "Explain this chart" on each chart's own toolbar (view and edit). It opens Ask Doorstep with a
+ * question naming the widget; Doorstep reads the widget's settings, never its rows.
+ */
+const EXPLAIN: AgWidgetToolbarButton = {
+  id: "explain", type: "button", label: "Explain this chart", icon: "ai-agent", mode: ["view", "edit"],
+  action: ({ api, widgetId }) => {
+    const name = widgetNameById(api as unknown as AgStudioApi, widgetId);
+    if (name) askEvent(`Explain “${name}”`);
+  },
+};
+const TOOLBAR: (AgWidgetToolbarButton | AgDefaultWidgetAction)[] = [EXPLAIN, "duplicate", "delete"];
+const CHARTS = ["column-chart-grouped", "column-chart-stacked", "bar-chart-grouped", "bar-chart-stacked", "combo-chart-grouped-column-line", "line-chart", "donut-chart"] as const;
 
 /**
  * S3: Studio's widgets and Doorstep's own, with Doorstep's group first in the widget menu. The menu
  * is also what Studio's agents can place, so every Doorstep widget is listed; types left out land in
  * a collapsed "More widgets" section, still available.
  */
+const MENU = [
+  { label: "Doorstep", widgetIds: doorstepWidgetTypes.map((w) => w.id) },
+  { label: "Charts", widgetIds: [...CHARTS] },
+  { label: "Tables and numbers", widgetIds: ["value", "pivot-grid", "grid"] },
+] satisfies Parameters<typeof createWidgets<DoorstepRegistry>>[0]["menu"];
 const widgets = createWidgets<DoorstepRegistry>({
-  additionalTypes: doorstepWidgetTypes,
-  menu: [
-    { label: "Doorstep", widgetIds: doorstepWidgetTypes.map((w) => w.id) },
-    { label: "Charts", widgetIds: ["column-chart-grouped", "column-chart-stacked", "bar-chart-grouped", "bar-chart-stacked", "combo-chart-grouped-column-line", "line-chart", "donut-chart"] },
-    { label: "Tables and numbers", widgetIds: ["value", "pivot-grid", "grid"] },
-  ],
+  // The brief is Doorstep's own words, not a chart to explain; tables keep Studio's Export.
+  additionalTypes: doorstepWidgetTypes.map((w) => (w.id === "doorstep-brief" ? w : { ...w, toolbar: TOOLBAR })),
+  overrides: (["value", ...CHARTS] as const).map((id) => ({ id, toolbar: TOOLBAR })),
+  menu: MENU,
 });
+/** The carrier pop-up has no agent, so its widgets keep Studio's own toolbar. */
+const drillWidgets = createWidgets<DoorstepRegistry>({ additionalTypes: doorstepWidgetTypes, menu: MENU });
 /** What Studio's page agent reads about placing a widget: AG's sentence, plus where Doorstep's fit. */
 const AI_TEXT = {
   "tools.add_widget.description":
@@ -61,13 +85,21 @@ const LOCALE = {
   widgetPanelWidgetCategoryUncategorized: "More widgets",
   panelTitleAi: "Doorstep agent",
   aiMessageInputPlaceholder: "Ask what changed, ask for a figure, or ask to change a chart…",
+  // S5: how Doorstep's own writes read in the history (Studio's `${name}` interpolation).
+  dsHistoryNewReport: "New report ‘${name}’",
+  dsHistoryTemplate: "Built ‘${name}’ from template",
+  dsHistoryAnswer: "Answer chart",
+  dsHistoryRemoveAnswer: "Removed an answer",
+  dsHistoryMapped: "Set up ‘${name}’",
 };
 /** AS-07: Studio's Agent Framework, on the main board only (the carrier pop-up has no agent). */
 const AI_MODULES = [AgStudioAiModule];
 type Mode = "view" | "edit";
-/** Anything on the page can open the console with a question: `{ question }`. */
-export const ASK_EVENT = "doorstep:ask";
 const LIVE_MS = 10_000;
+/** What the rail shows for a page; agent-made reports say so. */
+type RailName = { name: string; hint?: string; by?: boolean };
+const BY_DOORSTEP = { type: "ai", agent: "doorstep" } as const;
+const BY_SELLER = { type: "ui" } as const;
 
 // On a phone-width canvas every widget takes the full width, one under another in reading order
 // (top to bottom, then left to right), keeping its authored height: a KPI card stays short, a
@@ -129,7 +161,10 @@ function carrierCondition(filter: AgFilterDefinition | undefined): AgConditionDe
 
 function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const [api, setApi] = useState<AgStudioApi<DoorstepRegistry>>();
-  const [reports, setReports] = useState(REPORTS);
+  // S4: the rail is Studio's pages, named here, so an agent's report (and its undo) shows at once.
+  const names = useRef(new Map<string, RailName>(REPORTS.map((r) => [r.id, { name: r.name, hint: r.hint }])));
+  const [pageIds, setPageIds] = useState<string[]>(() => REPORTS.map((r) => r.id));
+  const [stamp, setStamp] = useState(0);
   const [selected, setSelected] = useState(REPORTS[0].id);
   const [mode, setMode] = useState<Mode>("view");
   const editing = mode === "edit";
@@ -150,6 +185,17 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const built = useRef<AgAiHarness | null>(null);
   const harnessFor = (a: AgStudioApi) =>
     (built.current ??= doorstepHarness(a, actions, (agent, t) => { if (agent === "doorstep") setLeadMode(t.mode); }));
+
+  // Every state update (a change, an undo, a redo, a page switch): re-read the pages for the rail,
+  // follow the page Studio shows (an agent opens the report it made), and move the ledger.
+  const stateSeen = useRef((_state: AgReportState) => {});
+  stateSeen.current = (state) => {
+    setStamp((n) => n + 1);
+    const ids = state.pages.map((p) => p.id);
+    setPageIds((prev) => (prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids));
+    const shown = state.selectedPageId && ids.includes(state.selectedPageId) ? state.selectedPageId : ids[0];
+    if (shown) setSelected(shown);
+  };
 
   const menu = useCallback(({ filter }: AgGetContextMenuParams): AgContextMenuItem[] => {
     const c = carrierCondition(filter);
@@ -179,8 +225,12 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
         latest: () => current.current,
         open: (orderId) => window.dispatchEvent(new CustomEvent<OpenOrderDetail>(OPEN_ORDER_EVENT, { detail: { orderId } })),
         drill: (carrier) => setDrill({ field: { id: "orders.carrier" }, operator: "equals", value: carrier } as AgConditionDefinition),
+        // S4: "Chase <carrier>" asks Doorstep to build that carrier's page.
+        chase: (carrier) => askEvent(chaseQuestion(carrier)),
       },
     } satisfies BriefContext,
+    // S5: the ledger reads Studio's history; it survives switching between view and edit.
+    history: { maxEntries: 50 },
     // AS-07: Doorstep's lead agent and Studio's widget and page agents, every turn through the backend.
     // Studio builds its harness only when its own AI panel first opens; the console is our own UI
     // on it, so the board builds it as the API arrives and hands Studio the same one.
@@ -190,10 +240,17 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     onApiReady: ({ api: a }) => { setApi(a as AgStudioApi<DoorstepRegistry>); setHarness(harnessFor(a as unknown as AgStudioApi)); },
     onStudioPreDestroyed: () => setApi(undefined),
     // S3: a Doorstep widget placed by type alone (Studio's page agent) gets its one right mapping.
-    onStateUpdated: ({ api: a, state, durable }) => {
-      if (!durable) return;
+    // Only on a fresh change: an undo that takes a mapping away must stay undone.
+    onStateUpdated: ({ api: a, state, durable, change }) => {
+      stateSeen.current(state);
+      if (!durable || !change) return;
       const pages = withDoorstepDefaults(state.pages);
-      if (pages) a.setState({ ...state, pages } as typeof state, { source: { type: "ai", agent: "doorstep" } });
+      if (!pages) return;
+      const filled = pages.flatMap((p, i) => Object.entries(p.widgets ?? {})
+        .filter(([id, w]) => w !== state.pages[i]?.widgets?.[id])
+        .map(([, w]) => (w as { format?: { title?: { text?: string } } }).format?.title?.text ?? ""));
+      a.setState({ ...state, pages } as typeof state,
+        { historyLabel: "dsHistoryMapped", historyLabelVariableValues: { name: filled.filter(Boolean).join(", ") || "widget" }, source: BY_DOORSTEP });
     },
   }), [prepared, menu]);
 
@@ -225,12 +282,17 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     return () => window.clearInterval(t);
   }, [live, api, token]);
 
+  /** After our own writes: the rail and the ledger at once, without waiting for Studio's event. */
+  const refresh = useCallback(() => { if (api) stateSeen.current(api.getState()); }, [api]);
   const addReport = () => {
     if (!api) return;
     const id = `mine-${++seq.current}`;
+    const name = `My report ${seq.current}`;
+    names.current.set(id, { name, hint: "Your own report: add widgets from the panel" });
     const s = api.getState();
-    api.setState({ ...s, pages: [...s.pages, { id, widgets: {}, widgetLayout: {}, filter: {} }], selectedPageId: id });
-    setReports((r) => [...r, { id, name: `My report ${seq.current}`, hint: "Your own report: add widgets from the panel" }]);
+    api.setState({ ...s, pages: [...s.pages, { id, widgets: {}, widgetLayout: {}, filter: {} }], selectedPageId: id },
+      { historyLabel: "dsHistoryNewReport", historyLabelVariableValues: { name }, source: BY_SELLER });
+    refresh();
     setSelected(id);
     setMode("edit");
   };
@@ -240,19 +302,25 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const addAnswer = useCallback((asked: Asked) => {
     const id = `answer-${++answers.current}`;
     if (!api) return id;
+    names.current.set(ANSWERS_PAGE, { name: "Answers", hint: "Charts from your questions to Ask Doorstep, newest first" });
     const s = api.getState();
-    api.setState({ ...s, pages: withAnswer(s.pages, id, asked.plan, asked.question), selectedPageId: ANSWERS_PAGE });
-    setReports((r) => (r.some((x) => x.id === ANSWERS_PAGE)
-      ? r : [...r, { id: ANSWERS_PAGE, name: "Answers", hint: "Charts from your questions to Ask Doorstep, newest first" }]));
+    api.setState({ ...s, pages: withAnswer(s.pages, id, asked.plan, asked.question), selectedPageId: ANSWERS_PAGE },
+      { historyLabel: "dsHistoryAnswer", source: BY_DOORSTEP });
+    refresh();
     setSelected(ANSWERS_PAGE);
     canvas.current?.querySelector(".ag-studio-layout")?.scrollTo({ top: 0 });
     return id;
-  }, [api]);
+  }, [api, refresh]);
   const removeAnswer = useCallback((id: string) => {
     if (!api) return;
     const s = api.getState();
-    api.setState({ ...s, pages: withoutAnswer(s.pages, id) });
-  }, [api]);
+    api.setState({ ...s, pages: withoutAnswer(s.pages, id) }, { historyLabel: "dsHistoryRemoveAnswer", source: BY_SELLER });
+    refresh();
+  }, [api, refresh]);
+  const reports = pageIds.map((id) => ({ id, ...(names.current.get(id) ?? { name: "Report" }) }));
+  const ledger = useLedger(api as AgStudioApi | undefined, stamp);
+  const build: BuildActions = { has: ledger.has, undo: ledger.undoBuild, redo: ledger.redo, canRedo: ledger.canRedoAll };
+  const chase = useCallback(() => chaseCarrier(current.current), []);
   const showAnswers = useCallback(() => setSelected(ANSWERS_PAGE), []);
   const latest = useCallback(() => current.current, []);
   const [removed, setRemoved] = useState<ReadonlySet<string>>(() => new Set());
@@ -272,7 +340,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     return undefined;
   }, [api]);
   // Open the console and send one question (the brief's carrier row, any `doorstep:ask` event).
-  const ask = useCallback((question: string) => { setAsking(true); setPending(question); }, []);
+  const ask = useCallback((question: string) => { setDrill(null); setAsking(true); setPending(question); }, []);
   useEffect(() => {
     const on = (e: Event) => { const q = (e as CustomEvent<{ question?: string }>).detail?.question; if (q) ask(q); };
     window.addEventListener(ASK_EVENT, on);
@@ -295,6 +363,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     token, prepared: latest, addAnswer,
     openReport: (id) => setSelected(id),
     openCarrier: (c) => setDrill(c),
+    nameReport: (id, name) => { names.current.set(id, { name, hint: "By Doorstep", by: true }); },
   };
 
   return (
@@ -308,6 +377,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
           <button className="btn icon-btn" onClick={() => setLive((v) => !v)} aria-label={live ? "Pause live updates" : "Resume live updates"} title={live ? "Pause live updates" : "Resume live updates"}>
             {live ? <Pause size={15} aria-hidden /> : <Play size={15} aria-hidden />}
           </button>
+          <LedgerBar api={api as AgStudioApi | undefined} ledger={ledger} />
           {/* One front door: questions, findings and chart edits. The badge says it is an agent. */}
           <button className={`btn ask-toggle ${asking ? "on" : ""}`} onClick={() => setAsking((a) => !a)} aria-pressed={asking}
             title="Doorstep's agent answers with charts, finds what changed, and edits charts with AG Studio's own agents">
@@ -327,22 +397,24 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
               <button key={r.id} className="rb-item" aria-current={selected === r.id || undefined} onClick={() => setSelected(r.id)}>
                 <BarChart3 size={15} aria-hidden />
                 {/* The question each report answers: shown, but not part of the button's name. */}
-                <span className="rb-text"><span>{r.name}</span>{r.hint && <span className="rb-hint" aria-hidden>{r.hint}</span>}</span>
+                <span className="rb-text"><span>{r.name}</span>{r.hint && (
+                  <span className={`rb-hint ${r.by ? "rb-by" : ""}`} aria-hidden>{r.by && <Sparkles size={11} />}{r.hint}</span>
+                )}</span>
               </button>
             ))}
             <button className="rb-new" onClick={addReport}><FilePlus2 size={15} aria-hidden />New report</button>
             <div className="rb-foot">
               <ul className="rb-tips">
-                <li><strong>Click</strong> a chart to filter the page</li>
-                <li><strong>Right-click</strong> a carrier for its report</li>
-                <li><strong>Edit</strong> to move, resize or add widgets</li>
+                <li title="Click a chart to filter the page"><MousePointerClick size={13} aria-hidden />Click: filter</li>
+                <li title="Right-click a carrier for its report"><MousePointer2 size={13} aria-hidden />Right-click: report</li>
+                <li title="Edit to move, resize or add widgets"><Pencil size={13} aria-hidden />Edit: layout</li>
               </ul>
             </div>
           </nav>
           <div className="rb-canvas" ref={canvas}><AgStudio<DoorstepRegistry> studioProperties={props} modules={AI_MODULES} className="studio-fill" /></div>
           {asking && (
             <AskPanel harness={harness} session={session} onSession={setSession} pending={pending} onPendingSent={pendingSent}
-              actions={answerActions} names={widgetName} mode={leadMode} onClose={() => setAsking(false)} />
+              actions={answerActions} names={widgetName} mode={leadMode} onClose={() => setAsking(false)} build={build} chase={chase} />
           )}
         </div>
         <p className="ins-note" title={`Money is in ${prepared.home}. An order in another currency counts as an order but never adds to a money total.${prepared.history ? " Use the Data filter to see only your orders." : ""}`}>
@@ -364,7 +436,7 @@ function CarrierReport({ prepared, filter, onClose }: { prepared: Prepared; filt
   const [props] = useState((): Props => ({
     mode: "view",
     theme: paperTheme,
-    widgets,
+    widgets: drillWidgets,
     localeText: LOCALE,
     panels: { view: { right: [] }, edit: { right: ["filters", "edit", "data"] } },
     data: prepared.sources as Props["data"],

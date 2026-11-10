@@ -273,3 +273,172 @@ test("AS-09 Studio's page agent places a Doorstep widget by type alone, and it a
   await expect(page.locator(".ds-clock li").first()).toContainText(/DAYS/i);
   await expect(page.getByText("Claim deadlines")).toBeVisible();
 });
+
+// ---------------------------------------------------------------- S4-S6: Chase, the ledger, Explain
+
+type Turn = { agent: string; items: { kind: string; name?: string; text: string }[]; tools: { name: string }[] };
+const ROW = /order_id|"district"|hist-\d/;
+/**
+ * No agent is offered `execute_query`, and nothing an agent reads or says (messages, tool calls,
+ * tool results) carries a data row or a row id. Studio's own tool schemas list field names
+ * (`orders.order_id` among them), which are not rows.
+ */
+function expectNoRows(posts: string[]) {
+  for (const raw of posts) {
+    const body = JSON.parse(raw) as Turn;
+    expect(body.tools.map((t) => t.name)).not.toContain("execute_query");
+    expect(JSON.stringify(body.items)).not.toMatch(ROW);
+  }
+}
+
+/**
+ * S4's build, routed: Doorstep makes the report and hands it to Studio's page agent, which adds three
+ * Doorstep widgets by type; Doorstep checks the page and says one sentence. The tools run for real.
+ */
+async function routeChase(page: Page, posts: string[], delayMs = 0) {
+  await page.route("**/insights/agent", async (route) => {
+    const raw = route.request().postData() ?? "{}";
+    posts.push(raw);
+    const body = JSON.parse(raw) as Turn;
+    const calls = body.items.filter((i) => i.kind === "call");
+    const n = (name: string) => calls.filter((c) => c.name === name).length;
+    const call = (name: string, args: object) =>
+      ({ message: "", calls: [{ call_id: `${body.agent}-${name}-${calls.length}`, name, arguments: args }], mode: "model" });
+    // "Build me a page to chase Evri's claims": the carrier the brief named.
+    const c = body.items.map((i) => i.text.match(/chase (.+?)'s claims/)?.[1]).find(Boolean) ?? "";
+    let out: object = { message: "", calls: [], mode: "model" };
+    if (body.agent === "doorstep") {
+      if (!n("create_report")) out = call("create_report", { name: `${c} recovery`, carrier: c });
+      else if (!n("delegate_to")) {
+        const pageId = body.items.map((i) => i.text.match(/'(ai-[a-z0-9-]+)'/)?.[1]).find(Boolean);
+        out = call("delegate_to", { type: { id: "page", pageId }, instructions: "Add doorstep-claim-clock, doorstep-failure-points and doorstep-evidence-meter." });
+      } else if (!n("check_page")) out = call("check_page", {});
+      else out = { message: `Your ${c} page is ready.`, calls: [], mode: "model" };
+    } else if (body.agent === "page") {
+      const steps = [
+        { widgetId: "clock", type: "doorstep-claim-clock", xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 15 },
+        { widgetId: "fp", type: "doorstep-failure-points", xTrack: 0, yTrack: 15, xSpan: 13, ySpan: 20 },
+        { widgetId: "ev", type: "doorstep-evidence-meter", xTrack: 13, yTrack: 15, xSpan: 11, ySpan: 20 },
+      ];
+      const added = n("add_widget");
+      out = added < steps.length ? call("add_widget", steps[added]) : call("complete_task", { summary: "Added three widgets.", artifacts: [] });
+    }
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+    await route.fulfill({ json: out });
+  });
+}
+
+/** Clicks the brief's "Chase <carrier>" and returns the carrier. */
+async function chaseFromBrief(page: Page) {
+  const chase = page.getByRole("region", { name: "Doorstep's brief" }).getByRole("button", { name: /^Chase / });
+  const carrier = (await chase.innerText()).replace(/^Chase /, "").trim();
+  await chase.click();
+  return carrier;
+}
+
+test("AS-10 Chase builds a carrier's page: Doorstep plans, Studio's page agent places its widgets", async ({ page }) => {
+  const posts: string[] = [];
+  await routeChase(page, posts);
+  await openInsights(page);
+  await page.getByRole("button", { name: "Pause live updates" }).click();
+  const carrier = await chaseFromBrief(page);
+  const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
+
+  await expect(panel.getByText(`Your ${carrier} page is ready.`)).toBeVisible();
+  // The plan ticks as each step lands: the report, the three widgets Studio's page agent placed, the check.
+  await expect(panel.getByRole("group", { name: "Plan" }).locator('li[data-state="done"]')).toHaveCount(5);
+  await expect(panel.locator(".ask-sub-head")).toHaveText(/Page agent/);
+  await expect(panel.getByText("Checked the page")).toBeVisible();
+  // The rail lists the new report, open, read from Studio's own pages.
+  await expect(report(page, `${carrier} recovery`)).toHaveAttribute("aria-current", "true");
+  await panel.getByRole("button", { name: "Close Ask Doorstep" }).click();
+  await expect(page.locator(".ds-fp").first()).toBeVisible();
+  await expect(page.locator(".ds-meter").first()).toBeVisible();
+  // Studio's agents saw field names and widget settings only.
+  expect(posts.length).toBeGreaterThan(5);
+  expectNoRows(posts);
+  if (shots) await page.screenshot({ path: `${shots}/as10-chase.png` });
+});
+
+test("AS-10 with no model, Chase builds Doorstep's template page in one step", async ({ page }) => {
+  const posts: string[] = [];
+  await page.route("**/insights/agent", async (route) => {
+    posts.push(route.request().postData() ?? "");
+    await route.fulfill({ json: { message: "I can't reach the model just now.", calls: [], mode: "fallback" } });
+  });
+  await openInsights(page);
+  await page.getByRole("button", { name: "Pause live updates" }).click();
+  const carrier = await chaseFromBrief(page);
+  const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
+  await expect(panel.getByText("Built from template")).toBeVisible();
+  await expect(panel.getByRole("group", { name: "Plan" }).locator('li[data-state="done"]')).toHaveCount(5);
+  await expect(report(page, `${carrier} recovery`)).toHaveAttribute("aria-current", "true");
+  await expect(kpi(page, "Claimed from carriers")).toBeVisible();
+  expect(posts).toHaveLength(1);
+});
+
+test("AS-11 the ledger says who changed what; Undo everything Doorstep did, then Redo brings it back", async ({ page }) => {
+  const posts: string[] = [];
+  await routeChase(page, posts);
+  await openInsights(page);
+  await page.getByRole("button", { name: "Pause live updates" }).click();
+  await expect(page.getByRole("button", { name: /changes? by Doorstep/ })).toHaveCount(0);
+  const carrier = await chaseFromBrief(page);
+  const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
+  await expect(panel.getByText(`Your ${carrier} page is ready.`)).toBeVisible();
+  const rail = report(page, `${carrier} recovery`);
+
+  // Doorstep's report and the widgets Studio's page agent placed, each with who made it.
+  const pill = page.getByRole("button", { name: /^\d+ changes by Doorstep$/ });
+  await pill.click();
+  const pop = page.getByRole("dialog", { name: "Changes" });
+  await expect(pop.getByText(`New report ‘${carrier} recovery’`)).toBeVisible();
+  await expect(pop.getByText(/^Doorstep · /).first()).toBeVisible();
+  await expect(pop.getByText(/^Page agent · AG Studio · /).first()).toBeVisible();
+  if (shots) await page.screenshot({ path: `${shots}/as11-ledger.png` });
+
+  // One click takes the whole build away; Redo brings all of it back.
+  await pop.getByRole("button", { name: "Undo everything Doorstep did" }).click();
+  await expect(rail).toHaveCount(0);
+  await expect(pop).toHaveCount(0);
+  await expect(pill).toHaveCount(0);
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(rail).toHaveAttribute("aria-current", "true");
+  await expect(page.locator(".ds-fp").first()).toBeVisible();
+  await expect(pill).toBeVisible();
+
+  // The console's own Undo this build does the same, and Undo (one step) is there for the seller.
+  await panel.getByRole("button", { name: "Undo this build" }).click();
+  await expect(rail).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Redo this build" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
+});
+
+test("AS-12 Explain this chart opens Ask Doorstep on that widget: its settings, never its rows", async ({ page }) => {
+  const posts: string[] = [];
+  await page.route("**/insights/agent", async (route) => {
+    const raw = route.request().postData() ?? "{}";
+    posts.push(raw);
+    const body = JSON.parse(raw) as Turn;
+    const asked = body.items.find((i) => i.kind === "user")?.text ?? "";
+    const name = asked.match(/“(.+)”/)?.[1] ?? "";
+    const out = body.items.some((i) => i.kind === "call" && i.name === "explain_chart")
+      ? { message: "Each bar is one cause of failure; longer bars cost more.", calls: [], mode: "model" }
+      : { message: "", calls: [{ call_id: "x1", name: "explain_chart", arguments: { name } }], mode: "model" };
+    await route.fulfill({ json: out });
+  });
+  await openInsights(page);
+  const widget = page.locator(".ag-studio-layout-widget").filter({ has: page.locator(".ds-fp") }).first();
+  await widget.hover();
+  await widget.getByRole("button", { name: "Explain this chart" }).click();
+
+  const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
+  await expect(panel.locator(".ask-q").first()).toHaveText(/^Explain “.+”$/);
+  const card = panel.getByTestId("ask-explain");
+  await expect(card).toContainText("Failure points");
+  await expect(card).toContainText("Shows");
+  await expect(card).toContainText("By");
+  await expect(panel.getByText("Each bar is one cause of failure; longer bars cost more.")).toBeVisible();
+  expect(posts).toHaveLength(2);
+  expectNoRows(posts);
+});
