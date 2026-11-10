@@ -454,3 +454,6 @@ li[data-kind="method"] .ds-next-ico { color: #2f6f73; }
 .ds-atlas-tip strong span { font-weight: 600; color: #8b827d; }
 .ds-atlas-tip b { font-weight: 600; color: #1f1a18; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .ds-atlas-body, .ds-atlas-tile, .ds-atlas-ring { transition: none; } }
+
+/* A report title is a plain text widget: it has no data, so Studio's "No data to display" never applies. */
+.ag-studio-layout-widget-container:has(.ag-studio-text-widget) :is(.ag-studio-layout-widget-no-data-overlay, .ag-studio-widget-no-data) { display: none; }
