@@ -42,6 +42,14 @@ APPROVED_EDITS: dict[str, list[tuple[str, str, str]]] = {
             "approved by the human on Nov 7, 2026: the recording moved to tests/fixtures/paypal/",
         ),
     ],
+    "web/e2e/journey.spec.ts": [
+        (
+            'await expect(page.getByRole("status")).toContainText("Approved");',
+            'await expect(page.getByRole("status").filter({ hasText: "Approved" })).toBeVisible();',
+            "approved by the human on Nov 10, 2026: AG Grid's status bar and the case drawer also carry "
+            "role=status, so the test picks the status that says Approved",
+        ),
+    ],
 }
 _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 

@@ -37,7 +37,7 @@ test("E2E-01 buyer reports, seller approves, receipts verify", async ({ page, co
   await page.waitForTimeout(400);
   if (shots) await page.screenshot({ path: `${shots}/07-case-drawer.png` });
   await page.getByRole("button", { name: /Approve refund/ }).click();
-  await expect(page.getByRole("status")).toContainText("Approved");
+  await expect(page.getByRole("status").filter({ hasText: "Approved" })).toBeVisible();
 
   // Public check: the signed receipt chain is intact.
   const caseLink = page.getByRole("link", { name: /signed receipt/ });
