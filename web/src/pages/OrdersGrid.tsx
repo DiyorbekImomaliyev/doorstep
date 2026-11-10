@@ -637,7 +637,7 @@ const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppr
 const noteText = { addNote: "Add note", editNote: "Edit note", viewNote: "View note", deleteNote: "Delete note", notePlaceholder: "Note" };
 const gridText = { ...noteText, rowGroupColumnsEmptyMessage: "Drag a header here to group" };
 const rowStyle = { cursor: "pointer" };
-const cellSelection = { enableHeaderHighlight: true } as const;
+const cellSelection = { enableHeaderHighlight: false } as const;
 
 export type OrdersGridProps = {
   rows: OrderRow[];

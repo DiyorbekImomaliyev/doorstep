@@ -526,6 +526,9 @@ a.demo-item:hover .di-go svg { transform: translateX(3px); }
 /* HR demo: calm uppercase headers */
 .orders-grid .ag-header-cell-text { text-transform: uppercase; letter-spacing: .08em; }
 .orders-grid .ag-cell .cell-two { min-width: 0; }
+/* A click focuses one cell: no box for the mouse; the box shows for the keyboard and for a real range. */
+.orders-grid .ag-cell.ag-cell-focus:not(:focus-visible):not(.ag-cell-range-selected),
+.orders-grid .ag-cell.ag-cell-range-single-cell:not(:focus-visible) { border-color: transparent !important; background-color: transparent; }
 .orders-grid .ag-cell .cell-two > span, .orders-grid .ag-cell .cell-two .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Order cell: chevron (master/detail), tile, name, tag and reference */
