@@ -149,3 +149,41 @@ test("GT-05 the grand total row sums money at stake per currency and follows the
   await expect(total).toHaveCount(1);
   await expect(total).toHaveAttribute("aria-label", new RegExp(`^Total: ${shown} orders?, `));
 });
+
+test("GT-06 the side bar: Ask's filters show in AG Grid's New Filters panel; the Doorstep panel counts lanes and clears them", async ({ page }) => {
+  await openShop(page);
+  await allOrders(page);
+  await page.route("**/grid/ask", (route) => route.fulfill({
+    json: {
+      question: "lost parcels", mode: "keywords", provider: null,
+      plan: { answerable: true, view: "all", journey: ["Lost by carrier"], next_step: [], delivery: [], min_at_stake: null, max_proof: null, sort: [], show: [], note: "Read by keywords." },
+    },
+  }));
+  const box = page.getByRole("searchbox", { name: "Search orders" });
+  await box.fill("lost parcels");
+  await box.press("Enter");
+  const status = page.locator(".orders-grid .ag-status-bar");
+  await expect(status).toContainText(/\d+ of \d+/);
+  const shown = Number((await status.innerText()).match(/(\d+) of \d+/)![1]);
+
+  await page.locator(".orders-grid .ag-toolbar").getByRole("button", { name: "Columns and filters" }).click();
+  const side = page.locator(".orders-grid .ag-side-bar");
+  await side.locator(".ag-side-button", { hasText: "Filters" }).click();
+  await expect(side.locator(".ag-tool-panel-wrapper:visible")).toContainText("Journey");
+
+  await side.locator(".ag-side-button", { hasText: "Doorstep" }).click();
+  const panel = side.locator(".ds-panel");
+  await expect(panel).toBeVisible();
+  const counts = (await panel.locator(".ds-panel-lanes dd").allInnerTexts()).map(Number);
+  expect(counts).toHaveLength(4);
+  expect(counts.reduce((a, b) => a + b, 0)).toBe(shown);
+  await expect(panel.locator(".ds-panel-stake strong")).toHaveText(/^[£$][\d,.]+( \+ [£$][\d,.]+)?$/);
+
+  const clear = panel.getByRole("button", { name: "Clear filters" });
+  await expect(clear).toBeEnabled();
+  await clear.click();
+  await expect(status).not.toContainText(/\d+ of \d+/);
+  await expect(clear).toBeDisabled();
+  expect((await panel.locator(".ds-panel-lanes dd").allInnerTexts()).map(Number).reduce((a, b) => a + b, 0))
+    .toBe(Number((await page.locator(".table-card .head .count-chip").innerText()).trim()));
+});

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps,
-  type CustomStatusPanelProps, type CustomTooltipProps,
+  type CustomStatusPanelProps, type CustomToolPanelProps, type CustomTooltipProps,
 } from "ag-grid-react";
 import {
   AllCommunityModule, ModuleRegistry,
@@ -11,7 +11,7 @@ import {
   type StatusPanelDef, type Toolbar,
 } from "ag-grid-community";
 import {
-  CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
+  CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, NewFiltersToolPanelModule, LicenseManager,
   MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
   AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, AggregationModule, RowGroupingPanelModule, ShowValuesAsModule,
 } from "ag-grid-enterprise";
@@ -41,7 +41,7 @@ if (__AG_GRID_LICENSE_KEY__) LicenseManager.setLicenseKey(__AG_GRID_LICENSE_KEY_
 
 ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
-  ColumnsToolPanelModule, FiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
+  ColumnsToolPanelModule, NewFiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
   StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, CellSelectionModule, ClipboardModule,
   AggregationModule, RowGroupingPanelModule, ShowValuesAsModule,
 ]);
@@ -631,7 +631,34 @@ const gridIcons = {
   columns: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>'),
   excelExport: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 9v12"/><path d="M15 9v12"/>'),
   pdfExport: lucide(`${PAGE}<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`),
+  filter: lucide('<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"/>'),
+  doorstep: lucide('<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>'),
 };
+
+const LANE_KEYS = Object.keys(LANES) as Lane[];
+
+/** The side bar's Doorstep panel: numbers for what the grid shows, and one Clear filters. */
+function DoorstepPanel({ api }: CustomToolPanelProps<OrderRow>) {
+  useModelTick(api);
+  const shown: OrderRow[] = [];
+  api.forEachNodeAfterFilter((n) => { if (n.data && !n.group) shown.push(n.data); });
+  const count = (k: Lane) => shown.filter((r) => laneOf(r) === k).length;
+  const filtered = Object.keys(api.getFilterModel() ?? {}).length > 0;
+  return (
+    <div className="ds-panel">
+      <dl className="ds-panel-lanes">
+        {LANE_KEYS.map((k) => (
+          <div key={k} className={`lane-${k}`}><dt className="lane-name">{LANES[k].label}</dt><dd className="num">{count(k)}</dd></div>
+        ))}
+      </dl>
+      <div className="ds-panel-stake">
+        <span>At stake</span>
+        <strong className="num">{sumStake(shown)}</strong>
+      </div>
+      <button type="button" className="btn" disabled={!filtered} onClick={() => api.setFilterModel(null)}>Clear filters</button>
+    </div>
+  );
+}
 
 const sideBar: SideBarDef = {
   toolPanels: [
@@ -639,7 +666,9 @@ const sideBar: SideBarDef = {
       id: "columns", labelDefault: "Columns", labelKey: "columns", iconKey: "columns", toolPanel: "agColumnsToolPanel",
       toolPanelParams: { suppressRowGroups: true, suppressValues: true, suppressPivots: true, suppressPivotMode: true },
     },
-    { id: "filters", labelDefault: "Filters", labelKey: "filters", iconKey: "filter", toolPanel: "agFiltersToolPanel" },
+    // AG Grid's New Filters Tool Panel: an "Add filter" list; filters set elsewhere (Ask) appear here too.
+    { id: "filters", labelDefault: "Filters", labelKey: "filters", iconKey: "filter", toolPanel: "agNewFiltersToolPanel" },
+    { id: "doorstep", labelDefault: "Doorstep", labelKey: "doorstep", iconKey: "doorstep", toolPanel: DoorstepPanel, width: 240 },
   ],
   hiddenByDefault: true,
 };
@@ -937,6 +966,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         detailRowAutoHeight
         // Enterprise furniture: side bar (hidden until asked), right-click menu, Excel export.
         sideBar={sideBar}
+        enableFilterHandlers
         toolbar={toolbar}
         icons={gridIcons}
         getContextMenuItems={getContextMenuItems}

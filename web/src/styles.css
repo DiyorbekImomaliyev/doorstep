@@ -984,4 +984,15 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .orders-grid .total-row .total-name { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; font-weight: 600; }
 .orders-grid .total-row .total-stake { margin-left: auto; color: var(--text); font-weight: 600; }
 .orders-grid .total-row .total-stake span { color: var(--text-2); font-weight: 400; }
+/* The side bar's Doorstep panel: numbers only. */
+.orders-grid .ds-panel { display: flex; flex-direction: column; gap: 16px; width: 100%; padding: 16px; font-size: 13px; }
+.orders-grid .ds-panel-lanes { display: grid; gap: 2px; margin: 0; }
+.orders-grid .ds-panel-lanes > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hair, #f3eee9); }
+.orders-grid .ds-panel-lanes dt { font-weight: 550; font-size: 13px; }
+.orders-grid .ds-panel-lanes dd { margin: 0; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.orders-grid .ds-panel-stake { display: flex; flex-direction: column; gap: 2px; }
+.orders-grid .ds-panel-stake span { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.orders-grid .ds-panel-stake strong { font-size: 20px; font-weight: 600; color: var(--text); letter-spacing: -.01em; }
+.orders-grid .ds-panel .btn { height: 32px; font-size: 12.5px; }
+.orders-grid .ag-side-button[aria-expanded="true"], .orders-grid .ag-selected .ag-side-button { color: var(--accent); }
 @media (max-width: 640px) { .orders-grid .ag-toolbar { display: none; } }
