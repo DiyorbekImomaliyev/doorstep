@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ColDef } from "ag-grid-community";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type { ColDef, GridApi } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
 import type { OrderRow } from "../api";
 import { fetchInsights } from "../insights/data";
@@ -47,8 +47,8 @@ export function useClaims(rows: OrderRow[]): Map<string, Claim> {
   return claims;
 }
 
-function DueCell(p: CustomCellRendererProps<OrderRow> & { claims: Map<string, Claim> }) {
-  const c = p.data?.case_id ? p.claims.get(p.data.case_id) : undefined;
+function DueCell(p: CustomCellRendererProps<OrderRow> & { claims: RefObject<Map<string, Claim>> }) {
+  const c = p.data?.case_id ? p.claims.current.get(p.data.case_id) : undefined;
   if (!c) return null;
   const d = daysLeft(c.at);
   const tone = d < 3 ? "var(--bad)" : d < 7 ? "var(--warn)" : "var(--text-3)";
@@ -65,21 +65,33 @@ function DueCell(p: CustomCellRendererProps<OrderRow> & { claims: Map<string, Cl
   );
 }
 
-/** The "Due" column (soonest carrier claim deadline) plus the hidden columns of the packing list. */
-export function useDueColumns(rows: OrderRow[], phone: boolean): ColDef<OrderRow>[] {
+/**
+ * The "Due" column (soonest carrier claim deadline) plus the hidden columns of the packing list.
+ * The definitions stay the same object while deadlines arrive (a new columnDefs array would make AG
+ * rebuild every column and drop the seller's filters); new deadlines refresh only the Due cells.
+ */
+export function useDueColumns(rows: OrderRow[], phone: boolean, api: RefObject<GridApi<OrderRow> | null>): ColDef<OrderRow>[] {
   const claims = useClaims(rows);
+  const ref = useRef(claims);
+  ref.current = claims;
+  useEffect(() => {
+    const a = api.current;
+    if (!a || a.isDestroyed()) return;
+    a.refreshCells({ columns: ["due"], force: true });
+    if (a.getColumn("due")?.getSort()) a.onSortChanged();
+  }, [claims, api]);
   return useMemo((): ColDef<OrderRow>[] => [
     {
       colId: "due", headerName: "Due", width: 84, hide: phone, filter: false, chartDataType: "excluded",
-      valueGetter: (p) => (p.data?.case_id ? claims.get(p.data.case_id)?.at ?? null : null),
+      valueGetter: (p) => (p.data?.case_id ? ref.current.get(p.data.case_id)?.at ?? null : null),
       // Soonest first; rows without a deadline stay last in both directions.
       comparator: (a: number | null, b: number | null, _x, _y, desc) => (a == null ? (b == null ? 0 : desc ? -1 : 1) : b == null ? (desc ? 1 : -1) : a - b),
       tooltipValueGetter: (p) => {
-        const c = p.data?.case_id ? claims.get(p.data.case_id) : undefined;
+        const c = p.data?.case_id ? ref.current.get(p.data.case_id) : undefined;
         return c ? `Carrier claim · ${c.carrier} · ${new Date(c.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : undefined;
       },
-      cellRenderer: DueCell, cellRendererParams: { claims },
+      cellRenderer: DueCell, cellRendererParams: { claims: ref },
     },
     ...packingColumns(),
-  ], [claims, phone]);
+  ], [phone]);
 }

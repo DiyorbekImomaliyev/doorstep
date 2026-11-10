@@ -728,7 +728,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   // show a column of dashes: the column appears only when some row has a score.
   const scored = useMemo(() => rows.some((r) => r.delivery_risk != null), [rows]);
 
-  const dueColumns = useDueColumns(rows, phone);
+  const dueColumns = useDueColumns(rows, phone, api);
   const columns = useMemo<ColDef<OrderRow>[]>(() => [
     {
       colId: "lane", headerName: "Lane", rowGroup: grouped, hide: true, suppressColumnsToolPanel: true,
