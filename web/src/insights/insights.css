@@ -352,7 +352,11 @@ button.ds-meter-row:hover, .ds-fp li > button:hover { background: color-mix(in s
 @media (max-width: 640px) {
   .ledger-pill { font-size: 0; gap: 0; width: 28px; padding: 0; justify-content: center; } /* the icon alone; the name stays for screen readers */
   .ledger-pill svg { width: 14px; height: 14px; }
-  .ledger-pop { position: fixed; top: auto; left: 16px; right: 16px; width: auto; max-width: none; margin-top: 8px; }
+  .ledger-pop { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; max-width: none; max-height: calc(100dvh - 88px); }
+  .ledger-rows { max-height: none; flex: 1; min-height: 0; }
+  /* Undo and Redo join the head bar: the "Agent" badge stays in the button's name, off screen. */
+  .ins-bar { flex-wrap: wrap; row-gap: 8px; }
+  .ins-bar .ask-badge { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; padding: 0; }
 }
 
 /* ---------- S6 · Explain this chart ---------- */
