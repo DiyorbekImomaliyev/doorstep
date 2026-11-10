@@ -108,6 +108,7 @@ const stakeShare: ShowValuesAsDef<OrderRow> = {
 
 /** What a group row is called: the lane's name, or what the grouped column's cells say. */
 function groupLabel(node: IRowNode): string {
+  if (node.footer) return "Total";
   const col = node.rowGroupColumn?.getColId();
   const key = node.key == null ? "" : String(node.key);
   if (col === "lane") return LANES[key as Lane]?.label ?? key;
@@ -455,6 +456,7 @@ const isGuide = (n: IRowNode | null | undefined) => n?.rowPinned === "top";
 
 /** Doorstep speaks once, at the top of the grid: what needs the seller, and one Start button. */
 function DoorstepRow(p: CustomCellRendererProps<OrderRow> & { parts: Part[] | null; onStart: () => void }) {
+  if (p.node.footer) return <TotalRow {...p} />;
   if (!p.parts) return null;
   return (
     <div className="ds-row">
@@ -466,20 +468,26 @@ function DoorstepRow(p: CustomCellRendererProps<OrderRow> & { parts: Part[] | nu
   );
 }
 
-// ---------- status bar ----------
-
-/** Status bar: money at stake in the rows the seller can see, per currency (never summed across). */
-function StakePanel({ api }: CustomStatusPanelProps<OrderRow>) {
-  useModelTick(api);
-  const shown: OrderRow[] = [];
-  api.forEachNodeAfterFilter((n) => { if (n.data && !n.group) shown.push(n.data); });
+/**
+ * AG Grid's grand total row (`grandTotalRow`), drawn full width like the lanes above it: the money at
+ * stake in every order the seller can see, from AG Grid's aggregation, following search and filters.
+ */
+function TotalRow(p: CustomCellRendererProps<OrderRow>) {
+  useModelTick(p.api);
+  let n = 0;
+  p.api.forEachNodeAfterFilter((x) => { if (x.data && !x.group) n++; });
+  const total = (p.node.aggData?.money ?? p.node.sibling?.aggData?.money) as StakeTotal | undefined;
+  const stake = total?.toString() ?? "";
   return (
-    <div className="ag-status-name-value stake-panel">
-      <span className="ag-status-name-value-label">At stake</span>
-      <span className="ag-status-name-value-value num">{sumStake(shown)}</span>
+    <div className="total-row" aria-label={`Total: ${n} order${n === 1 ? "" : "s"}, ${stake} at stake`}>
+      <span className="total-name">Total</span>
+      <span className="count-chip num">{n}</span>
+      <span className="total-stake num">{stake} <span>at stake</span></span>
     </div>
   );
 }
+
+// ---------- status bar ----------
 
 /** Status bar, left: where these orders come from. */
 function SourcePanel({ text }: CustomStatusPanelProps<OrderRow> & { text: string }) {
@@ -532,8 +540,10 @@ function exportParams() {
   return {
     fileName: `doorstep-orders-${new Date().toISOString().slice(0, 10)}`,
     columnKeys: EXPORT_COLUMNS,
+    // The grand total row exports its money at stake (AG Grid's aggregate) under At stake.
     processCellCallback: (q: { column: { getColId(): string }; node?: IRowNode | null; value: unknown }) =>
-      (q.node?.data ? exportValue(q.column.getColId(), q.node.data as OrderRow, q.value) : ""),
+      (q.node?.data ? exportValue(q.column.getColId(), q.node.data as OrderRow, q.value)
+        : q.node?.footer && q.column.getColId() === "money" ? String((q.node.aggData?.money as StakeTotal | undefined) ?? "") : ""),
     processRowGroupCallback: (q: { node: IRowNode }) => groupLabel(q.node),
     skipPinnedTop: true,
   };
@@ -641,7 +651,7 @@ function firstSentence(parts: Part[]): Part[] {
   const end = parts.findIndex((x, i) => i > 1 && x === ".");
   return end > 0 ? parts.slice(0, end + 1) : parts;
 }
-const isFullWidthRow = (p: { rowNode: IRowNode }) => isGuide(p.rowNode);
+const isFullWidthRow = (p: { rowNode: IRowNode }) => isGuide(p.rowNode) || !!p.rowNode.footer;
 const laneOrder = (p: { nodeA: IRowNode; nodeB: IRowNode }) =>
   (LANES[p.nodeA.key as Lane]?.rank ?? 9) - (LANES[p.nodeB.key as Lane]?.rank ?? 9);
 // Column filters live in the Filters panel and the right-click menu, not as icons on every header.
@@ -679,7 +689,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   const api = useRef<GridApi | null>(null);
   const reduced = useReducedMotion();
   const phone = useMedia("(max-width: 640px)");
-  const getRowHeight = useCallback((p: { node: IRowNode }) => (isGuide(p.node) ? (phone ? 84 : 64) : p.node.group ? 44 : undefined), [phone]);
+  const getRowHeight = useCallback((p: { node: IRowNode }) => (isGuide(p.node) ? (phone ? 84 : 64) : p.node.group || p.node.footer ? 44 : undefined), [phone]);
   useEffect(() => { const a = api.current; if (a && !a.isDestroyed()) a.resetRowHeights(); }, [phone]);
   const railed = useRef<Set<string>>(new Set());
   const rowClassRules = useMemo(() => ({ "row-changed": (p: { data?: OrderRow }) => !!p.data && railed.current.has(p.data.order_id) }), []);
@@ -840,7 +850,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     return items;
   }, []);
   const onRowClicked = useCallback((e: RowClickedEvent<OrderRow>) => {
-    if (isGuide(e.node)) return;
+    if (isGuide(e.node) || e.node.footer) return;
     if (e.node.group) { e.node.setExpanded(!e.node.expanded); return; }
     if ((e.event?.target as HTMLElement | null)?.closest("[data-own-click]")) return;
     if (isSelecting(e.api, e.event as MouseEvent | null)) return;
@@ -849,7 +859,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   // Keyboard: arrows move between cells (AG Grid); Enter on a row opens the order, or a lane.
   const onCellKeyDown = useCallback((e: CellKeyDownEvent<OrderRow> | FullWidthCellKeyDownEvent<OrderRow>) => {
     const k = e.event as KeyboardEvent | null | undefined;
-    if (k?.key !== "Enter" || isGuide(e.node) || (k.target as HTMLElement | null)?.closest("button, input")) return;
+    if (k?.key !== "Enter" || isGuide(e.node) || e.node.footer || (k.target as HTMLElement | null)?.closest("button, input")) return;
     if (e.node.group) { e.node.setExpanded(!e.node.expanded); return; }
     if (e.data) onOpen(e.data);
   }, [onOpen]);
@@ -881,7 +891,6 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       // Drag across At-stake cells: AG Grid's live Sum, Count and Average of the selection.
       { statusPanel: "agAggregationComponent", statusPanelParams: { aggFuncs: ["avg", "count", "sum"], valueFormatter: selectionFormatter }, align: "right" },
       { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" },
-      { statusPanel: StakePanel, align: "right" },
     ],
   }), [source]);
 
@@ -906,6 +915,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         groupDisplayType="groupRows"
         groupRowRenderer={GroupRow}
         aggFuncs={aggFuncs}
+        grandTotalRow="bottom"
         suppressAggFuncInHeader
         getMainMenuItems={getMainMenuItems}
         suppressMenuHide={false}

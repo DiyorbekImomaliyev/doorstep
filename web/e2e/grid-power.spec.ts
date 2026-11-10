@@ -127,3 +127,25 @@ test("GT-04 At stake shows values as % of total, per currency, from its header m
   for (const s of subs) byCur[s.money.trim().startsWith("$") ? "USD" : "GBP"] = (byCur[s.money.trim().startsWith("$") ? "USD" : "GBP"] ?? 0) + parseFloat(s.pct);
   for (const v of Object.values(byCur)) expect(Math.abs(v - 100)).toBeLessThan(1);
 });
+
+test("GT-05 the grand total row sums money at stake per currency and follows the search", async ({ page }) => {
+  await openShop(page);
+  await allOrders(page);
+  const total = page.locator(".orders-grid .total-row");
+  await expect(total).toHaveCount(1); // the old row glides out when the lanes come in
+  const count = page.locator(".table-card .head .count-chip");
+  await expect(total).toHaveAttribute("aria-label", new RegExp(`^Total: ${(await count.innerText()).trim()} orders, `));
+  // The lanes' sums, per currency, add up to the total.
+  const by: Record<string, number> = {};
+  for (const t of await page.locator(".orders-grid .lane-row .lane-meta").allInnerTexts()) {
+    for (const part of t.replace(" at stake", "").split(" + ")) { const m = parseMoney(part); by[m.cur] = (by[m.cur] ?? 0) + m.minor; }
+  }
+  const expected = Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => fmt(v, c));
+  for (const e of expected) await expect(total.locator(".total-stake")).toContainText(e);
+
+  await page.getByRole("searchbox", { name: "Search orders" }).fill("jacket");
+  await expect(page.locator(".ag-status-bar")).toContainText(/\d+ of \d+/);
+  const shown = (await page.locator(".ag-status-bar").innerText()).match(/(\d+) of \d+/)![1];
+  await expect(total).toHaveCount(1);
+  await expect(total).toHaveAttribute("aria-label", new RegExp(`^Total: ${shown} orders?, `));
+});
