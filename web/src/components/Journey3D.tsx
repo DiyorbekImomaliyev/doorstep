@@ -70,7 +70,7 @@ type BoxProps = {
   style?: CSSProperties; className?: string; children?: ReactNode; frontChildren?: ReactNode;
 };
 
-function Box({ x, y, w, d, h, top, front, side, style, className = "", children, frontChildren }: BoxProps) {
+export function Box({ x, y, w, d, h, top, front, side, style, className = "", children, frontChildren }: BoxProps) {
   return (
     <div className={`obj ${className}`} style={{ left: x, top: y, width: w, height: d, ...style }}>
       <div className="face" style={{ width: h, height: d, background: side, transformOrigin: "0 0", transform: "rotateY(-90deg)" }} />
@@ -145,7 +145,7 @@ const AT_SHOP: P3 = [-206, 34, 66];
 const AT_E8: P3 = [250, 52, 40];
 
 /* Door drawn on a front face (front faces are flipped: local y grows upward). */
-function Door({ left, w = 16, h = 30, color = "#7b2d3d" }: { left: number; w?: number; h?: number; color?: string }) {
+export function Door({ left, w = 16, h = 30, color = "#7b2d3d" }: { left: number; w?: number; h?: number; color?: string }) {
   return <div style={{ position: "absolute", left, top: 0, width: w, height: h, background: color, borderRadius: "0 0 2px 2px" }} />;
 }
 

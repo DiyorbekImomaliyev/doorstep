@@ -7,6 +7,7 @@
  */
 import type { AgStudioThemeParams } from "ag-studio";
 import { studioTheme } from "ag-studio";
+import { C, SHADOW } from "../tokens";
 
 const INTER = "'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
@@ -45,19 +46,18 @@ const shared: Partial<AgStudioThemeParams> = {
 };
 
 const paperColors: Partial<AgStudioThemeParams> = {
-  accentColor: "#7b2d3d",
-  backgroundColor: "#ffffff",
-  foregroundColor: "#1f1a18",
-  borderColor: "#e8e2dc",
-  studioWrapperBackgroundColor: "#faf8f6",
-  studioCanvasBackgroundColor: "#faf8f6",
+  accentColor: C.accent,
+  backgroundColor: C.surface,
+  foregroundColor: C.ink,
+  borderColor: C.line,
+  studioWrapperBackgroundColor: C.paper,
+  studioCanvasBackgroundColor: C.paper,
   chartGridLineColor: "#f1ece7",
-  valueChangeUpColor: "#2f6b4f",
-  valueChangeDownColor: "#a3302a",
-  valueChangeHighlightBackgroundColor: "#f3e3e7",
+  valueChangeUpColor: C.good,
+  valueChangeDownColor: C.bad,
+  valueChangeHighlightBackgroundColor: C.accentTint,
+  studioWidgetShadow: SHADOW.s1,
   browserColorScheme: "light",
 };
-
-
 
 export const paperTheme = studioTheme.withParams({ ...shared, ...paperColors }).withParams(paperColors, "light");
