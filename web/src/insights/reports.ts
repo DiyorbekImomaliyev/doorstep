@@ -364,5 +364,5 @@ export const REPORTS = [
 export const reportState: AgReportState<DoorstepRegistry> = {
   pages: [overviewPage, carriersPage, casesPage],
   selectedPageId: "overview",
-  panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true } },
+  panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true }, ai: { collapsed: true } },
 };

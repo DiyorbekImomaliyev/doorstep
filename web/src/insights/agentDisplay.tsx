@@ -3,10 +3,14 @@
  * call does in plain words; the scan and the answer open into cards drawn from the call's result
  * (the same findings and figures the agent read), with a button to the report each one concerns.
  */
+import { createContext, useContext, useMemo } from "react";
 import type { AgAiToolDetailParams } from "ag-studio";
 import type { AgAiToolDisplay } from "ag-studio-react";
-import { AlertTriangle, ArrowUpRight, CircleDot } from "lucide-react";
-import type { Finding } from "./agent";
+import { AlertTriangle, ArrowUpRight, BarChart3, CircleDot, Trash2 } from "lucide-react";
+import { Chips, ReadBy } from "../components/ai";
+import type { Answered, Finding } from "./agent";
+import { answer } from "./ask";
+import type { Prepared } from "./data";
 
 /** Raised by a card's button; the Insights board opens the report. */
 export const OPEN_EVENT = "doorstep:open-report";
@@ -14,7 +18,14 @@ export type OpenDetail = { report: Finding["report"]; carrier?: string };
 const open = (d: OpenDetail) => window.dispatchEvent(new CustomEvent<OpenDetail>(OPEN_EVENT, { detail: d }));
 
 type Scan = { window: string; findings: Finding[] };
-type Answered = { headline: string; detail: string[]; chart: boolean };
+
+/** What an answer card can do on the board (the console provides it). */
+export type AnswerActions = {
+  show: (widgetId: string) => void; remove: (widgetId: string) => void; removed: (widgetId: string) => boolean;
+  /** The newest rows, and a number that moves when they change (live updates). */
+  latest: () => Prepared; version: number;
+};
+export const AnswerActionsContext = createContext<AnswerActions | null>(null);
 
 const dataOf = <T,>(p: AgAiToolDetailParams): T | undefined =>
   p.result && p.result.success ? (p.result as { data?: T }).data : undefined;
@@ -46,15 +57,36 @@ function ScanDetail(p: AgAiToolDetailParams) {
   );
 }
 
+/**
+ * The answer, as a card: the sentence first (figures bold), how the question was read, and the chart
+ * it added to Answers. A question that can't be answered shows the reader's note, with no card id.
+ */
 function AnswerDetail(p: AgAiToolDetailParams) {
-  const a = dataOf<Answered>(p);
+  const said = dataOf<Answered>(p);
+  const act = useContext(AnswerActionsContext);
+  // Live, like the chart beside it: the same plan, recomputed from the newest rows on each update.
+  const a = useMemo(() => {
+    if (!said?.plan || !act) return said;
+    const now = answer(said.plan, act.latest());
+    return now.empty ? said : { ...said, headline: now.headline, detail: now.detail, reading: now.reading };
+  }, [said, act]);
   if (!a) return null;
   const html = (t: string) => t.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part));
+  if (!a.answerable) return <div className="ask-a ask-note"><p>{a.headline}</p></div>;
+  const removed = !!a.widgetId && !!act?.removed(a.widgetId);
   return (
-    <div className="ag-answer">
-      <p>{html(a.headline)}</p>
-      {a.detail.map((d, i) => <p key={i} className="ag-answer-more">{html(d)}</p>)}
-      {a.chart && <p className="ag-answer-more">Chart added to the Answers page.</p>}
+    <div className="ask-a" data-testid="ask-answer">
+      <p className="ask-headline">{html(a.headline)}</p>
+      {a.detail.map((d, i) => <p key={i} className="ask-detail">{html(d)}</p>)}
+      {a.reading.length > 0 && <Chips label="How I read your question" items={a.reading} />}
+      {a.widgetId && act && !removed && (
+        <div className="ask-actions">
+          <button type="button" className="btn" onClick={() => act.show(a.widgetId!)}><BarChart3 size={14} aria-hidden />View chart</button>
+          <button type="button" className="btn ghost" onClick={() => act.remove(a.widgetId!)}><Trash2 size={14} aria-hidden />Remove</button>
+        </div>
+      )}
+      {removed && <p className="ask-muted">Chart removed from Answers.</p>}
+      <p className="ask-source"><ReadBy mode={a.mode} /> · live figures from your orders{a.chart ? ", as on the chart" : ""}</p>
     </div>
   );
 }
@@ -74,10 +106,12 @@ export const doorstepToolDisplay: Record<string, AgAiToolDisplay> = {
     detail: ScanDetail,
   },
   answer_question: {
-    label: ({ args, status }) => ({
-      text: `${status === "done" ? "Answered" : "Answering"} “${String(args.question ?? "").slice(0, 60)}”`,
-      pill: "Answers page",
-    }),
+    label: ({ args, status, result }) => {
+      const a = result?.success ? (result as { data?: Answered }).data : undefined;
+      const q = `“${String(args.question ?? "").slice(0, 60)}”`;
+      if (a && !a.answerable) return { text: `Read ${q}` };
+      return { text: `${status === "done" ? "Answered" : "Answering"} ${q}`, pill: a?.chart ? "Answers page" : undefined };
+    },
     detail: AnswerDetail,
   },
   open_report: {
@@ -88,4 +122,34 @@ export const doorstepToolDisplay: Record<string, AgAiToolDisplay> = {
   open_carrier_report: {
     label: ({ args, status }) => ({ text: `${status === "done" ? "Opened" : "Opening"} the ${String(args.carrier ?? "carrier")} report` }),
   },
+  // Studio's own agents, in plain words. Reading steps are not shown: they change nothing.
+  add_widget: { label: ({ args, status }) => ({ text: `${status === "done" ? "Added" : "Adding"} ${widgetLabel(args.type)}` }) },
+  configure_widget: { label: ({ args, status, widgetName }) => ({ text: `${status === "done" ? "Set up" : "Setting up"} ${named(widgetName, args.widgetId, "the chart")}` }) },
+  position_widget: { label: ({ args, status, widgetName }) => ({ text: `${status === "done" ? "Moved" : "Moving"} ${named(widgetName, args.widgetId, "a widget")}` }) },
+  remove_widget: { label: ({ args, status, widgetName }) => ({ text: `${status === "done" ? "Removed" : "Removing"} ${named(widgetName, args.widgetId, "a widget")}` }) },
+  add_page_filter: { label: ({ status }) => ({ text: status === "done" ? "Filtered the page" : "Filtering the page" }) },
+  remove_page_filter: { label: ({ status }) => ({ text: status === "done" ? "Removed a page filter" : "Removing a page filter" }) },
+  add_widget_filter: { label: ({ args, widgetName }) => ({ text: `Filtered ${named(widgetName, args.widgetId, "a widget")}` }) },
+  remove_widget_filter: { label: ({ args, widgetName }) => ({ text: `Removed a filter from ${named(widgetName, args.widgetId, "a widget")}` }) },
+  // The target is `args.type.id` ("widget" or "page").
+  delegate_to: { label: ({ args }) => ({ text: `Asked AG Studio's ${(args.type as { id?: string } | undefined)?.id === "page" ? "page" : "widget"} agent` }) },
+  ...Object.fromEntries(["view_report", "view_page", "view_widget", "view_schema", "view_plan", "rename_thread", "create_plan", "update_plan", "clear_plan"]
+    .map((n) => [n, { label: () => ({ text: "" }), hidden: true }])),
+};
+
+/** Widget types as a seller reads them ("a claim clock", "a bar chart"). */
+const WIDGET_WORDS: Record<string, string> = {
+  "doorstep-claim-clock": "a claim clock", "doorstep-failure-points": "failure points", "doorstep-evidence-meter": "an evidence meter",
+  "doorstep-journey": "a parcel journey", "doorstep-money-flow": "a liability waterfall", "doorstep-brief": "Doorstep's brief",
+  value: "a number", grid: "a table", "pivot-grid": "a pivot table", "donut-chart": "a donut chart", "line-chart": "a line chart",
+};
+function widgetLabel(type: unknown): string {
+  const t = String(type ?? "");
+  if (WIDGET_WORDS[t]) return WIDGET_WORDS[t];
+  if (/chart/.test(t)) return `a ${t.replace(/-chart.*$/, "").replace(/-/g, " ")} chart`;
+  return t ? `a ${t.replace(/-/g, " ")}` : "a widget";
+}
+const named = (name: (id: string) => string | undefined, id: unknown, fallback: string) => {
+  const n = id ? name(String(id)) : undefined;
+  return n ? `“${n}”` : fallback;
 };

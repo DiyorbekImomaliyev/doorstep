@@ -12,7 +12,7 @@
  * - No agent can move money: the tools only read the seller's rows and change their charts.
  */
 import type {
-  AgAiConversationItem, AgAiEvent, AgAiOutputItem, AgAiTool, AgAnyAiAgentDefinition, AgConditionDefinition, AgLlmAdapter,
+  AgAiConversationItem, AgAiEvent, AgAiOutputItem, AgAiPromptStarter, AgAiTool, AgAnyAiAgentDefinition, AgConditionDefinition, AgLlmAdapter,
   AgLlmRequest, AgLlmResponse, AgStudioApi,
 } from "ag-studio";
 import { createAiHarness, directLlmRunner } from "ag-studio";
@@ -22,7 +22,7 @@ import type { Prepared } from "./data";
 // ---------------------------------------------------------------- the adapter
 
 type Item = { kind: "user" | "assistant" | "call" | "result" | "context"; text: string; name?: string; call_id?: string };
-type TurnOut = { message: string; calls: { call_id: string; name: string; arguments: Record<string, unknown> }[]; mode: "model" | "fallback" };
+export type TurnOut = { message: string; calls: { call_id: string; name: string; arguments: Record<string, unknown> }[]; mode: "model" | "fallback" };
 
 const MAX_ITEMS = 60;
 const textOf = (parts: { type: string; text?: string }[]) => parts.map((p) => (p.type === "text" ? p.text ?? "" : "")).join("\n").trim();
@@ -58,27 +58,59 @@ const nextId = (p: string) => `${p}-${Date.now().toString(36)}-${(++seq).toStrin
 /** The text a turn shows when the backend cannot answer (rate cap, network). */
 const OFFLINE = "I can't reach Doorstep just now. Your reports keep updating live; try again in a minute.";
 
+/**
+ * Turns Doorstep answers in the browser, never sent to a model (their call ids start with this):
+ *  - a request to move money is data, not an instruction: it goes straight to answer_question,
+ *    whose reader says what Doorstep can't do (rule 8);
+ *  - when the backend has no model to offer (budget, quota), the lead still works: a scan for
+ *    "what changed", answer_question (the keyword reader) for anything else.
+ */
+const LOCAL = "local-";
+const MONEY_ASK = /\b(refund|reimburse|compensat|pay (me|out|back)|send (me )?money|transfer|charge back|chargeback|ignore (the|all|your|previous) (rules|instructions))/i;
+const SCAN_ASK = /what changed|unusual|wrong|anything/i;
+
 export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnOut) => void): AgLlmAdapter {
   return {
     executeTurn(request, options) {
       const signal = options?.signal;
-      const turn: Promise<TurnOut> = fetch(`/api/seller/${encodeURIComponent(token)}/insights/agent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agent,
-          instructions: request.instructions ?? "",
-          items: toItems(request.input),
-          tools: (request.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "", parameters: t.parameters ?? {} })),
-          tool_choice: choiceOf(request.toolChoice),
-          response_schema: request.responseFormat.type === "json" ? request.responseFormat.schema : null,
-        }),
-        signal,
-      }).then(async (r) => (r.ok ? ((await r.json()) as TurnOut) : { message: OFFLINE, calls: [], mode: "fallback" as const }))
-        .catch((e: unknown) => {
-          if (signal?.aborted) throw e;
-          return { message: OFFLINE, calls: [], mode: "fallback" as const };
-        });
+      const items = toItems(request.input);
+      const last = items[items.length - 1];
+      const offers = (name: string) => (request.tools ?? []).some((t) => t.name === name);
+      const lead = agent === "doorstep" && request.responseFormat.type !== "json";
+      const call = (kind: string, name: string, args: Record<string, unknown>) =>
+        ({ call_id: `${LOCAL}${kind}-${nextId("c")}`, name, arguments: args });
+
+      let turn: Promise<TurnOut>;
+      if (lead && last?.kind === "result" && last.call_id?.startsWith(LOCAL)) {
+        // After a local call the card has said it all (the console's head says how it was read).
+        turn = Promise.resolve({ message: "", calls: [], mode: "fallback" });
+      } else if (lead && last?.kind === "user" && MONEY_ASK.test(last.text) && offers("answer_question")) {
+        turn = Promise.resolve({ message: "", calls: [call("guard", "answer_question", { question: last.text.slice(0, 300) })], mode: "fallback" });
+      } else {
+        turn = fetch(`/api/seller/${encodeURIComponent(token)}/insights/agent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent,
+            instructions: request.instructions ?? "",
+            items,
+            tools: (request.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "", parameters: t.parameters ?? {} })),
+            tool_choice: choiceOf(request.toolChoice),
+            response_schema: request.responseFormat.type === "json" ? request.responseFormat.schema : null,
+          }),
+          signal,
+        }).then(async (r) => (r.ok ? ((await r.json()) as TurnOut) : { message: OFFLINE, calls: [], mode: "fallback" as const }))
+          .catch((e: unknown) => {
+            if (signal?.aborted) throw e;
+            return { message: OFFLINE, calls: [], mode: "fallback" as const };
+          })
+          .then((t): TurnOut => {
+            if (!lead || t.mode !== "fallback" || t.calls.length || last?.kind !== "user") return t;
+            const name = SCAN_ASK.test(last.text) && offers("scan_for_anomalies") ? "scan_for_anomalies" : offers("answer_question") ? "answer_question" : null;
+            if (!name) return t;
+            return { message: "", calls: [call("offline", name, name === "answer_question" ? { question: last.text.slice(0, 300) } : {})], mode: "fallback" };
+          });
+      }
       turn.then((t) => onTurn?.(t)).catch(() => undefined);
 
       const messageId = nextId("msg");
@@ -239,6 +271,13 @@ export function scanText(scan: { window: string; findings: Finding[] }): string 
 
 // ---------------------------------------------------------------- the harness
 
+/** What answer_question hands the console: the sentence, how it was read, and the chart it added. */
+export type Answered = {
+  answerable: boolean; headline: string; detail: string[]; reading: string[]; chart: boolean; widgetId?: string; mode: Asked["mode"];
+  /** The plan the figures came from, so the card can recompute them as the data moves. */
+  plan?: Asked["plan"];
+};
+
 export type AgentActions = {
   token: string;
   prepared: () => Prepared;
@@ -256,6 +295,8 @@ The reports: Overview (orders, case rate, money), Carriers (claims, recovery, de
 - "Show me Evri": call open_carrier_report. "Open the cases": call open_report.
 - To change how an existing chart looks (chart type, sorting, labels, title), delegate to the
   widget agent. To add, move or remove widgets or filters on a page, delegate to the page agent.
+- Anything about refunds, payments or contacting someone: call answer_question with the seller's
+  words. It says what Doorstep can and can't do. Never promise an action.
 Never compute or guess a number yourself. Two or three short sentences per reply.`;
 
 /** The tools Studio's own agents keep: everything except reading data rows. */
@@ -263,6 +304,13 @@ const withoutRows = (def: AgAnyAiAgentDefinition): AgAnyAiAgentDefinition => ({
   ...def,
   tools: def.tools ? (ctx, p) => def.tools!(ctx, p).filter((t) => t.name !== "execute_query") : undefined,
 });
+
+/** The console's starters (the words on the button, and what it sends). */
+export const STARTERS: AgAiPromptStarter[] = [
+  { label: "What changed in the last four weeks?", prompt: "What changed in the last four weeks? Anything I should act on?" },
+  { label: "Which carrier cost me most this month?", prompt: "Which carrier cost me most this month?" },
+  { label: "Make the case rate chart a bar chart", prompt: "On the Overview, make 'Case rate by delivery method' a horizontal bar chart." },
+];
 
 export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActions }, onTurn?: (agent: string, t: TurnOut) => void) {
   const a = () => actions.current;
@@ -282,12 +330,16 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
     params: (s) => s.object({ question: s.string({ description: "The seller's question, in their words" }) }),
     execute: async (args: { question: string }, ctx) => {
       const asked = await askDoorstep(a().token, String(args.question ?? "").slice(0, 300), ctx.signal);
-      if (!asked.plan.answerable) return ctx.success(`Not answerable from the reports: ${asked.plan.note}`, { headline: asked.plan.note, detail: [], chart: false });
+      if (!asked.plan.answerable) {
+        const out: Answered = { answerable: false, headline: asked.plan.note, detail: [], reading: [], chart: false, mode: asked.mode };
+        return ctx.success(`Not answerable from the reports: ${asked.plan.note}`, out);
+      }
       const result = answer(asked.plan, a().prepared());
-      if (!result.empty) a().addAnswer(asked);
+      const widgetId = result.empty ? undefined : a().addAnswer(asked);
       const plain = (t: string) => t.replace(/\*\*/g, "");
       const text = [plain(result.headline), ...result.detail.map(plain), result.empty ? "No chart added." : "Chart added to the Answers page."].join("\n");
-      return ctx.success(text, { headline: result.headline, detail: result.detail, chart: !result.empty });
+      const out: Answered = { answerable: true, headline: result.headline, detail: result.detail, reading: result.reading, chart: !result.empty, widgetId, mode: asked.mode, plan: asked.plan };
+      return ctx.success(text, out);
     },
   });
   const report: AgAiTool = api.defineAiTool({
@@ -329,10 +381,6 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
       directLlmRunner({ ...withoutRows(builtIn.page), maxTurns: 6, adapter: adapterFor("page") }),
     ],
     primary: "doorstep",
-    promptStarters: [
-      { label: "What changed in the last four weeks?", prompt: "What changed in the last four weeks? Anything I should act on?" },
-      { label: "Which carrier cost me most this quarter?", prompt: "Which carrier cost me the most net delivery loss in the last 90 days?" },
-      { label: "Make the case rate chart a bar chart", prompt: "On the Overview, make 'Case rate by delivery method' a horizontal bar chart." },
-    ],
+    promptStarters: STARTERS,
   }));
 }
