@@ -291,7 +291,6 @@ button.ds-meter-row:hover, .ds-fp li > button:hover { background: color-mix(in s
 .ask-head p .ds-readby { font-size: inherit; color: var(--text-2); }
 .ask-new { height: 30px; padding: 0 10px; font-size: 12.5px; }
 .ask-sweep { flex: none; margin-top: -2px; border-radius: 0; }
-.ask-start-more { margin: 4px 2px 0; font-size: 12px; color: var(--text-3); line-height: 1.4; }
 .ask-reply { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text); }
 .ask-reply strong { font-weight: 650; font-variant-numeric: tabular-nums; }
 .ask-note { color: var(--text-2); }

@@ -278,7 +278,6 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
                 const label = carrier ? `Build a page to chase ${carrier}` : s.label;
                 return <button key={s.label} className="ask-starter" onClick={() => send(carrier ? chaseQuestion(carrier) : s.prompt)} disabled={busy || !harness}>{label}</button>;
               })}
-              <p className="ask-start-more">Or ask for a figure, a breakdown, or a change to any chart on the page.</p>
             </div>
           )}
           {harness && turns.map((t) => (
