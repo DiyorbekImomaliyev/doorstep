@@ -21,7 +21,7 @@ import type { OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
 import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
-import { chartSelection, chartStakeByMethod, chartThemeOverrides, chartThemes, currencyColumns, customChartThemes } from "../grid/charts";
+import { chartSelection, chartStakeByMethod, chartThemeOverrides, chartThemes, currencyColumns, customChartThemes, methodNameColumn } from "../grid/charts";
 import { afterGlide, useMedia, useReducedMotion } from "../motion";
 import { Says, type Part } from "../components/ai";
 import DetailPanel from "../grid/DetailPanel";
@@ -237,7 +237,11 @@ function OrderCell(p: CustomCellRendererProps<OrderRow>) {
       </button>
       <span className="item-tile" aria-hidden>{k.icon}</span>
       <span className="cell-two" style={{ gap: 4 }}>
-        <span className="item-name">{r.item}</span>
+        <span className="item-name">
+          {p.api.findGetParts({ node: p.node, column: p.column ?? null, value: r.item }).map((x, i) => (
+            x.match ? <mark key={i} className={`find-mark${x.activeMatch ? " active" : ""}`}>{x.value}</mark> : x.value
+          ))}
+        </span>
         <span className="order-meta">
           <span className="tag">{k.label}</span>
           <span className="sub num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
@@ -729,7 +733,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     {
       colId: "item", headerName: "Order", field: "item", flex: 2.2, minWidth: phone ? 180 : 280, lockVisible: true,
-      filter: "agTextColumnFilter", getQuickFilterText: (p) => haystack(p.data),
+      filter: "agTextColumnFilter", getQuickFilterText: (p) => haystack(p.data), getFindText: (p) => p.data?.item ?? null,
       cellRenderer: OrderCell,
     },
     {
@@ -769,11 +773,12 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: MoneyCell,
     },
     {
-      colId: "method", headerName: "Delivery", field: "method", chartDataType: "category", width: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
+      colId: "method", headerName: "Delivery", field: "method", chartDataType: "excluded", width: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
       filter: "agSetColumnFilter", filterParams: { preservePreviousValues: true, valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
       valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <DeliveryCell r={p.data} /> : null),
     },
+    methodNameColumn,
     ...currencyColumns(),
     {
       colId: "next", headerName: "Next step", hide: true, width: 160,

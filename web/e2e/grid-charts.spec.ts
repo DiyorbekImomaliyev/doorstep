@@ -30,3 +30,23 @@ test("GC-02 the toolbar Chart button opens a chart", async ({ page }) => {
   await expect(page.locator(".ag-chart-canvas-wrapper canvas, .ag-chart canvas").first()).toBeVisible();
   await page.waitForTimeout(800); await page.locator(".ag-chart, .ag-dialog").first().screenshot({ path: "/tmp/gc/chart.png" });
 });
+
+test("GC-03 Find highlights matches in the grid when the search has text", async ({ page }) => {
+  await openShop(page);
+  await page.getByRole("searchbox", { name: "Search orders" }).fill("jacket");
+  await expect(page.locator(".find-mark").first()).toBeVisible();
+  await page.locator(".orders-grid").screenshot({ path: "/tmp/gc/find.png" });
+});
+
+test("GC-04 selection chart has readable labels and no blank category", async ({ page }) => {
+  await openShop(page);
+  await page.locator(".ag-row:not(.ag-row-pinned) .ag-cell[col-id=method]").first().hover();
+  await page.mouse.down();
+  await page.locator(".ag-row:not(.ag-row-pinned) .ag-cell[col-id=money]").nth(8).hover();
+  await page.mouse.up();
+  await page.locator(".ag-row:not(.ag-row-pinned) .ag-cell[col-id=money]").nth(8).click({ button: "right" });
+  await page.locator(".ag-menu-option", { hasText: /^Chart$/ }).first().click();
+  await expect(page.locator(".ag-chart canvas").first()).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.locator(".ag-chart, .ag-dialog").first().screenshot({ path: "/tmp/gc/chart-sel.png" });
+});

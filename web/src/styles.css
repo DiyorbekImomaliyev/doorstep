@@ -1006,3 +1006,7 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .detail-timeline .skeleton-lines { display: grid; gap: 8px; padding: 4px 0 6px; }
 .detail-timeline .timeline-more { margin-top: 6px; height: 28px; padding: 0 10px; font-size: 12.5px; }
 .detail-timeline .ag-cell > span { display: block; overflow: hidden; text-overflow: ellipsis; }
+
+/* AG Grid Find: matches inside the order name. */
+.find-mark { background: #f3e3e7; color: inherit; border-radius: 3px; padding: 0 1px; box-shadow: 0 0 0 1px #e3c3cb; }
+.find-mark.active { background: #7b2d3d; color: #fff; box-shadow: none; }

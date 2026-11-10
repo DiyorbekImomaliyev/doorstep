@@ -1,6 +1,7 @@
 import type { CustomChartThemes, GridApi, GridOptions } from "ag-grid-community";
 import type { OrderRow } from "../api";
 import { C } from "../tokens";
+import { METHOD } from "../format";
 
 const INTER = "'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 /** Maroon, teal, sand, slate, stone: the Studio palette, so a chart here matches Insights. */
@@ -46,6 +47,13 @@ export const CURRENCY_COLS = [
   { colId: "stakeUSD", currency: "USD", symbol: "$" },
 ] as const;
 
+/** Delivery method as the seller reads it ("Home"), the category of every chart. */
+export const methodNameColumn = {
+  colId: "methodName", headerName: "Delivery", hide: true, suppressColumnsToolPanel: true,
+  chartDataType: "category" as const, filter: "agSetColumnFilter",
+  valueGetter: (p: { data?: OrderRow }) => (p.data?.method ? METHOD[p.data.method] ?? p.data.method : "Not chosen"),
+};
+
 export function currencyColumns() {
   return CURRENCY_COLS.map((c) => ({
     colId: c.colId, headerName: `At stake ${c.symbol}`, hide: true, suppressColumnsToolPanel: true, filter: false,
@@ -82,13 +90,23 @@ export function chartSelection(api: GridApi<OrderRow>) {
   const range = api.getCellRanges()?.[0];
   if (!range) return;
   const ids = range.columns.map((c) => c.getColId()).filter((id) => id !== "action");
-  const category = ids.find((id) => ["method", "status", "lane", "next", "buyer"].includes(id)) ?? "method";
-  const series = ids.filter((id) => id !== category);
+  const category = (ids.find((id) => ["method", "status", "next", "buyer"].includes(id)) ?? "method").replace(/^method$/, "methodName");
+  const series = ids.filter((id) => id !== category && id !== "method");
   const a = range.startRow?.rowIndex ?? 0, b = range.endRow?.rowIndex ?? a;
   openChart(api, category, series.length ? series : ["money"], [Math.min(a, b), Math.max(a, b)]);
 }
 
-/** One click: money at stake by delivery method, for the orders the grid shows, per currency. */
+/** One click: money at stake by delivery method, per currency. Cross-filter: a bar click filters the grid. */
 export function chartStakeByMethod(api: GridApi<OrderRow>) {
-  openChart(api, "method", ["money"]);
+  const cur = currenciesShown(api);
+  if (!cur.length) return undefined;
+  const sym = cur.map((c) => c.symbol).join(" and ");
+  return api.createCrossFilterChart({
+    chartType: "column",
+    chartThemeName: "doorstep",
+    cellRange: { columns: ["methodName", ...cur.map((c) => c.colId)] },
+    aggFunc: "sum",
+    suppressChartRanges: true,
+    chartThemeOverrides: { common: { axes: { number: { title: { enabled: true, text: `At stake (${sym})` } } } } },
+  });
 }
