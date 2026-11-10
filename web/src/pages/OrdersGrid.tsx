@@ -21,6 +21,8 @@ import type { OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
 import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
+import { useDueColumns } from "../grid/due";
+import { exportPackingList, packingIcon } from "../grid/packing";
 import { chartSelection, chartStakeByMethod, chartThemeOverrides, chartThemes, currencyColumns, customChartThemes, methodNameColumn } from "../grid/charts";
 import { isPivoting, pivotColumns, togglePivot } from "../grid/pivot";
 import { CARD_HEIGHT, CARD_QUERY, withCard } from "../grid/OrderCard";
@@ -591,6 +593,7 @@ const lucide = (body: string) =>
   `<svg class="ds-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const PAGE = '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>';
 const gridIcons = {
+  csvExport: packingIcon, // an unused built-in slot: the toolbar's "Packing list" button
   columns: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>'),
   excelExport: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 9v12"/><path d="M15 9v12"/>'),
   pdfExport: lucide(`${PAGE}<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`),
@@ -722,6 +725,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   // show a column of dashes: the column appears only when some row has a score.
   const scored = useMemo(() => rows.some((r) => r.delivery_risk != null), [rows]);
 
+  const dueColumns = useDueColumns(rows, phone);
   const columns = useMemo<ColDef<OrderRow>[]>(() => [
     {
       colId: "lane", headerName: "Lane", rowGroup: grouped, hide: true, suppressColumnsToolPanel: true,
@@ -776,6 +780,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         ((x.data?.money_at_stake_minor ?? 0) - (y.data?.money_at_stake_minor ?? 0)) || ((x.data?.amount_minor ?? 0) - (y.data?.amount_minor ?? 0)),
       cellRenderer: MoneyCell,
     },
+    ...dueColumns,
     {
       colId: "method", headerName: "Delivery", field: "method", chartDataType: "excluded", width: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
       filter: "agSetColumnFilter", filterParams: { preservePreviousValues: true, valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
@@ -802,7 +807,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       suppressMovable: true, suppressColumnsToolPanel: true, filter: false, cellClass: "cell-end",
       cellRenderer: ActionCell, cellRendererParams: { onOpen },
     },
-  ], [grouped, onOpen, scored, phone]);
+  ], [grouped, onOpen, scored, phone, dueColumns]);
 
   // Under 600 px: one card column in place of the others.
   const cardColumns = useMemo(() => withCard(columns, card, ActionCell, onOpen, (r) => (r ? haystack(r) : "")), [columns, card, onOpen]);
@@ -878,6 +883,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       { key: "chart", icon: "chart", tooltip: "Chart", action: ({ api: a }) => chartStakeByMethod(a) },
       { key: "pivot", icon: "pivotPanel", tooltip: "Pivot", action: ({ api: a }) => togglePivot(a) },
       { key: "excel", icon: "excelExport", tooltip: "Export to Excel", action: ({ api: a }) => exportExcel(a) },
+      { key: "packing", icon: "csvExport", tooltip: "Packing list", action: ({ api: a }) => exportPackingList(a) },
       { key: "handoff", icon: "pdfExport", tooltip: "Download hand-off report", action: () => handoffRef.current?.() },
     ],
   }), []);
