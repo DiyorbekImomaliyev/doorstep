@@ -971,4 +971,13 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .orders-grid .ag-toolbar-button[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 .orders-grid .ag-toolbar-button .ds-icon { width: 15px; height: 15px; }
 .orders-grid .ag-toolbar-separator { margin: 12px 4px; border-color: var(--line); }
+/* The Row Group Panel in the toolbar: the grouping as quiet pills. */
+.orders-grid .ag-toolbar-panel { padding: 0; }
+.orders-grid .ag-toolbar .ag-column-drop-horizontal { background: transparent; gap: 2px; }
+.orders-grid .ag-toolbar .ag-column-drop-horizontal-icon { color: var(--text-3); }
+.orders-grid .ag-toolbar .ag-column-drop-cell { height: 26px; padding: 0 4px 0 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; color: var(--text); font: 550 12.5px/1 var(--font); }
+.orders-grid .ag-toolbar .ag-column-drop-cell .ag-icon-grip { color: var(--line-2); }
+.orders-grid .ag-toolbar .ag-column-drop-cell-button:hover { color: var(--accent); }
+.orders-grid .ag-toolbar .ag-column-drop-empty-message { color: var(--text-3); font-size: 12.5px; }
+.orders-grid .lane-row.group-by .lane-name { font-weight: 550; }
 @media (max-width: 640px) { .orders-grid .ag-toolbar { display: none; } }

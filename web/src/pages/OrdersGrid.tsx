@@ -6,13 +6,14 @@ import {
 import {
   AllCommunityModule, ModuleRegistry,
   type CellKeyDownEvent, type ColDef, type DefaultMenuItem, type ExcelStyle, type FullWidthCellKeyDownEvent, type GetContextMenuItemsParams,
-  type GridApi, type IRowNode, type IStatusPanelValueFormatterParams, type MenuItemDef, type ProcessCellForExportParams,
-  type RowClickedEvent, type SideBarDef, type StatusPanelDef, type Toolbar,
+  type GetMainMenuItemsParams, type GridApi, type IAggFuncParams, type IRowNode, type IStatusPanelValueFormatterParams, type MenuItemDef,
+  type ProcessCellForExportParams, type RowClickedEvent, type ShowValuesAsDef, type ShowValuesAsTransformParams, type SideBarDef,
+  type StatusPanelDef, type Toolbar,
 } from "ag-grid-community";
 import {
   CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
   MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
-  AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule,
+  AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, AggregationModule, RowGroupingPanelModule, ShowValuesAsModule,
 } from "ag-grid-enterprise";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
 import type { OrderRow } from "../api";
@@ -42,6 +43,7 @@ ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
   ColumnsToolPanelModule, FiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
   StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, CellSelectionModule, ClipboardModule,
+  AggregationModule, RowGroupingPanelModule, ShowValuesAsModule,
 ]);
 
 
@@ -65,8 +67,60 @@ export function laneOf(r: OrderRow): Lane {
 export function sumStake(rows: OrderRow[]): string {
   const by: Record<string, number> = {};
   rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
+  return stakeText(by);
+}
+function stakeText(by: Record<string, number>): string {
   const parts = Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => money(v, c));
-  return parts.length ? parts.join(" + ") : money(0, "GBP");
+  return parts.length ? parts.join(" + ") : money(0, Object.keys(by)[0] ?? "GBP");
+}
+
+/**
+ * Money at stake, aggregated by AG Grid for group rows (and the grand total): kept per currency, so
+ * a group never adds a pound to a dollar. `value` is the plain total, for single-currency compares.
+ */
+export type StakeTotal = { by: Record<string, number>; value: number; toString: () => string };
+function stakeAgg(p: IAggFuncParams<OrderRow>): StakeTotal {
+  const by: Record<string, number> = {};
+  const add = (c: string, v: number) => (by[c] = (by[c] ?? 0) + v);
+  for (const child of p.rowNode.childrenAfterFilter ?? []) {
+    if (child.group) Object.entries((child.aggData?.money as StakeTotal | undefined)?.by ?? {}).forEach(([c, v]) => add(c, v));
+    else if (child.data) add(child.data.currency, child.data.money_at_stake_minor);
+  }
+  return { by, value: Object.values(by).reduce((a, b) => a + b, 0), toString: () => stakeText(by) };
+}
+const aggFuncs = { stake: stakeAgg };
+
+/** "% of total" on At stake, within each currency: a pound's share of the pounds, never of dollars. */
+function shareOfCurrency(p: ShowValuesAsTransformParams<OrderRow>): number | null {
+  const r = p.node.data;
+  if (!r || p.node.group) return null;
+  let total = 0;
+  p.api.forEachNodeAfterFilter((n) => { if (!n.group && n.data?.currency === r.currency) total += n.data.money_at_stake_minor; });
+  return total ? r.money_at_stake_minor / total : null;
+}
+const stakeShare: ShowValuesAsDef<OrderRow> = {
+  precision: 1,
+  modes: {
+    percentOfGrandTotal: { transform: shareOfCurrency, displayName: "% of total", description: "Share of the money at stake in these orders, per currency." },
+    percentOfColumnTotal: false, percentOfRowTotal: false, percentOfParentRowTotal: false, percentOfParentColumnTotal: false,
+  },
+};
+
+/** What a group row is called: the lane's name, or what the grouped column's cells say. */
+function groupLabel(node: IRowNode): string {
+  const col = node.rowGroupColumn?.getColId();
+  const key = node.key == null ? "" : String(node.key);
+  if (col === "lane") return LANES[key as Lane]?.label ?? key;
+  if (col === "method") return key ? METHOD[key] ?? key : "Not chosen";
+  return key || "None";
+}
+
+/** The orders under a group row that pass the filters, however deep the grouping goes. */
+function leavesOf(node: IRowNode): OrderRow[] {
+  const out: OrderRow[] = [];
+  const walk = (n: IRowNode) => (n.childrenAfterFilter ?? []).forEach((c) => (c.group ? walk(c) : c.data && out.push(c.data as OrderRow)));
+  walk(node);
+  return out;
 }
 
 /**
@@ -165,8 +219,10 @@ function OrderCell(p: CustomCellRendererProps<OrderRow>) {
   const r = p.data;
   if (!r) return null;
   const k = itemKind(r.item);
-  // In the Needs-you lane, a quiet step number: the order to work through them in.
-  const step = laneOf(r) === "you" ? (p.node.parent?.childrenAfterSort?.indexOf(p.node) ?? -1) + 1 : 0;
+  // In the Needs-you lane, a quiet step number: the order to work through them in. Only while the
+  // lane is the grouping (a seller's own grouping splits the work order, so the numbers would restart).
+  const under = p.node.parent?.rowGroupColumn?.getColId();
+  const step = laneOf(r) === "you" && (!under || under === "lane") ? (p.node.parent?.childrenAfterSort?.indexOf(p.node) ?? -1) + 1 : 0;
   return (
     <div className="order-cell">
       {step > 0 && <span className="step-no num" aria-hidden>{step}</span>}
@@ -212,7 +268,7 @@ function MoneyCell(p: CustomCellRendererProps<OrderRow>) {
   const r = p.data;
   if (!r) return null;
   const stake = r.money_at_stake_minor;
-  const share = p.column?.getShowValuesAs() ? p.valueFormatted : null;
+  const share = p.column?.getShowValuesAs() ? p.valueFormatted || "—" : null;
   const sub = share != null ? money(stake, r.currency) : stake === r.amount_minor ? null : `of ${money(r.amount_minor, r.currency)}`;
   return (
     <div className={`money-cell ${stake ? "" : "none"}`}>
@@ -223,14 +279,16 @@ function MoneyCell(p: CustomCellRendererProps<OrderRow>) {
 }
 
 /** Money cells in the selected ranges, per currency: a pound is never added to a dollar. */
-function selectedStake(api: GridApi): { by: Record<string, number>; n: Record<string, number> } {
+function selectedStake(api: GridApi): { by: Record<string, number>; n: Record<string, number>; groups: number } {
   const by: Record<string, number> = {}, n: Record<string, number> = {};
   const seen = new Set<string>();
+  let groups = 0; // group rows carry an aggregate in this column; they are not orders
   for (const range of api.getCellRanges() ?? []) {
     const { startRow: a, endRow: b } = range;
     if (!a || !b || a.rowPinned || b.rowPinned || !range.columns.some((c) => c.getColId() === "money")) continue;
     for (let i = Math.min(a.rowIndex, b.rowIndex); i <= Math.max(a.rowIndex, b.rowIndex); i++) {
       const node = api.getDisplayedRowAtIndex(i);
+      if (node?.group && node.aggData?.money != null) groups++;
       const r = node && !node.group ? (node.data as OrderRow | undefined) : undefined;
       if (!r || seen.has(r.order_id)) continue;
       seen.add(r.order_id);
@@ -238,13 +296,13 @@ function selectedStake(api: GridApi): { by: Record<string, number>; n: Record<st
       n[r.currency] = (n[r.currency] ?? 0) + 1;
     }
   }
-  return { by, n };
+  return { by, n, groups };
 }
 
 /** AG Grid's aggregation panel, in money: Sum and Average of the selected At-stake cells per currency. */
 export function selectionFormatter(p: IStatusPanelValueFormatterParams): string {
-  if (p.key === "count") return String(p.value ?? 0);
-  const { by, n } = selectedStake(p.api);
+  const { by, n, groups } = selectedStake(p.api);
+  if (p.key === "count") return String((p.value ?? 0) - groups);
   const cur = Object.keys(by);
   if (!cur.length) return p.value == null ? "" : Number(p.value).toLocaleString("en-GB", { maximumFractionDigits: 2 });
   return cur.map((c) => money(p.key === "avg" ? Math.round(by[c] / n[c]) : by[c], c)).join(p.key === "avg" ? " · " : " + ");
@@ -309,21 +367,26 @@ function RiskTip({ data: r }: CustomTooltipProps<OrderRow>) {
 
 // ---------- lanes, detail, status bar ----------
 
-/** A lane: who acts next. Count and money at stake per currency (never summed across currencies). */
-function LaneRow(p: CustomCellRendererProps<OrderRow>) {
+/**
+ * A group row: a lane (who acts next) or any column the seller grouped by. Count, and money at stake
+ * from AG Grid's aggregation (per currency, never summed across currencies).
+ */
+function GroupRow(p: CustomCellRendererProps<OrderRow>) {
   const open = useExpanded(p.node);
   useModelTick(p.api);
   const key = String(p.node.key) as Lane;
-  const meta = LANES[key];
-  const rows = (p.node.childrenAfterFilter ?? []).map((n) => n.data).filter((d): d is OrderRow => !!d);
-  if (!meta) return null;
+  const lane = p.node.rowGroupColumn?.getColId() === "lane" ? LANES[key] : undefined;
+  const rows = leavesOf(p.node);
+  const label = groupLabel(p.node);
+  const stake = (p.node.aggData?.money as StakeTotal | undefined)?.toString() ?? sumStake(rows);
   return (
-    <div className={`lane-row lane-${key}`} aria-expanded={open} aria-label={`${meta.label}: ${rows.length} order${rows.length === 1 ? "" : "s"}`}>
+    <div className={`lane-row ${lane ? `lane-${key}` : "group-by"}`} style={p.node.level ? { paddingLeft: 2 + p.node.level * 24 } : undefined}
+      aria-expanded={open} aria-label={`${label}: ${rows.length} order${rows.length === 1 ? "" : "s"}`}>
       <ChevronDown className="chev" aria-hidden />
-      <span className="lane-name">{meta.label}</span>
+      <span className="lane-name">{label}</span>
       <span className="count-chip num">{rows.length}</span>
-      <span className="lane-hint">{meta.hint}</span>
-      <span className="lane-meta num">{sumStake(rows)} at stake</span>
+      {lane && <span className="lane-hint">{lane.hint}</span>}
+      <span className="lane-meta num">{stake} at stake</span>
     </div>
   );
 }
@@ -471,7 +534,7 @@ function exportParams() {
     columnKeys: EXPORT_COLUMNS,
     processCellCallback: (q: { column: { getColId(): string }; node?: IRowNode | null; value: unknown }) =>
       (q.node?.data ? exportValue(q.column.getColId(), q.node.data as OrderRow, q.value) : ""),
-    processRowGroupCallback: (q: { node: IRowNode }) => LANES[q.node.key as Lane]?.label ?? String(q.node.key),
+    processRowGroupCallback: (q: { node: IRowNode }) => groupLabel(q.node),
     skipPinnedTop: true,
   };
 }
@@ -587,6 +650,7 @@ const liveNotes = { current: new Map<string, DoorstepNote>() };
 const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true,
   suppressNoteActions: (p) => doorstepOwns(liveNotes.current, p.data?.order_id, p.column.getColId()) };
 const noteText = { addNote: "Add note", editNote: "Edit note", viewNote: "View note", deleteNote: "Delete note", notePlaceholder: "Note" };
+const gridText = { ...noteText, rowGroupColumnsEmptyMessage: "Drag a header here to group" };
 const rowStyle = { cursor: "pointer" };
 const cellSelection = { enableHeaderHighlight: true } as const;
 
@@ -672,7 +736,9 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: OrderCell,
     },
     {
-      colId: "status", headerName: "Journey", field: "status", width: 166, hide: phone, enableCellChangeFlash: true,
+      // The value is what the cell says ("Lost by carrier"), so grouping by Journey reads like the column.
+      colId: "status", headerName: "Journey", width: 166, hide: phone, enableCellChangeFlash: true,
+      valueGetter: (p) => (p.data ? journeyLabel(p.data) : null), enableRowGroup: true, suppressHeaderMenuButton: false,
       // Filtered (and asked) by what the cell says: "Lost by carrier", not "Case open". Values a
       // reading picked survive the 10 s poll even when the last matching row leaves.
       filter: "agSetColumnFilter", filterValueGetter: (p) => (p.data ? journeyLabel(p.data) : null),
@@ -698,24 +764,26 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     {
       colId: "money", headerName: "At stake", width: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
-      filter: "agNumberColumnFilter",
+      filter: "agNumberColumnFilter", suppressHeaderMenuButton: false,
+      // AG Grid aggregates it for group rows (per currency) and offers "% of total" in the column menu.
+      aggFunc: "stake", enableShowValuesAs: true, showValuesAsDef: stakeShare,
       comparator: (_a, _b, x, y) =>
         ((x.data?.money_at_stake_minor ?? 0) - (y.data?.money_at_stake_minor ?? 0)) || ((x.data?.amount_minor ?? 0) - (y.data?.amount_minor ?? 0)),
       cellRenderer: MoneyCell,
     },
     {
-      colId: "method", headerName: "Delivery", field: "method", width: 120, hide: phone,
+      colId: "method", headerName: "Delivery", field: "method", width: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
       filter: "agSetColumnFilter", filterParams: { preservePreviousValues: true, valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
       valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <DeliveryCell r={p.data} /> : null),
     },
     {
       colId: "next", headerName: "Next step", hide: true, width: 160,
-      valueGetter: (p) => (p.data ? routeLabel(p.data) || nextAction(p.data).label : ""), filter: "agSetColumnFilter",
+      valueGetter: (p) => (p.data ? routeLabel(p.data) || nextAction(p.data).label : ""), filter: "agSetColumnFilter", enableRowGroup: true,
       filterParams: { preservePreviousValues: true },
     },
     {
-      colId: "buyer", headerName: "Buyer area", field: "buyer_area", hide: true, width: 120, filter: "agSetColumnFilter",
+      colId: "buyer", headerName: "Buyer area", field: "buyer_area", hide: true, width: 120, filter: "agSetColumnFilter", enableRowGroup: true,
     },
     {
       colId: "updated", headerName: "Updated", field: "last_update", hide: true, width: 110, initialSort: "desc", initialSortIndex: 1, type: "rightAligned",
@@ -761,6 +829,16 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     return items;
   }, [onOpen, onHandoff]);
 
+  // The header menu (on hover): sort, group by this column, and "% of total" on At stake.
+  const getMainMenuItems = useCallback((p: GetMainMenuItemsParams<OrderRow>): (DefaultMenuItem | MenuItemDef)[] => {
+    const col = p.column;
+    if (!col) return p.defaultItems as DefaultMenuItem[];
+    const items: (DefaultMenuItem | MenuItemDef)[] = ["sortAscending", "sortDescending"];
+    if (col.getColDef().enableRowGroup) items.push("separator", col.isRowGroupActive() ? "rowUnGroup" : "rowGroup");
+    if (col.getColDef().enableShowValuesAs) items.push("separator", "showValuesAsSubMenu");
+    items.push("separator", "resetColumns");
+    return items;
+  }, []);
   const onRowClicked = useCallback((e: RowClickedEvent<OrderRow>) => {
     if (isGuide(e.node)) return;
     if (e.node.group) { e.node.setExpanded(!e.node.expanded); return; }
@@ -783,6 +861,8 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   const toolbar = useMemo((): Toolbar => ({
     alignment: "right",
     items: [
+      // AG Grid's Row Group Panel, in the toolbar: the grouping as pills; drag a header in to group by it.
+      { key: "groups", toolbarItem: "agRowGroupPanelToolbarItem", alignment: "left" },
       { key: "columns", icon: "columns", tooltip: "Columns and filters", action: ({ api: a }) => toggleColumnsPanel(a) },
       { key: "excel", icon: "excelExport", tooltip: "Export to Excel", action: ({ api: a }) => exportExcel(a) },
       { key: "handoff", icon: "pdfExport", tooltip: "Download hand-off report", action: () => handoffRef.current?.() },
@@ -824,7 +904,11 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         processCellForClipboard={clipboardValue}
         // Row grouping: lanes in a fixed order, open by default, drawn as one full-width row.
         groupDisplayType="groupRows"
-        groupRowRenderer={LaneRow}
+        groupRowRenderer={GroupRow}
+        aggFuncs={aggFuncs}
+        suppressAggFuncInHeader
+        getMainMenuItems={getMainMenuItems}
+        suppressMenuHide={false}
         // Lanes always open; detail panels stay closed until the seller asks (masterDefaultExpanded).
         groupDefaultExpanded={-1}
         masterDefaultExpanded={0}
@@ -857,7 +941,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         loadingRows={loadingRows}
         notesDataSource={notesDataSource}
         noteTrigger="hover"
-        localeText={noteText}
+        localeText={gridText}
         noteShowDelay={300}
         domLayout="autoHeight"
       />

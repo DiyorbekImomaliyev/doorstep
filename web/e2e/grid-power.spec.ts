@@ -80,3 +80,50 @@ test("GT-02 dragging across At-stake cells shows AG Grid's live Sum in money; a 
   await page.locator('.orders-grid .ag-row .ag-cell[col-id="status"]').first().click();
   await expect(page.getByRole("dialog", { name: /^Order / })).toBeVisible();
 });
+
+async function headerMenu(page: Page, colId: string) {
+  const head = page.locator(`.orders-grid .ag-header-cell[col-id="${colId}"]`);
+  await head.hover();
+  await head.locator(".ag-header-cell-menu-button").click();
+}
+
+test("GT-03 Group by Delivery from the header menu: group rows count every order and sum the money; the pill ungroups", async ({ page }) => {
+  await openShop(page);
+  await allOrders(page);
+  const total = Number((await page.locator(".table-card .head .count-chip").innerText()).trim());
+  const toolbar = page.locator(".orders-grid .ag-toolbar");
+  await expect(toolbar.locator(".ag-column-drop-cell", { hasText: "Lane" })).toBeVisible(); // lanes are the default grouping
+
+  await headerMenu(page, "method");
+  await page.getByRole("menuitem", { name: "Group by Delivery" }).click();
+
+  const pill = toolbar.locator(".ag-column-drop-cell", { hasText: "Delivery" });
+  await expect(pill).toBeVisible();
+  const groups = page.locator(".orders-grid .lane-row.group-by");
+  await expect(groups.first()).toBeVisible();
+  await expect(groups.first()).toHaveAttribute("aria-label", /^(Home|Locker|Signature|Not chosen)[^:]*: \d+ orders?$/);
+  await expect(groups.first().locator(".lane-meta")).toHaveText(/^[£$][\d,.]+( \+ [£$][\d,.]+)? at stake$/);
+  const counts = await groups.locator(".count-chip").allInnerTexts();
+  expect(counts.reduce((a, c) => a + Number(c), 0)).toBe(total); // every order sits in exactly one group
+
+  await pill.locator(".ag-column-drop-cell-button").click();
+  await expect(groups).toHaveCount(0);
+  await expect(toolbar.locator(".ag-column-drop-cell", { hasText: "Lane" })).toBeVisible();
+});
+
+test("GT-04 At stake shows values as % of total, per currency, from its header menu", async ({ page }) => {
+  await openShop(page);
+  await allOrders(page);
+  await headerMenu(page, "money");
+  await page.getByRole("menuitem", { name: /Show Values As/i }).hover();
+  await page.locator(".ag-menu-option", { hasText: "% of total" }).click();
+
+  const amts = page.locator('.orders-grid .ag-row .ag-cell[col-id="money"] .amt');
+  await expect(amts.first()).toHaveText(/^\d{1,3}\.\d%$/);
+  const subs = await page.locator('.orders-grid .ag-row .ag-cell[col-id="money"]').evaluateAll((cells) =>
+    cells.map((c) => ({ pct: c.querySelector(".amt")?.textContent ?? "", money: c.querySelector(".sub")?.textContent ?? "" })));
+  // Each currency's shares add up to 100% (a pound is never a share of dollars).
+  const byCur: Record<string, number> = {};
+  for (const s of subs) byCur[s.money.trim().startsWith("$") ? "USD" : "GBP"] = (byCur[s.money.trim().startsWith("$") ? "USD" : "GBP"] ?? 0) + parseFloat(s.pct);
+  for (const v of Object.values(byCur)) expect(Math.abs(v - 100)).toBeLessThan(1);
+});
