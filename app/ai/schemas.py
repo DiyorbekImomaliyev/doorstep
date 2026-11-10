@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -138,6 +138,50 @@ class InsightPlan(BaseModel):
         if self.answerable and self.group_by not in groups_for(self.metric):
             raise ValueError(f"{self.metric} cannot be split by {self.group_by}")
         return self
+
+
+# ---------------------------------------------------------------- G3 ask the grid
+
+GridValue = Annotated[str, Field(min_length=1, max_length=40)]
+GridSortColumn = Literal["money", "risk", "proof", "updated", "status"]
+
+
+class GridMenu(BaseModel):
+    """G3: what the Control Room grid can filter by, read in the browser from AG Grid's AI Toolkit
+    schema and pruned to allowlisted columns: journey labels, next steps and delivery methods.
+    Never an item, a buyer, an order reference or a postcode (rule 9)."""
+
+    status: list[GridValue] = Field(default_factory=list, max_length=30)
+    next: list[GridValue] = Field(default_factory=list, max_length=30)
+    method: list[GridValue] = Field(default_factory=list, max_length=30)
+
+
+class GridSort(BaseModel):
+    col: GridSortColumn
+    desc: bool = True
+
+
+class GridPlan(BaseModel):
+    """G3: how a grid question is read: which view, which filters, which order. Only values from
+    the menu or fixed lists; the browser applies it as AG Grid state (filters and sort) and the
+    seller sees the result as chips read back from the grid. It can't change or move anything."""
+
+    answerable: bool
+    view: Literal["needs_you", "in_transit", "cases", "all"] = "all"
+    journey: list[GridValue] = Field(default_factory=list, max_length=6)
+    next_step: list[GridValue] = Field(default_factory=list, max_length=6)
+    delivery: list[Literal["home", "locker", "signature"]] = Field(
+        default_factory=list, max_length=3
+    )
+    min_at_stake: float | None = Field(default=None, ge=0, le=100_000)
+    max_proof: int | None = Field(default=None, ge=0, le=5)
+    sort: list[GridSort] = Field(default_factory=list, max_length=2)
+    show: list[Literal["next", "buyer", "updated"]] = Field(default_factory=list, max_length=3)
+    note: str = Field(default="", max_length=200)
+
+    def fits(self, menu: GridMenu) -> bool:
+        """Every journey and next-step value is one the grid offered."""
+        return set(self.journey) <= set(menu.status) and set(self.next_step) <= set(menu.next)
 
 
 # ---------------------------------------------------------------- PC policy check

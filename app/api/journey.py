@@ -23,11 +23,13 @@ from sqlalchemy.orm import Session
 
 from app.agent.runner import AgentRun, DoorstepAgent, simulated_tools
 from app.ai.explainer import Explainer
+from app.ai.grid_agent import GridAgent, GridAnswer
 from app.ai.insights_agent import InsightAnswer, InsightsAgent
 from app.ai.llm import Image
 from app.ai.packing import PackingChecker
 from app.ai.policy_reader import PolicyReader, ReaderAnswer
 from app.ai.recovery import RecoveryDrafter
+from app.ai.schemas import GridMenu
 from app.ai.studio_agent import StudioAgent, StudioTurnIn, StudioTurnOut
 from app.api.agent import MCP_MOUNT, MCP_PATH
 from app.api.deps import SIMULATED_COMPONENTS, AppDeps, Services
@@ -225,6 +227,11 @@ class InsightQuestionIn(BaseModel):
     question: str = Field(min_length=2, max_length=300)
 
 
+class GridQuestionIn(BaseModel):
+    question: str = Field(min_length=2, max_length=300)
+    menu: GridMenu
+
+
 _REASON_QUESTION = {
     ClaimReason.NOT_RECEIVED.value: "What happens if a parcel did not arrive or was not received?",
     ClaimReason.DAMAGED.value: "What happens if the item arrived damaged?",
@@ -302,6 +309,7 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     explainer: Explainer = services.explainer or Explainer()
     # AS-06: one per app, so its model budget and answer cache are shared by every seller.
     ask_doorstep = InsightsAgent(services.agent_llm)
+    ask_grid = GridAgent(services.agent_llm)
     # AS-07: the turns of the AG Studio agents (Doorstep's lead, Studio's widget and page agents).
     studio_agent = StudioAgent(services.agent_llm)
     # SE-05: caps on the routes that create data or spend model calls (per client, and in total).
@@ -860,6 +868,17 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         _seller(s, token)
         s.commit()  # end the read: no connection is held while the model reads the question
         return ask_doorstep.ask(body.question)
+
+    @router.post(
+        "/api/seller/{token}/grid/ask", response_model=GridAnswer, dependencies=[model_cap]
+    )
+    def ask_the_grid(token: str, body: GridQuestionIn, s: Db) -> GridAnswer:
+        """G3: Ask the grid reads one question into a filter-and-sort plan for the Control Room.
+        It sees the question and the grid's menu of labels only; it reads no rows and moves
+        nothing. The browser applies the plan as AG Grid state."""
+        _seller(s, token)
+        s.commit()  # end the read: no connection is held while the model reads the question
+        return ask_grid.ask(body.question, body.menu)
 
     @router.post(
         "/api/seller/{token}/insights/agent", response_model=StudioTurnOut, dependencies=[agent_cap]
