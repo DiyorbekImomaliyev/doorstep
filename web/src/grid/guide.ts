@@ -9,9 +9,9 @@ import { money } from "../format";
 
 /** The kinds of work, in the order the grid lists them (urgency 0-5). */
 const KINDS: { one: string; many: string; first: string }[] = [
-  { one: "PayPal dispute to answer", many: "PayPal disputes to answer", first: "the PayPal dispute" },
-  { one: "refund to review", many: "refunds to review", first: "the refund to review" },
-  { one: "case to review", many: "cases to review", first: "the case to review" },
+  { one: "dispute", many: "disputes", first: "the PayPal dispute" },
+  { one: "refund", many: "refunds", first: "the refund to review" },
+  { one: "case", many: "cases", first: "the case to review" },
   { one: "packing check", many: "packing checks", first: "the packing check" },
   { one: "parcel to pack", many: "parcels to pack", first: "the parcel to pack" },
   { one: "parcel to ship", many: "parcels to ship", first: "the parcel to ship" },

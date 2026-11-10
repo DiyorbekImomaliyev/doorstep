@@ -52,9 +52,9 @@ ModuleRegistry.registerModules([
 
 type Lane = "you" | "case" | "way" | "done";
 const LANES: Record<Lane, { rank: number; label: string; hint: string }> = {
-  you: { rank: 0, label: "Needs you", hint: "to approve, review or pack" },
-  case: { rank: 1, label: "Cases in progress", hint: "Doorstep is handling these" },
-  way: { rank: 2, label: "On the way", hint: "shipped, not yet received" },
+  you: { rank: 0, label: "Needs you", hint: "approve, review, pack" },
+  case: { rank: 1, label: "Cases in progress", hint: "Doorstep is on it" },
+  way: { rank: 2, label: "On the way", hint: "not yet received" },
   done: { rank: 3, label: "Done", hint: "received or settled" },
 };
 
@@ -453,7 +453,7 @@ function EmptyOverlay({ text, searching, overlayType }: { text?: string; searchi
   return (
     <div className="grid-empty">
       {calm ? <Doorstep3D /> : <span className="grid-empty-icon" aria-hidden><SearchX /></span>}
-      <span>{!searching && overlayType === "noMatchingRows" ? "No orders match. Remove a chip or press Undo to see more." : text}</span>
+      <span>{!searching && overlayType === "noMatchingRows" ? "No match. Remove a chip or Undo." : text}</span>
     </div>
   );
 }
@@ -855,7 +855,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   }), []);
   // A search of two or more words that matches nothing is probably a question: say Enter asks it.
   const emptyParams = useMemo(() => ({
-    text: !search ? empty : search.trim().includes(" ") ? "No orders contain those words. Press Enter and Doorstep will read it as a question." : "No orders match your search.",
+    text: !search ? empty : search.trim().includes(" ") ? "No match. Press Enter to ask it." : "No match.",
     searching: !!search,
   }), [search, empty]);
   // AG Grid's status bar: where the orders come from, then the row count and money at stake, both

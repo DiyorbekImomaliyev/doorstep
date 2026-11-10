@@ -19,10 +19,10 @@ type Filter = "action" | "flight" | "cases" | "all";
 const VIEW_OF: Record<GridPlan["view"], Filter> = { needs_you: "action", in_transit: "flight", cases: "cases", all: "all" };
 
 const FILTERS: { key: Filter; label: string; icon: React.ReactNode; empty: string }[] = [
-  { key: "action", label: "Needs you", icon: <Inbox />, empty: "Nothing needs you. You're all caught up." },
-  { key: "flight", label: "In transit", icon: <Truck />, empty: "No parcels on their way." },
-  { key: "cases", label: "Cases", icon: <FolderOpen />, empty: "No delivery problems reported." },
-  { key: "all", label: "All orders", icon: <List />, empty: "No orders yet." },
+  { key: "action", label: "Needs you", icon: <Inbox />, empty: "All caught up." },
+  { key: "flight", label: "In transit", icon: <Truck />, empty: "Nothing in transit." },
+  { key: "cases", label: "Cases", icon: <FolderOpen />, empty: "No cases." },
+  { key: "all", label: "All orders", icon: <List />, empty: "No orders." },
 ];
 
 const IN_FLIGHT = ["SHIPPED", "IN_TRANSIT", "EXCEPTION", "DELIVERED", "PICKED_UP"];
@@ -60,20 +60,19 @@ function PlanStrip({ e }: { e: Economics }) {
     <section className="plan-strip" aria-label="Your Doorstep plan">
       <span className="tip-icon" aria-hidden><ReceiptText size={16} /></span>
       <div className="col grow" style={{ gap: 2 }}>
-        <span><strong>Your plan in {month}:</strong> {e.orders_this_month} order{e.orders_this_month === 1 ? "" : "s"} · {price}</span>
+        <span><strong>{month} plan:</strong> {e.orders_this_month} order{e.orders_this_month === 1 ? "" : "s"} · {price}</span>
         <span className="muted" style={{ fontSize: 13 }}>
-          First {e.free_orders_per_month} orders a month free, then {money(e.per_order_minor, e.currency)} an order, at most {money(e.monthly_cap_minor, e.currency)} a month.
+          {e.free_orders_per_month} free, then {money(e.per_order_minor, e.currency)} each · max {money(e.monthly_cap_minor, e.currency)}
         </span>
       </div>
       <div className="col plan-side" style={{ gap: 2 }}>
         <span>
-          <strong className="num">{e.addresses_fixed}</strong> address{e.addresses_fixed === 1 ? "" : "es"} fixed before payment ·{" "}
-          <strong className="num">{e.settled_before_dispute}</strong> problem{e.settled_before_dispute === 1 ? "" : "s"} settled with no PayPal dispute
+          <strong className="num">{e.addresses_fixed}</strong> address{e.addresses_fixed === 1 ? "" : "es"} fixed ·{" "}
+          <strong className="num">{e.settled_before_dispute}</strong> settled, no dispute
         </span>
-        <span className="muted" style={{ fontSize: 13 }}>
-          A failed delivery costs a seller {failed} on average (<a href={e.failed_delivery_source} target="_blank" rel="noreferrer">Loqate</a>).{" "}
-          {e.break_even_failures > 0 ? `This month's price is the cost of ${e.break_even_failures} failed ${e.break_even_failures === 1 ? "delivery" : "deliveries"}. ` : ""}
-          A PayPal claim you lose costs {fee} (<a href={e.fee_source} target="_blank" rel="noreferrer">fees</a>), none under {money(e.fee_waived_below_minor, e.currency)} or with Seller Protection (<a href={e.fee_terms_source} target="_blank" rel="noreferrer">terms</a>).
+        <span className="muted" style={{ fontSize: 13 }}
+          title={`${e.break_even_failures > 0 ? `This month's price equals ${e.break_even_failures} failed ${e.break_even_failures === 1 ? "delivery" : "deliveries"}. ` : ""}A lost PayPal claim costs ${fee}: none under ${money(e.fee_waived_below_minor, e.currency)} or with Seller Protection.`}>
+          Failed delivery {failed} (<a href={e.failed_delivery_source} target="_blank" rel="noreferrer">Loqate</a>) · lost claim {fee} (<a href={e.fee_source} target="_blank" rel="noreferrer">fees</a>, <a href={e.fee_terms_source} target="_blank" rel="noreferrer">terms</a>)
         </span>
       </div>
     </section>
@@ -87,7 +86,7 @@ function Tip({ t }: { t: PreventionTip }) {
       <div className="col grow" style={{ gap: 2 }}>
         <span style={{ fontWeight: 600 }}>Offer {METHOD_TEXT[t.suggested_method] ?? t.suggested_method} on {t.band} orders</span>
         <span className="muted" style={{ fontSize: 13 }} title={t.suggested_method === "locker" ? "A locker pickup code proves the buyer has it." : "A signature proves who received it."}>
-          {t.cases} of {t.orders} {METHOD_TEXT[t.method] ?? t.method} orders here became cases you paid for ({money(t.money_minor, t.currency)}).
+          {t.cases} of {t.orders} {METHOD_TEXT[t.method] ?? t.method} orders became cases ({money(t.money_minor, t.currency)}).
         </span>
       </div>
       <Badge>Suggestion</Badge>
@@ -117,14 +116,14 @@ function AutopilotCard({ token, data, statement, onChange, onOpen }: {
       <section className="autopilot" aria-label="Autopilot suggestion">
         <span className="ap-icon" aria-hidden><Zap /></span>
         <div className="col grow" style={{ gap: 3, minWidth: 0 }}>
-          <span className="ap-title">Let Doorstep refund {kind} up to {max} for you</span>
+          <span className="ap-title">Auto-refund {kind} up to {max}?</span>
           <span className="ap-text">
-            You approved {s.approved} of {s.approved} like this in the last {s.window_days} days. Disputes, held cases and anything over {max} still come to you.
+            You approved {s.approved} of {s.approved} in {s.window_days} days. Disputes and larger refunds still come to you.
           </span>
           {err && <ErrorBox message={err} />}
         </div>
         <div className="ap-actions">
-          <button className="btn ghost" disabled={busy} onClick={() => act(() => api.autopilotDismiss(token, s.failure_point, s.currency), "Okay. These keep coming to you.")}>Not now</button>
+          <button className="btn ghost" disabled={busy} onClick={() => act(() => api.autopilotDismiss(token, s.failure_point, s.currency), "Okay. Still yours to approve.")}>Not now</button>
           <button className="btn primary" disabled={busy} onClick={() => act(() => api.autopilotOn(token, s.failure_point, s.currency), `Autopilot on: ${kind} up to ${max}.`)}>Turn on</button>
         </div>
       </section>
@@ -142,7 +141,7 @@ function AutopilotCard({ token, data, statement, onChange, onOpen }: {
             <div key={r.id} className="ap-rule">
               <span className="col" style={{ gap: 2, minWidth: 0 }}>
                 <span className="ap-title">Autopilot on: {kind} up to {max}</span>
-                <span className="ap-text">Refunded automatically, within your daily cap. Learned from {r.precedents} refunds you approved.</span>
+                <span className="ap-text">Within your daily cap · learned from {r.precedents} approvals</span>
               </span>
               <button className="btn ghost" disabled={busy} onClick={() => act(() => api.autopilotOff(token, r.id), `Autopilot off: ${kind} come to you again.`)}>Turn off</button>
             </div>
@@ -159,13 +158,13 @@ function AutopilotCard({ token, data, statement, onChange, onOpen }: {
 /** AP-07: automatic spending, accounted for. Figures come from stored records, never a model. */
 function StatementLine({ s, onOpen }: { s: AutopilotStatement; onOpen: (orderId: string) => void }) {
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-  if (!s.cases.length) return <span className="ap-statement muted">No automatic refunds in the last {s.days} days.</span>;
+  if (!s.cases.length) return <span className="ap-statement muted">No automatic refunds in {s.days} days.</span>;
   return (
     <div className="ap-statement" aria-label="Autopilot statement">
       {s.totals.map((t) => (
         <span key={t.currency}>
-          <strong>Last {s.days} days: {plural(t.refunds, "automatic refund")}, {money(t.refunded_minor, t.currency)}</strong>
-          {t.claimable_minor > 0 && <> · {money(t.claimable_minor, t.currency)} to claim back from couriers{t.ready_to_send > 0 && ` (${plural(t.ready_to_send, "claim")} ready to send)`}</>}
+          <strong>{s.days} days: {plural(t.refunds, "automatic refund")}, {money(t.refunded_minor, t.currency)}</strong>
+          {t.claimable_minor > 0 && <> · {money(t.claimable_minor, t.currency)} to claim back{t.ready_to_send > 0 && ` (${plural(t.ready_to_send, "claim")} ready to send)`}</>}
           {t.recovered_minor > 0 && <> · {money(t.recovered_minor, t.currency)} recovered</>}
         </span>
       ))}
@@ -467,19 +466,19 @@ export default function Seller({ token }: { token: string }) {
             <>
               {rows && <section className="kpis" aria-label="Summary">
                 <button className={`kpi ${counts.action ? "attention" : ""}`} aria-pressed={page === "orders" && active === "action"} onClick={() => pick("action")}>
-                  <span className="label"><Inbox aria-hidden />Needs you<Hint text="Cases to approve or review, and orders waiting for a packing check." /></span>
+                  <span className="label"><Inbox aria-hidden />Needs you<Hint text="Cases to review and parcels to pack." /></span>
                   <span className="value">{counts.action}</span>
-                  <span className="sub">to approve or review</span>
+                  <span className="sub">approve or review</span>
                 </button>
                 <button className="kpi" aria-pressed={page === "orders" && active === "flight"} onClick={() => pick("flight")}>
-                  <span className="label"><Truck aria-hidden />In transit<Hint text="Shipped parcels the buyer has not received yet." /></span>
+                  <span className="label"><Truck aria-hidden />In transit<Hint text="Shipped, not yet received." /></span>
                   <span className="value">{counts.flight}</span>
                   <span className="sub">on the way</span>
                 </button>
                 <button className="kpi" aria-pressed={page === "orders" && active === "all"} onClick={() => pick("all")}>
-                  <span className="label"><Wallet aria-hidden />Money at stake<Hint text="The value of open cases plus parcels still on the way: what a delivery failure could cost you today." /></span>
+                  <span className="label"><Wallet aria-hidden />Money at stake<Hint text="Open cases plus parcels on the way: what a failure could cost today." /></span>
                   <span className="value" style={{ fontSize: 22 }}>{sumStake(rows)}</span>
-                  <span className="sub">open cases and parcels in transit</span>
+                  <span className="sub">cases and parcels</span>
                 </button>
                 <RecoveredKpi s={recovered.data ?? null} onClick={() => go("insights")} />
               </section>}
@@ -570,9 +569,9 @@ function RecoveredKpi({ s, onClick }: { s: RecoverySummary | null; onClick: () =
   const open = s ? sumBy(s.open_claim_minor) : "";
   return (
     <button className="kpi" onClick={onClick} title="Open Insights">
-      <span className="label"><Landmark aria-hidden />Recovered from carriers<Hint text="What carriers paid back on claims Doorstep prepared and you submitted, in this shop only. Insights adds 26 weeks of simulated history to the demo shop." /></span>
+      <span className="label"><Landmark aria-hidden />Recovered from carriers<Hint text="Paid back by carriers on claims you filed, this shop only. Insights adds 26 weeks of simulated history in the demo." /></span>
       <span className="value" style={{ fontSize: 22 }}>{s ? sumBy(s.recovered_minor) : "—"}</span>
-      <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "this shop, from claims you filed"}</span>
+      <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "claims you filed"}</span>
     </button>
   );
 }
