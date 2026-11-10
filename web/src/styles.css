@@ -922,7 +922,7 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 @media (max-width: 640px) {
   .sidebar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 10px 12px; }
   .sidebar::-webkit-scrollbar { display: none; }
-  .sidebar > div { flex: none; }
+  .sidebar > div { flex: none; max-width: none; }
   .sidebar .nav { overflow: visible; width: auto; }
   .main .page.stack-lg { display: flex; flex-direction: column; gap: 16px; padding: 18px 12px 48px; }
   .main .page.stack-lg > * + * { margin-top: 0; }
