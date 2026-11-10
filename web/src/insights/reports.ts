@@ -210,6 +210,12 @@ export const W = {
     sort: [{ field: { id: "cases.opened_at" }, direction: "desc" }],
     format: head("Every case", "Newest first. Click a row to filter"),
   },
+  /** S1: Doorstep's brief, the Overview's first words (widgets.tsx). Method is there to filter by. */
+  brief: {
+    type: "doorstep-brief",
+    dataMapping: { orders: [{ id: "order_count" }], delivered: [{ id: "stage_delivered" }], method: [{ id: "orders.method" }] },
+    format: {},
+  },
   /** AS-02: the shared calendar gives every date a quarter; one tap filters the whole page. */
   filterQuarter: {
     type: "button-filter",
@@ -248,10 +254,17 @@ const weekStart = (() => {
 /** Filter widgets as part of the page header: no card around them. */
 const bare = <T extends NonNullable<Widget>>(w: T): T => ({ ...w, format: { ...w.format, widget: { borderEnabled: false, backgroundColor: "transparent" } } }) as T;
 
+type Layout = NonNullable<Page["widgetLayout"]>;
+/** The same layout, moved down `n` tracks (room for something new on top). */
+const below = (layout: Layout, n: number): Layout =>
+  Object.fromEntries(Object.entries(layout).map(([k, l]) => [k, l && { ...l, yTrack: l.yTrack + n }])) as Layout;
+const BRIEF_H = 17;
+
 export const overviewPage: Page = {
   id: "overview",
   widgets: {
-    t: title("Overview"),
+    // Key "t", like the other reports' titles, so the carrier drill-through still drops it.
+    t: bare(W.brief),
     period: bare(W.filterQuarter),
     src: bare(W.filterSource),
     k1: kpi("order_count", "Every order in the period"),
@@ -264,14 +277,16 @@ export const overviewPage: Page = {
     ev: W.evidenceByMethod, byMethod: W.caseRateByMethod,
   },
   widgetLayout: {
-    t: { xTrack: 0, yTrack: 0, xSpan: 7, ySpan: 6 }, period: { xTrack: 7, yTrack: 0, xSpan: 10, ySpan: 6 },
-    src: { xTrack: 17, yTrack: 0, xSpan: 7, ySpan: 6 },
-    k1: { xTrack: 0, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k2: { xTrack: 6, yTrack: 6, xSpan: 6, ySpan: KPI_H },
-    k3: { xTrack: 12, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k4: { xTrack: 18, yTrack: 6, xSpan: 6, ySpan: KPI_H },
-    journey: { xTrack: 0, yTrack: 17, xSpan: 24, ySpan: 20 },
-    trend: { xTrack: 0, yTrack: 37, xSpan: 15, ySpan: 20 }, flow: { xTrack: 15, yTrack: 37, xSpan: 9, ySpan: 20 },
-    fp: { xTrack: 0, yTrack: 57, xSpan: 13, ySpan: 20 }, mix: { xTrack: 13, yTrack: 57, xSpan: 11, ySpan: 20 },
-    ev: { xTrack: 0, yTrack: 77, xSpan: 10, ySpan: 14 }, byMethod: { xTrack: 10, yTrack: 77, xSpan: 14, ySpan: 14 },
+    t: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: BRIEF_H },
+    ...below({
+      period: { xTrack: 0, yTrack: 0, xSpan: 13, ySpan: 6 }, src: { xTrack: 13, yTrack: 0, xSpan: 11, ySpan: 6 },
+      k1: { xTrack: 0, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k2: { xTrack: 6, yTrack: 6, xSpan: 6, ySpan: KPI_H },
+      k3: { xTrack: 12, yTrack: 6, xSpan: 6, ySpan: KPI_H }, k4: { xTrack: 18, yTrack: 6, xSpan: 6, ySpan: KPI_H },
+      journey: { xTrack: 0, yTrack: 17, xSpan: 24, ySpan: 20 },
+      trend: { xTrack: 0, yTrack: 37, xSpan: 15, ySpan: 20 }, flow: { xTrack: 15, yTrack: 37, xSpan: 9, ySpan: 20 },
+      fp: { xTrack: 0, yTrack: 57, xSpan: 13, ySpan: 20 }, mix: { xTrack: 13, yTrack: 57, xSpan: 11, ySpan: 20 },
+      ev: { xTrack: 0, yTrack: 77, xSpan: 10, ySpan: 14 }, byMethod: { xTrack: 10, yTrack: 77, xSpan: 14, ySpan: 14 },
+    }, BRIEF_H),
   },
   filter: {
     widget: { trend: [{ field: { id: "orders.created_at" }, model: { operator: "lessThan", value: weekStart } }] },

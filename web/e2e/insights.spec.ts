@@ -120,6 +120,29 @@ test("AS-07 the Doorstep agent runs on Studio's Agent Framework: scans in code, 
   if (shots) await page.screenshot({ path: `${shots}/14-insights-agent.png` });
 });
 
+test("AS-08 the Overview opens with Doorstep's brief: figures match the journey, follow the quarter, and Open case opens the order", async ({ page }) => {
+  await openInsights(page);
+  const head = page.locator(".ds-brief-head");
+  await expect(head).toHaveText(/^[\d,]+ of [\d,]+ orders arrived with no problem \(\d+%\)\.$/);
+  // The same figures as the Parcel journey, with the same rounding.
+  const journey = (await page.locator(".ds-journey[role=img]").first().getAttribute("aria-label"))!;
+  const [, paid, delivered] = journey.match(/^([\d,]+) paid orders: ([\d,]+) delivered/)!;
+  const n = Number(paid.replace(/,/g, "")), d = Number(delivered.replace(/,/g, ""));
+  await expect(head).toContainText(`${delivered} of ${paid} orders`);
+  await expect(head).toContainText(`(${Math.round((d / n) * 100)}%)`);
+  // It reads through Studio like the KPIs, so a quarter narrows it in step with the Orders KPI.
+  await page.getByRole("button", { name: /^Q\d 20\d\d$/ }).last().click();
+  await expect.poll(() => kpiNumber(page, "Orders")).toBeLessThan(n);
+  const orders = await kpiNumber(page, "Orders");
+  await expect(head).toContainText(` of ${orders.toLocaleString("en-GB")} orders`);
+  // Do next: the nearest open claim on a live order opens that order's drawer.
+  const brief = page.getByRole("region", { name: "Doorstep's brief" });
+  await expect(brief.getByText("Do next")).toBeVisible();
+  await brief.getByRole("button", { name: "Open case" }).click();
+  await expect(page.getByRole("dialog", { name: /^Order / })).toBeVisible();
+  if (shots) await page.screenshot({ path: `${shots}/as08-open-case.png` });
+});
+
 test("AS-05 the Overview, Carriers and Cases reports load from state; a seller can add one", async ({ page }) => {
   await openInsights(page);
   await expect(kpiValue(page, "Net delivery loss")).toHaveText(/^\s*[£$][\d,]+\s*$/);

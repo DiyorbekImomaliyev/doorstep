@@ -224,7 +224,7 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
   const money: InsightMoney[] = all("money_actions");
   const recoveries: InsightRecovery[] = all("recoveries");
   const histIds = new Set(hist?.orders.map((o) => o.order_id) ?? []);
-  const source = (orderId: string) => (histIds.has(orderId) ? "Simulated" : api.orders.some((o) => o.simulated) ? "Demo orders" : "PayPal sandbox");
+  const source = (orderId: string) => (histIds.has(orderId) ? "Example history" : api.orders.some((o) => o.simulated) ? "Your orders" : "PayPal sandbox");
 
   const carrierOf = new Map(shipments.map((x) => [x.order_id, x.carrier]));
   const transit = (x: InsightShipment) =>

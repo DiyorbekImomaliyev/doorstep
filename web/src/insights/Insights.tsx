@@ -27,7 +27,8 @@ import { AskPanel } from "./AskPanel";
 import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
 import { REPORTS, carrierDrillPage, reportState } from "./reports";
 import { paperTheme } from "./theme";
-import { doorstepWidgetTypes, type DoorstepRegistry } from "./widgets";
+import { doorstepWidgetTypes, type BriefContext, type DoorstepRegistry } from "./widgets";
+import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
 import "./insights.css";
 
 if (__AG_STUDIO_LICENSE_KEY__) AgStudioLicenseManager.setLicenseKey(__AG_STUDIO_LICENSE_KEY__);
@@ -132,9 +133,10 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     data: prepared.sources as Props["data"],
     theme: paperTheme,
     mode: "view",
-    // A phone's canvas is narrower than Studio's default 720px minimum; lowering it lets the
-    // stacked breakpoint below take over instead of drawing the desktop layout off-screen.
-    layout: PHONE ? { widgetBorderEnabled: true, minWidth: 300 } : { widgetBorderEnabled: true },
+    // Studio's default 720px minimum is wider than the canvas on a phone (and on a 1280 laptop, once
+    // the reports rail and the filter rail take their share); lowering it lets the layout fit, and
+    // the stacked breakpoint below take over on a phone, instead of drawing it off-screen.
+    layout: { widgetBorderEnabled: true, minWidth: PHONE ? 300 : 600 },
     responsiveLayoutBreakpoints: STACKED,
     initialState: reportState,
     widgets,
@@ -142,6 +144,14 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     // On a phone the filter rail would cover the report; the report's own filters stay on it.
     panels: { edit: { right: ["filters", "edit", "data"] }, view: { right: PHONE ? [] : ["filters"] } },
     getContextMenuItems: menu,
+    // S1: the brief reads the newest rows and opens a case (the Control Room's drawer) or a carrier.
+    context: {
+      brief: {
+        latest: () => current.current,
+        open: (orderId) => window.dispatchEvent(new CustomEvent<OpenOrderDetail>(OPEN_ORDER_EVENT, { detail: { orderId } })),
+        drill: (carrier) => setDrill({ field: { id: "orders.carrier" }, operator: "equals", value: carrier } as AgConditionDefinition),
+      },
+    } satisfies BriefContext,
     // AS-07: Doorstep's lead agent and Studio's widget and page agents, every turn through the backend.
     ai: ({ api: a }) => doorstepHarness(a as unknown as AgStudioApi, actions),
     aiToolDisplay: doorstepToolDisplay,
@@ -262,7 +272,9 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
             <div className="rb-label">Reports</div>
             {reports.map((r) => (
               <button key={r.id} className="rb-item" aria-current={selected === r.id || undefined} onClick={() => setSelected(r.id)}>
-                <BarChart3 size={15} aria-hidden /><span>{r.name}</span>
+                <BarChart3 size={15} aria-hidden />
+                {/* The question each report answers: shown, but not part of the button's name. */}
+                <span className="rb-text"><span>{r.name}</span>{r.hint && <span className="rb-hint" aria-hidden>{r.hint}</span>}</span>
               </button>
             ))}
             <button className="rb-new" onClick={addReport}><FilePlus2 size={15} aria-hidden />New report</button>

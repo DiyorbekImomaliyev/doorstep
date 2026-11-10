@@ -124,7 +124,14 @@ export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnO
 // ---------------------------------------------------------------- the anomaly scan, in code
 
 type Row = Record<string, unknown>;
-export type Finding = { severity: "high" | "watch"; title: string; detail: string; report: "overview" | "carriers" | "cases"; carrier?: string };
+/** The numbers behind a finding, for the Overview brief (story.ts) to word its own way. */
+export type Facts =
+  | { kind: "rate"; field: "carrier" | "method" | "all"; key: string; now: number; before: number; cases: number; orders: number }
+  | { kind: "loss"; now: number; before: number }
+  | { kind: "claim"; key: string; days: number; amount: number };
+export type Finding = {
+  severity: "high" | "watch"; title: string; detail: string; report: "overview" | "carriers" | "cases"; carrier?: string; facts?: Facts;
+};
 
 const DAY = 864e5;
 const RECENT_DAYS = 28;
@@ -132,7 +139,7 @@ const BASE_DAYS = 84;
 const MIN_ORDERS = 20;
 const MIN_CASES = 3;
 
-const tableRows = (p: Prepared, id: string) => ((p.sources.sources.find((t) => t.id === id) as unknown as { data?: Row[] } | undefined)?.data ?? []);
+export const tableRows = (p: Prepared, id: string) => ((p.sources.sources.find((t) => t.id === id) as unknown as { data?: Row[] } | undefined)?.data ?? []);
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 const money = (v: number, home: Prepared["home"]) => v.toLocaleString("en-GB", { style: "currency", currency: home, maximumFractionDigits: 0 });
 
@@ -168,6 +175,7 @@ export function scanAnomalies(prepared: Prepared, now = new Date()): { window: s
           detail: `${cases} of ${now4.length} orders in the last 4 weeks had a problem, against ${pct(b)} in the 12 weeks before (${before.length} orders).`,
           report: field === "carrier" ? "carriers" : "overview",
           carrier: field === "carrier" ? k : undefined,
+          facts: { kind: "rate", field, key: k, now: a, before: b, cases, orders: now4.length },
         });
       }
     }
@@ -180,6 +188,7 @@ export function scanAnomalies(prepared: Prepared, now = new Date()): { window: s
         title: `Case rate up to ${pct(a)} overall`,
         detail: `Across ${recent.length} orders in the last 4 weeks, against ${pct(b)} in the 12 weeks before.`,
         report: "overview",
+        facts: { kind: "rate", field: "all", key: "All orders", now: a, before: b, cases: recent.reduce((n, r) => n + Number(r.had_case ?? 0), 0), orders: recent.length },
       });
     }
   }
@@ -198,6 +207,7 @@ export function scanAnomalies(prepared: Prepared, now = new Date()): { window: s
       title: `Net delivery loss up to ${money(lossNow, prepared.home)} a week`,
       detail: `Refunds minus carrier payments averaged ${money(lossBefore, prepared.home)} a week in the 12 weeks before.`,
       report: "overview",
+      facts: { kind: "loss", now: lossNow, before: lossBefore },
     });
   }
 
@@ -211,6 +221,7 @@ export function scanAnomalies(prepared: Prepared, now = new Date()): { window: s
       detail: `${money(Number(r.claimed ?? 0), prepared.home)} claimed. Next step: ${String(r.next_step).toLowerCase()}.`,
       report: "carriers",
       carrier: String(r.carrier),
+      facts: { kind: "claim", key: String(r.carrier), days, amount: Number(r.claimed ?? 0) },
     });
   }
   findings.sort((x, y) => (x.severity === y.severity ? 0 : x.severity === "high" ? -1 : 1));

@@ -13,11 +13,15 @@
  *  - Failure points: every case cause ranked, with its share and the money it cost. Click a row
  *    to filter the page; another widget's selection shows as a solid bar over a faint total.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   AgBaseRegistry, AgBaseWidgetDefinition, AgDefaultWidgetDefinition, AgWidgetApi, AgWidgetDataFormat, AgWidgetField,
   AgWidgetFieldReference, AgWidgetFormParams, AgWidgetParams,
 } from "ag-studio";
+import { Says } from "../components/ai";
+import Doorstep3D from "../components/Doorstep3D";
+import type { Prepared } from "./data";
+import { brief, headline, type DoNext } from "./story";
 
 // ---------------------------------------------------------------- types
 
@@ -49,6 +53,17 @@ export type ClockDef = {
   format?: AgWidgetDataFormat<unknown>;
 };
 
+export type BriefDef = {
+  type: "doorstep-brief";
+  dataMapping: { orders: Ref; delivered: Ref; method?: Ref };
+  format?: AgWidgetDataFormat<unknown>;
+};
+
+/** What the brief needs from the board (Studio's `context`): the newest rows, and two ways out. */
+export type BriefContext = {
+  brief?: { latest: () => Prepared; open: (orderId: string) => void; drill: (carrier: string) => void };
+};
+
 export interface DoorstepRegistry extends AgBaseRegistry {
   widgets: readonly (
     | AgDefaultWidgetDefinition
@@ -57,11 +72,12 @@ export interface DoorstepRegistry extends AgBaseRegistry {
     | AgBaseWidgetDefinition<"doorstep-money-flow", FlowDef>
     | AgBaseWidgetDefinition<"doorstep-journey", JourneyDef>
     | AgBaseWidgetDefinition<"doorstep-claim-clock", ClockDef>
+    | AgBaseWidgetDefinition<"doorstep-brief", BriefDef>
   )[];
 }
 
 type Row = Record<string, unknown>;
-type AnyDef = MeterDef | FailureDef | FlowDef | JourneyDef | ClockDef;
+type AnyDef = MeterDef | FailureDef | FlowDef | JourneyDef | ClockDef | BriefDef;
 type Loaded = { rows: Row[]; hi: Row[] | null };
 type LoadOpts = { min?: number; highlight?: boolean; quiet?: boolean };
 
@@ -135,6 +151,8 @@ const keyOf = (v: unknown) => (v instanceof Date ? v.getTime() : String(v));
 
 // ---------------------------------------------------------------- parcel journey
 
+/** The least distance between two label blocks (name over figure) in one journey column. */
+const LABEL_GAP = 30;
 type JNode = { id: string; label: string; v: number; col: number; tone: "base" | "good" | "bad" | "muted"; of: number };
 type JFlow = { from: string; to: string };
 type Placed = { x: number; y: number; h: number; n: JNode };
@@ -194,6 +212,17 @@ export function Journey(params: AgWidgetParams<JourneyDef>) {
       }
     }
   }
+  // Labels in one column keep at least LABEL_GAP apart (small nodes sit close together), and stay
+  // inside the plot; a label moved off its node gets a hairline leader back to it.
+  const labelAt = new Map<string, number>();
+  for (let c = 0; c <= 5; c++) {
+    const col = [...at.values()].filter((p) => p.n.col === c).sort((p, q) => p.y - q.y);
+    let prev = -Infinity;
+    const ys = col.map((p) => (prev = Math.max(p.y + p.h / 2, prev + LABEL_GAP)));
+    let limit = h - 18;
+    for (let i = ys.length - 1; i >= 0; i--) { ys[i] = Math.min(ys[i], limit); limit = ys[i] - LABEL_GAP; }
+    col.forEach((p, i) => labelAt.set(p.n.id, ys[i]));
+  }
   const used = new Map<string, number>();
   const ribbons = flows.flatMap((f) => {
     const a = at.get(f.from), b = at.get(f.to);
@@ -234,11 +263,13 @@ export function Journey(params: AgWidgetParams<JourneyDef>) {
           {ribbons.map((r) => <path key={r.id} d={r.d} className="ds-j-ribbon" data-tone={r.tone}><title>{r.tip}</title></path>)}
           {[...at.values()].map(({ x, y, h: hh, n }) => {
             const cy = y + hh / 2;
+            const ly = labelAt.get(n.id) ?? cy;
             return (
               <g key={n.id} className="ds-j-node" data-tone={n.tone}>
                 <rect x={x} y={y} width={NW} height={hh} rx={2}><title>{`${n.label}: ${count(n.v)}`}</title></rect>
-                <text x={x + NW + 7} y={cy - 7} dominantBaseline="middle" className="ds-j-label">{n.label}</text>
-                <text x={x + NW + 7} y={cy + 9} dominantBaseline="middle" className="ds-j-value">
+                {Math.abs(ly - cy) > 4 && <path className="ds-j-leader" d={`M${x + NW} ${cy}H${x + NW + 3}V${ly}H${x + NW + 5}`} />}
+                <text x={x + NW + 7} y={ly - 7} dominantBaseline="middle" className="ds-j-label">{n.label}</text>
+                <text x={x + NW + 7} y={ly + 9} dominantBaseline="middle" className="ds-j-value">
                   {count(n.v)}<tspan className="ds-j-pct"> · {pctOf(n.v, n.of)}{n.col >= 4 ? " of cases" : ""}</tspan>
                 </text>
               </g>
@@ -533,4 +564,98 @@ export const failurePointsWidget: AgBaseWidgetDefinition<"doorstep-failure-point
   minSize: { width: 280, height: 180 },
 };
 
-export const doorstepWidgetTypes = [journeyWidget, moneyFlowWidget, claimClockWidget, evidenceMeterWidget, failurePointsWidget];
+// ---------------------------------------------------------------- the brief (S1)
+
+/**
+ * The Overview's first words: how many orders arrived with no problem (the brief's own query, so it
+ * follows the Quarter filter and cross filters like the KPIs), what moved in the last four weeks,
+ * the next claim deadline, and up to three things to do. Sits on the paper, with no card.
+ */
+export function Brief(params: AgWidgetParams<BriefDef, unknown, BriefContext>) {
+  const { widgetApi, dataMapping: m } = params;
+  const ctx = (params.context as BriefContext | undefined)?.brief;
+  const fOrders = m.orders?.[0], fDelivered = m.delivered?.[0], fMethod = m.method?.[0];
+  const got = useWidgetRows(params, [fOrders, fDelivered], undefined, { min: 2 });
+  const { picked, toggle } = useSelection(widgetApi, fMethod);
+  // Studio hands over new params when the data moves (live updates), so the brief reads again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const story = useMemo(() => (ctx ? brief(ctx.latest()) : null), [ctx, params]);
+  // A high finding that was not there when the page opened is marked New, and said once.
+  const firstHigh = useRef<Set<string> | null>(null);
+  const said = useRef<Set<string>>(new Set());
+  const high = (story?.findings ?? []).filter((f) => f.severity === "high").map((f) => f.title);
+  if (story && !firstHigh.current) firstHigh.current = new Set(high);
+  const fresh = high.filter((t) => !firstHigh.current?.has(t));
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const t = fresh.find((x) => !said.current.has(x));
+    if (!t) return;
+    said.current.add(t);
+    setNotice(`Doorstep noticed: ${t}`);
+  }, [fresh.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!got || !fOrders || !fDelivered) return null;
+  const row = got.rows[0];
+  const orders = num(row?.[fOrders.key]), delivered = num(row?.[fDelivered.key]);
+  // Scan titles start with the carrier or method ("Evri: case rate up to 7.9%").
+  const isNew = (n: DoNext) => {
+    const k = n.key.replace(/^(carrier|method)-/, "");
+    return k !== n.key && fresh.some((t) => t.startsWith(`${k}:`));
+  };
+  const run = (n: DoNext) => {
+    if (n.action.kind === "case") ctx?.open(n.action.orderId);
+    else if (n.action.kind === "carrier") ctx?.drill(n.action.carrier);
+    else toggle(n.action.method);
+  };
+  return (
+    <section className="ds-brief" aria-label="Doorstep's brief">
+      <div className="ds-brief-top">
+        <div className="ds-brief-words">
+          <h2 className="ds-brief-head"><Says parts={headline(orders, delivered)} /></h2>
+          {story && <p className="ds-brief-line"><Says parts={story.line} /></p>}
+        </div>
+        <Doorstep3D className="ds-brief-3d" />
+      </div>
+      {story && story.next.length > 0 && (
+        <div className="ds-brief-next">
+          <div className="ds-brief-label">Do next</div>
+          <ol>
+            {story.next.map((n) => {
+              const on = n.action.kind === "method" && picked.has(n.action.method);
+              return (
+                <li key={n.key}>
+                  <span className="ds-brief-what">{n.what}{isNew(n) && <span className="ds-new">New</span>}</span>
+                  <span className="ds-brief-meta num">{[n.money, n.when].filter(Boolean).join(" · ")}</span>
+                  <button type="button" className="ds-brief-btn" aria-pressed={n.action.kind === "method" ? on : undefined} onClick={() => run(n)}>
+                    {n.action.kind === "method" ? (on ? "Clear filter" : "Filter the page") : n.action.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
+      <span className="sr-only" aria-live="polite">{notice}</span>
+    </section>
+  );
+}
+
+const BRIEF_ICON = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="6" width="22" height="4" rx="2" fill="#7b2d3d"/><rect x="3" y="13" width="16" height="2.5" rx="1.25" fill="#8b827d"/><rect x="3" y="20" width="26" height="1" fill="#d8d0c8"/><rect x="3" y="23" width="12" height="2.5" rx="1.25" fill="#5a524e"/><rect x="23" y="22" width="6" height="4" rx="2" fill="#f3e6e9"/></svg>`;
+
+export const briefWidget: AgBaseWidgetDefinition<"doorstep-brief", BriefDef> = {
+  id: "doorstep-brief",
+  label: "Doorstep brief",
+  icon: BRIEF_ICON,
+  dataMapping: {
+    orders: { type: "field", supportedRoles: ["numeric"], required: true },
+    delivered: { type: "field", supportedRoles: ["numeric"], required: true },
+    method: { type: "field", supportedRoles: ["category"] },
+  },
+  form: (p: AgWidgetFormParams<BriefDef>) => p.createDefaults({
+    dataMappingItems: [{ key: "orders", label: "Orders" }, { key: "delivered", label: "Delivered, no problem" }, { key: "method", label: "Delivery method (to filter by)" }],
+  }),
+  comp: Brief,
+  defaultSize: { width: 900, height: 220 },
+  minSize: { width: 320, height: 140 },
+};
+
+export const doorstepWidgetTypes = [briefWidget, journeyWidget, moneyFlowWidget, claimClockWidget, evidenceMeterWidget, failurePointsWidget];

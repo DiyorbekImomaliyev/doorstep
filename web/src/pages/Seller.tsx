@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { GridApi } from "ag-grid-community";
 import { BarChart3, BookOpen, Check, ReceiptText, Columns3, Copy, Download, FileText, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
 import { api, type Autopilot, type AutopilotStatement, type Economics, type GridAnswer, type GridPlan, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
+import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import CommandBar, { type Command } from "../components/CommandBar";
 import { itemKind } from "../components/gridCells";
@@ -273,6 +274,22 @@ export default function Seller({ token }: { token: string }) {
   }, [token]);
 
   const onOpen = useCallback((r: OrderRow) => setOpen(r), []);
+  // S1: Insights' brief opens a case here, over whichever page is showing. An order the list has not
+  // loaded yet is fetched once; if it is still missing, nothing opens.
+  const [wanted, setWanted] = useState<{ id: string; before?: OrderRow[] } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => { const id = (e as CustomEvent<OpenOrderDetail>).detail?.orderId; if (id) setWanted({ id }); };
+    window.addEventListener(OPEN_ORDER_EVENT, on);
+    return () => window.removeEventListener(OPEN_ORDER_EVENT, on);
+  }, []);
+  useEffect(() => {
+    if (!wanted || !rows) return;
+    const r = rows.find((x) => x.order_id === wanted.id);
+    if (r) { setOpen(r); setWanted(null); }
+    else if (!wanted.before) { setWanted({ ...wanted, before: rows }); reloadOrders(); }
+    else if (wanted.before !== rows) setWanted(null); // fetched again, still not there
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted, rows]);
   const onReady = useCallback((a: GridApi) => { gridApi.current = a; }, []);
 
   const counts = useMemo(() => {

@@ -14,6 +14,10 @@
 .rb-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); padding: 0 8px 8px; }
 .rb-item { display: flex; align-items: center; gap: 9px; border: 0; background: transparent; text-align: left; padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 13.5px; color: var(--text-2); cursor: pointer; position: relative; }
 .rb-item:hover { background: var(--surface-2); }
+.rb-item > svg { flex: none; align-self: flex-start; margin-top: 2px; }
+.rb-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rb-hint { font-size: 12px; line-height: 1.35; font-weight: 400; color: var(--text-3); }
+.rb-item[aria-current="true"] .rb-hint { color: var(--accent-2); opacity: .8; }
 .rb-item[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .rb-item[aria-current="true"]::before { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
 .rb-new { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; padding: 9px; border: 1px dashed var(--line-2); border-radius: 8px; background: transparent; font: inherit; font-size: 13px; color: var(--text-2); cursor: pointer; }
@@ -159,6 +163,7 @@
 .ds-j-ribbon[data-tone="muted"] { fill-opacity: .3; }
 .ds-j-node text { paint-order: stroke; stroke: var(--ag-background-color, #fff); stroke-width: 4px; stroke-linejoin: round; font-size: 12px; pointer-events: none; }
 .ds-j-label { font-weight: 600; fill: var(--ag-foreground-color, #1f1a18); }
+.ds-j-leader { fill: none; stroke: var(--text-3, #736b67); stroke-width: 1; opacity: .6; }
 .ds-j-value { font-weight: 650; fill: var(--ag-foreground-color, #1f1a18); font-variant-numeric: tabular-nums; }
 .ds-j-pct { font-weight: 400; fill: #736b67; }
 .ds-j-cap { font-size: 10.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; fill: #8b827d; }
@@ -231,3 +236,46 @@ button.ds-meter-row:hover, .ds-fp li > button:hover { background: color-mix(in s
 .ag-answer { font-size: 12.5px; line-height: 1.45; }
 .ag-answer p { margin: 0 0 4px; }
 .ag-answer-more { color: #5f5753; }
+
+/* ---------- S1 · the brief: the Overview's first words, on the paper ---------- */
+/* Studio draws a card around every widget; the brief and the page's button filters sit on the paper. */
+.ag-studio-layout-widget-container:has(.ds-brief),
+.ag-studio-layout-widget-container:has(.ag-studio-button-filter-widget) { background: transparent; border-color: transparent; box-shadow: none; }
+.ds-brief { height: 100%; display: flex; flex-direction: column; gap: 12px; padding: 6px 4px 0; overflow: hidden; container-type: inline-size; }
+.ds-brief-top { display: flex; align-items: flex-start; gap: 20px; }
+.ds-brief-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ds-brief-head { margin: 0; font-family: var(--serif); font-size: 26px; line-height: 32px; font-weight: 450; letter-spacing: -0.015em; color: var(--text); text-wrap: balance; }
+.ds-brief-head strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ds-brief-line { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text-2); }
+.ds-brief-line strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ds-brief-3d { margin: -8px 4px -18px 0; }
+.ds-brief-next { display: flex; flex-direction: column; }
+.ds-brief-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); padding-bottom: 4px; }
+.ds-brief-next ol { list-style: none; margin: 0; padding: 0; }
+.ds-brief-next li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 16px; min-height: 40px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.ds-brief-next li:last-child { border-bottom: 1px solid var(--line); }
+.ds-brief-what { color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-brief-meta { color: var(--text-2); font-size: 13px; white-space: nowrap; }
+.ds-brief-btn { height: 28px; padding: 0 12px; border: 1px solid var(--accent-line); border-radius: 7px; background: var(--surface); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.ds-brief-btn:hover { background: var(--accent-soft); border-color: var(--accent-3); }
+.ds-brief-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ds-new { margin-left: 8px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; vertical-align: 1px; }
+/* A narrow canvas (a 1280 laptop, or the Ask panel open): the sentence keeps the width. */
+@container (max-width: 820px) {
+  .ds-brief-3d { display: none; }
+  .ds-brief-head { font-size: 23px; line-height: 29px; }
+  .ds-brief-line { font-size: 14px; }
+}
+@media (max-width: 640px) {
+  .ds-brief-3d { display: none; }
+  .ds-brief-head { font-size: 21px; line-height: 27px; }
+  .ds-brief-line { font-size: 14px; }
+  .ds-brief-next li { grid-template-columns: 1fr auto; gap: 4px 12px; padding: 8px 0; }
+  .ds-brief-meta { grid-row: 2; }
+  .ds-brief-btn { grid-row: 1 / span 2; grid-column: 2; }
+}
+
+/* S7: in view mode a widget card lifts a little under the pointer (not the brief or the bare filters). */
+.ag-studio-layout:not(.ag-studio-layout-editing) .ag-studio-layout-widget-container { transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.ag-studio-layout:not(.ag-studio-layout-editing) .ag-studio-layout-widget-container:not(:has(.ds-brief, .ag-studio-button-filter-widget)):hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+@media (prefers-reduced-motion: reduce) { .ag-studio-layout .ag-studio-layout-widget-container:hover { transform: none !important; } }
