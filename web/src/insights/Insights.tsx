@@ -29,7 +29,7 @@ import { AskPanel } from "./AskPanel";
 import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
 import { REPORTS, carrierDrillPage, reportState } from "./reports";
 import { paperTheme } from "./theme";
-import { doorstepWidgetTypes, type BriefContext, type DoorstepRegistry } from "./widgets";
+import { doorstepWidgetTypes, withDoorstepDefaults, type BriefContext, type DoorstepRegistry } from "./widgets";
 import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
 import "./insights.css";
 
@@ -38,10 +38,27 @@ if (import.meta.env.DEV) enableStudioDevValidations();
 
 type Props = AgStudioProperties<DoorstepRegistry>;
 
-/** Studio's own widgets plus Doorstep's three, filed under "Doorstep" in the widget menu. */
-const widgets = createWidgets<DoorstepRegistry>({ additionalTypes: doorstepWidgetTypes });
+/**
+ * S3: Studio's widgets and Doorstep's own, with Doorstep's group first in the widget menu. The menu
+ * is also what Studio's agents can place, so every Doorstep widget is listed; types left out land in
+ * a collapsed "More widgets" section, still available.
+ */
+const widgets = createWidgets<DoorstepRegistry>({
+  additionalTypes: doorstepWidgetTypes,
+  menu: [
+    { label: "Doorstep", widgetIds: doorstepWidgetTypes.map((w) => w.id) },
+    { label: "Charts", widgetIds: ["column-chart-grouped", "column-chart-stacked", "bar-chart-grouped", "bar-chart-stacked", "combo-chart-grouped-column-line", "line-chart", "donut-chart"] },
+    { label: "Tables and numbers", widgetIds: ["value", "pivot-grid", "grid"] },
+  ],
+});
+/** What Studio's page agent reads about placing a widget: AG's sentence, plus where Doorstep's fit. */
+const AI_TEXT = {
+  "tools.add_widget.description":
+    "Add a widget to the grid. Position is 0-indexed. Prefer Doorstep widgets (doorstep-claim-clock, doorstep-failure-points, " +
+    "doorstep-evidence-meter, doorstep-money-flow) for claims, causes of failure, proof and money; they arrive mapped and titled.",
+};
 const LOCALE = {
-  widgetPanelWidgetCategoryUncategorized: "Doorstep",
+  widgetPanelWidgetCategoryUncategorized: "More widgets",
   panelTitleAi: "Doorstep agent",
   aiMessageInputPlaceholder: "Ask what changed, ask for a figure, or ask to change a chart…",
 };
@@ -168,9 +185,16 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     // Studio builds its harness only when its own AI panel first opens; the console is our own UI
     // on it, so the board builds it as the API arrives and hands Studio the same one.
     ai: ({ api: a }) => harnessFor(a as unknown as AgStudioApi),
+    aiText: AI_TEXT,
     aiToolDisplay: doorstepToolDisplay,
     onApiReady: ({ api: a }) => { setApi(a as AgStudioApi<DoorstepRegistry>); setHarness(harnessFor(a as unknown as AgStudioApi)); },
     onStudioPreDestroyed: () => setApi(undefined),
+    // S3: a Doorstep widget placed by type alone (Studio's page agent) gets its one right mapping.
+    onStateUpdated: ({ api: a, state, durable }) => {
+      if (!durable) return;
+      const pages = withDoorstepDefaults(state.pages);
+      if (pages) a.setState({ ...state, pages } as typeof state, { source: { type: "ai", agent: "doorstep" } });
+    },
   }), [prepared, menu]);
 
   useEffect(() => {

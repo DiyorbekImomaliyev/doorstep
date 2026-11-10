@@ -133,7 +133,7 @@ export const doorstepToolDisplay: Record<string, AgAiToolDisplay> = {
   remove_widget_filter: { label: ({ args, widgetName }) => ({ text: `Removed a filter from ${named(widgetName, args.widgetId, "a widget")}` }) },
   // The target is `args.type.id` ("widget" or "page").
   delegate_to: { label: ({ args }) => ({ text: `Asked AG Studio's ${(args.type as { id?: string } | undefined)?.id === "page" ? "page" : "widget"} agent` }) },
-  ...Object.fromEntries(["view_report", "view_page", "view_widget", "view_schema", "view_plan", "rename_thread", "create_plan", "update_plan", "clear_plan"]
+  ...Object.fromEntries(["view_report", "view_page", "view_widget", "view_schema", "view_plan", "rename_thread", "create_plan", "update_plan", "clear_plan", "complete_task"]
     .map((n) => [n, { label: () => ({ text: "" }), hidden: true }])),
 };
 

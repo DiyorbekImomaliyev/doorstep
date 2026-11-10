@@ -208,6 +208,8 @@
 .ds-clock-text strong { font-weight: 600; }
 .ds-clock-amt { font-weight: 600; font-variant-numeric: tabular-nums; }
 .ds-clock-step { font-size: 11.5px; color: color-mix(in srgb, var(--ag-foreground-color, #1f1a18) 60%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* S3: a Doorstep widget left with no title still names itself, quietly. */
+.ds-cap { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .01em; color: color-mix(in srgb, var(--ag-foreground-color, #1f1a18) 58%, transparent); }
 .ds-clock-empty { margin: 0; padding: 12px 4px; font-size: 13px; color: color-mix(in srgb, var(--ag-foreground-color, #1f1a18) 60%, transparent); }
 
 /* ---------------------------------------------------------------- click to filter (meter, failure points) */

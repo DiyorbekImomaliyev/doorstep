@@ -281,6 +281,91 @@ export function Journey(params: AgWidgetParams<JourneyDef>) {
   );
 }
 
+// ---------------------------------------------------------------- S3: placed by Studio's agents
+
+/**
+ * What each data widget shows when it is placed by type alone (by the seller from the menu, or by
+ * Studio's page agent): the mapping and title the built reports use, so it never arrives blank.
+ * reports.ts builds its pages from the same objects.
+ */
+const titled = (text: string, sub: string) => ({ title: { enabled: true, text }, subtitle: { enabled: true, text: sub, wrapping: true } });
+export const DEFAULTS = {
+  journey: {
+    dataMapping: {
+      orders: [{ id: "order_count" }], shipped: [{ id: "stage_shipped" }], delivered: [{ id: "stage_delivered" }],
+      onWay: [{ id: "stage_on_way" }], cases: [{ id: "orders_with_case" }], refunded: [{ id: "stage_refunded" }],
+      recovered: [{ id: "stage_recovered" }],
+    },
+    format: titled("Every order, from payment to who paid", "Widths follow the number of orders; orders with a problem are zoomed in"),
+  } satisfies Partial<JourneyDef>,
+  moneyFlow: {
+    dataMapping: { refunded: [{ id: "paid_out" }], recovered: [{ id: "recovered" }], pending: [{ id: "claims_pending" }] },
+    format: titled("Where the money went", "Refunded, recovered, net loss"),
+  } satisfies Partial<FlowDef>,
+  claimClock: {
+    dataMapping: {
+      carrier: [{ id: "recoveries.carrier" }], deadline: [{ id: "recoveries.deadline_at" }],
+      amount: [{ id: "recoveries.claimed" }], step: [{ id: "recoveries.next_step" }],
+    },
+    format: titled("Claim deadlines", "Open carrier claims, soonest first. Doorstep prepares; you file"),
+  } satisfies Partial<ClockDef>,
+  evidence: {
+    dataMapping: { category: [{ id: "orders.method" }], value: [{ id: "evidence_avg" }] },
+    format: titled("Proof on file, by delivery method", "Seal, signature or locker code"),
+  } satisfies Partial<MeterDef>,
+  failurePoints: {
+    dataMapping: { category: [{ id: "cases.failure_point" }], value: [{ id: "case_count" }], money: [{ id: "paid_out" }] },
+    format: titled("Where deliveries failed", "Cases by likely cause"),
+  } satisfies Partial<FailureDef>,
+};
+
+const BY_TYPE: Record<string, { dataMapping: Record<string, unknown>; format: unknown }> = {
+  "doorstep-journey": DEFAULTS.journey, "doorstep-money-flow": DEFAULTS.moneyFlow, "doorstep-claim-clock": DEFAULTS.claimClock,
+  "doorstep-evidence-meter": DEFAULTS.evidence, "doorstep-failure-points": DEFAULTS.failurePoints,
+};
+type WidgetLike = { type: string; dataMapping?: Record<string, unknown>; format?: unknown };
+
+/**
+ * Studio's page agent places a widget as `{ type }` alone; the field mapping is left to a second
+ * agent. A Doorstep widget always has one right mapping, so fill it in at once. Returns the pages
+ * to write back, or null when nothing needed filling.
+ */
+export function withDoorstepDefaults<P extends { widgets?: Record<string, unknown> }>(pages: P[]): P[] | null {
+  let changed = false;
+  const next = pages.map((page) => {
+    const ws = page.widgets as Record<string, WidgetLike> | undefined;
+    if (!ws) return page;
+    let pageChanged = false;
+    const out: Record<string, WidgetLike> = {};
+    for (const [id, w] of Object.entries(ws)) {
+      const d = BY_TYPE[w.type];
+      if (d && !Object.keys(w.dataMapping ?? {}).length) {
+        out[id] = { ...w, dataMapping: d.dataMapping, format: w.format ?? d.format };
+        pageChanged = true;
+      } else out[id] = w;
+    }
+    if (!pageChanged) return page;
+    changed = true;
+    return { ...page, widgets: out };
+  });
+  return changed ? next : null;
+}
+
+/** If a widget ends up with no title, one quiet line still says what it is. A `<p>`, never a row. */
+function captioned<T extends AnyDef>(Comp: (p: AgWidgetParams<T>) => React.ReactNode, label: string) {
+  const C = (p: AgWidgetParams<T>) => {
+    const t = (p as { format?: AgWidgetDataFormat<unknown> }).format?.title;
+    return (
+      <>
+        {!(t?.enabled && t.text) && <p className="ds-cap">{label}</p>}
+        <Comp {...p} />
+      </>
+    );
+  };
+  C.displayName = `Captioned(${label})`;
+  return C;
+}
+
 const JOURNEY_ICON = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="5" width="3" height="22" rx="1" fill="#5a524e"/><path d="M5 5C11 5 11 4 17 4V21C11 21 11 23 5 23Z" fill="#3f6f73" fill-opacity=".45"/><path d="M5 23C11 23 11 26 17 26V28C11 28 11 27 5 27Z" fill="#7b2d3d" fill-opacity=".6"/><rect x="17" y="4" width="3" height="17" rx="1" fill="#3f6f73"/><rect x="17" y="25" width="3" height="3" rx="1" fill="#7b2d3d"/><path d="M20 25L27 6V28L20 28Z" fill="#7b2d3d" fill-opacity=".18"/><rect x="27" y="6" width="3" height="22" rx="1" fill="#7b2d3d"/></svg>`;
 
 export const journeyWidget: AgBaseWidgetDefinition<"doorstep-journey", JourneyDef> = {
@@ -288,14 +373,21 @@ export const journeyWidget: AgBaseWidgetDefinition<"doorstep-journey", JourneyDe
   label: "Parcel journey",
   icon: JOURNEY_ICON,
   dataMapping: {
-    orders: { type: "field", supportedRoles: ["numeric"], required: true },
-    shipped: { type: "field", supportedRoles: ["numeric"], required: true },
-    delivered: { type: "field", supportedRoles: ["numeric"], required: true },
-    onWay: { type: "field", supportedRoles: ["numeric"], required: true },
-    cases: { type: "field", supportedRoles: ["numeric"], required: true },
-    refunded: { type: "field", supportedRoles: ["numeric"], required: true },
-    recovered: { type: "field", supportedRoles: ["numeric"], required: true },
+    orders: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "All orders paid (order_count)." },
+    shipped: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Orders handed to a carrier (stage_shipped)." },
+    delivered: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Orders delivered with no problem (stage_delivered)." },
+    onWay: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Orders still on the way (stage_on_way)." },
+    cases: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Orders with a reported problem (orders_with_case)." },
+    refunded: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Cases the buyer was refunded for (stage_refunded)." },
+    recovered: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Cases a carrier paid back (stage_recovered)." },
   },
+  ai: {
+    label: "Parcel journey",
+    description: "A flow of every order from payment to who paid for a problem: paid, shipped, then delivered, on the way or problem reported, then refunded and paid back by the carrier. Orders with a problem are drawn again, zoomed in.",
+    usage: "Use once per page, full width, to show where orders end up and how many had a problem. Not for comparing carriers or months: use a column or bar chart for that.",
+    configuration: "Map all seven slots: orders order_count, shipped stage_shipped, delivered stage_delivered, onWay stage_on_way, cases orders_with_case, refunded stage_refunded, recovered stage_recovered. Best 24 tracks wide and 16 to 20 high.",
+  },
+  defaultState: DEFAULTS.journey,
   form: (p: AgWidgetFormParams<JourneyDef>) => p.createDefaults({
     dataMappingItems: [
       { key: "orders", label: "Orders" }, { key: "shipped", label: "Shipped" }, { key: "delivered", label: "Delivered, no problem" },
@@ -303,7 +395,7 @@ export const journeyWidget: AgBaseWidgetDefinition<"doorstep-journey", JourneyDe
       { key: "recovered", label: "Carrier paid back" },
     ],
   }),
-  comp: Journey,
+  comp: captioned(Journey, "Parcel journey"),
   defaultSize: { width: 900, height: 300 },
   minSize: { width: 480, height: 200 },
 };
@@ -360,14 +452,21 @@ export const moneyFlowWidget: AgBaseWidgetDefinition<"doorstep-money-flow", Flow
   label: "Liability waterfall",
   icon: FLOW_ICON,
   dataMapping: {
-    refunded: { type: "field", supportedRoles: ["numeric"], required: true },
-    recovered: { type: "field", supportedRoles: ["numeric"], required: true },
-    pending: { type: "field", supportedRoles: ["numeric"] },
+    refunded: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Money refunded to buyers (paid_out)." },
+    recovered: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Money carriers paid back (recovered)." },
+    pending: { type: "field", supportedRoles: ["numeric"], intent: "value", aiDescription: "Money still claimable from carriers (claims_pending). Optional." },
   },
+  ai: {
+    label: "Liability waterfall",
+    description: "Three columns: money refunded to buyers, minus what carriers paid back, equals the seller's net loss. The part still claimable from carriers is hatched inside the loss.",
+    usage: "Use to show what delivery problems cost and how much came back. One per page. Not for trends over time.",
+    configuration: "refunded paid_out, recovered recovered, pending claims_pending. About 9 tracks wide and 16 to 20 high.",
+  },
+  defaultState: DEFAULTS.moneyFlow,
   form: (p: AgWidgetFormParams<FlowDef>) => p.createDefaults({
     dataMappingItems: [{ key: "refunded", label: "Refunded" }, { key: "recovered", label: "Recovered" }, { key: "pending", label: "Still claimable" }],
   }),
-  comp: MoneyFlow,
+  comp: captioned(MoneyFlow, "Liability waterfall"),
   defaultSize: { width: 380, height: 300 },
   minSize: { width: 280, height: 220 },
 };
@@ -425,15 +524,22 @@ export const claimClockWidget: AgBaseWidgetDefinition<"doorstep-claim-clock", Cl
   label: "Claim clock",
   icon: CLOCK_ICON,
   dataMapping: {
-    carrier: { type: "field", supportedRoles: ["category"], required: true },
-    deadline: { type: "field", supportedRoles: ["temporal"], required: true },
-    amount: { type: "field", supportedRoles: ["numeric"], required: true },
-    step: { type: "field", supportedRoles: ["category"], required: true },
+    carrier: { type: "field", supportedRoles: ["category"], required: true, intent: "category", aiDescription: "The carrier the claim is against (recoveries.carrier)." },
+    deadline: { type: "field", supportedRoles: ["temporal"], required: true, aiDescription: "The last day to file the claim (recoveries.deadline_at)." },
+    amount: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "The amount claimed (recoveries.claimed)." },
+    step: { type: "field", supportedRoles: ["category"], required: true, intent: "category", aiDescription: "What happens next on the claim (recoveries.next_step)." },
   },
+  ai: {
+    label: "Claim clock",
+    description: "Open carrier claims as dials counting down the days to each claim deadline, soonest first, with the carrier, the amount claimed and the next step.",
+    usage: "Use whenever the question is about carrier claims, claim deadlines or money to recover from a carrier. Filter the page to one carrier to show only its claims.",
+    configuration: "carrier recoveries.carrier, deadline recoveries.deadline_at, amount recoveries.claimed, step recoveries.next_step. Best wide and short: 12 to 24 tracks wide, 12 to 15 high.",
+  },
+  defaultState: DEFAULTS.claimClock,
   form: (p: AgWidgetFormParams<ClockDef>) => p.createDefaults({
     dataMappingItems: [{ key: "carrier", label: "Carrier" }, { key: "deadline", label: "Deadline" }, { key: "amount", label: "Claimed" }, { key: "step", label: "Next step" }],
   }),
-  comp: ClaimClock,
+  comp: captioned(ClaimClock, "Claim clock"),
   defaultSize: { width: 520, height: 240 },
   minSize: { width: 260, height: 140 },
 };
@@ -490,13 +596,20 @@ export const evidenceMeterWidget: AgBaseWidgetDefinition<"doorstep-evidence-mete
   label: "Evidence meter",
   icon: METER_ICON,
   dataMapping: {
-    category: { type: "field", supportedRoles: ["category"], required: true },
-    value: { type: "field", supportedRoles: ["numeric"], required: true },
+    category: { type: "field", supportedRoles: ["category"], required: true, intent: "category", aiDescription: "What to group by: orders.method (delivery method) or orders.carrier." },
+    value: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Share of orders with proof of handover, 0 to 1 (evidence_avg)." },
   },
+  ai: {
+    label: "Evidence meter",
+    description: "One row per delivery method or carrier, each a five-segment meter of how much proof of handover is on file (seal, signature or locker code). Clicking a row filters the page.",
+    usage: "Use for questions about proof, evidence, or how well a carrier or delivery method is covered. Not for counts or money.",
+    configuration: "category orders.method (or orders.carrier), value evidence_avg. About 8 to 12 tracks wide and 14 to 18 high.",
+  },
+  defaultState: DEFAULTS.evidence,
   form: (p: AgWidgetFormParams<MeterDef>) => p.createDefaults({
     dataMappingItems: [{ key: "category", label: "Group by" }, { key: "value", label: "Share of proof (0 to 1)" }],
   }),
-  comp: EvidenceMeter,
+  comp: captioned(EvidenceMeter, "Evidence meter"),
   defaultSize: { width: 420, height: 260 },
   minSize: { width: 260, height: 160 },
 };
@@ -552,14 +665,21 @@ export const failurePointsWidget: AgBaseWidgetDefinition<"doorstep-failure-point
   label: "Failure points",
   icon: FP_ICON,
   dataMapping: {
-    category: { type: "field", supportedRoles: ["category"], required: true },
-    value: { type: "field", supportedRoles: ["numeric"], required: true },
-    money: { type: "field", supportedRoles: ["numeric"] },
+    category: { type: "field", supportedRoles: ["category"], required: true, intent: "category", aiDescription: "Why the delivery failed (cases.failure_point)." },
+    value: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Number of cases (case_count)." },
+    money: { type: "field", supportedRoles: ["numeric"], intent: "value", aiDescription: "Money refunded for those cases (paid_out). Optional." },
   },
+  ai: {
+    label: "Failure points",
+    description: "A ranked list of why deliveries failed, each cause with its share of cases and the money refunded. Clicking a row filters the page; another widget's selection shows as a solid bar over a faint total.",
+    usage: "Use for questions about causes of failed deliveries, what went wrong, or where cases came from. Prefer it to a bar chart of failure points.",
+    configuration: "category cases.failure_point, value case_count, money paid_out. About 8 to 12 tracks wide and 16 to 20 high.",
+  },
+  defaultState: DEFAULTS.failurePoints,
   form: (p: AgWidgetFormParams<FailureDef>) => p.createDefaults({
     dataMappingItems: [{ key: "category", label: "Failure point" }, { key: "value", label: "Cases" }, { key: "money", label: "Money" }],
   }),
-  comp: FailurePoints,
+  comp: captioned(FailurePoints, "Failure points"),
   defaultSize: { width: 460, height: 300 },
   minSize: { width: 280, height: 180 },
 };

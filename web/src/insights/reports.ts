@@ -14,7 +14,7 @@
  * Every widget reads the model's measures (data.ts), so a number means the same thing everywhere.
  */
 import type { AgPageState, AgReportState } from "ag-studio";
-import type { DoorstepRegistry } from "./widgets";
+import { DEFAULTS, type DoorstepRegistry } from "./widgets";
 
 type Page = AgPageState<DoorstepRegistry>;
 type Widget = NonNullable<Page["widgets"]>[string];
@@ -62,28 +62,9 @@ export const W = {
       style: { theme: { ...legendBottom, line: { series: { marker: { enabled: false }, interpolation: { type: "smooth" } } } } },
     },
   },
-  journey: {
-    type: "doorstep-journey",
-    dataMapping: {
-      orders: [{ id: "order_count" }], shipped: [{ id: "stage_shipped" }], delivered: [{ id: "stage_delivered" }],
-      onWay: [{ id: "stage_on_way" }], cases: [{ id: "orders_with_case" }], refunded: [{ id: "stage_refunded" }],
-      recovered: [{ id: "stage_recovered" }],
-    },
-    format: head("Every order, from payment to who paid", "Widths follow the number of orders; orders with a problem are zoomed in"),
-  },
-  moneyFlow: {
-    type: "doorstep-money-flow",
-    dataMapping: { refunded: [{ id: "paid_out" }], recovered: [{ id: "recovered" }], pending: [{ id: "claims_pending" }] },
-    format: head("Where the money went", "Refunded, recovered, net loss"),
-  },
-  claimClock: {
-    type: "doorstep-claim-clock",
-    dataMapping: {
-      carrier: [{ id: "recoveries.carrier" }], deadline: [{ id: "recoveries.deadline_at" }],
-      amount: [{ id: "recoveries.claimed" }], step: [{ id: "recoveries.next_step" }],
-    },
-    format: head("Claim deadlines", "Open carrier claims, soonest first. Doorstep prepares; you file"),
-  },
+  journey: { type: "doorstep-journey", ...DEFAULTS.journey },
+  moneyFlow: { type: "doorstep-money-flow", ...DEFAULTS.moneyFlow },
+  claimClock: { type: "doorstep-claim-clock", ...DEFAULTS.claimClock },
   methodMix: {
     type: "donut-chart",
     dataMapping: { categoryKey: [{ id: "orders.method" }], valueKey: [{ id: "order_count" }] },
@@ -102,16 +83,8 @@ export const W = {
       style: { theme: { ...noLegend, ...barLabels } },
     },
   },
-  failurePoints: {
-    type: "doorstep-failure-points",
-    dataMapping: { category: [{ id: "cases.failure_point" }], value: [{ id: "case_count" }], money: [{ id: "paid_out" }] },
-    format: head("Where deliveries failed", "Cases by likely cause"),
-  },
-  evidenceByMethod: {
-    type: "doorstep-evidence-meter",
-    dataMapping: { category: [{ id: "orders.method" }], value: [{ id: "evidence_avg" }] },
-    format: head("Proof on file, by delivery method", "Seal, signature or locker code"),
-  },
+  failurePoints: { type: "doorstep-failure-points", ...DEFAULTS.failurePoints },
+  evidenceByMethod: { type: "doorstep-evidence-meter", ...DEFAULTS.evidence },
   evidenceByCarrier: {
     type: "doorstep-evidence-meter",
     dataMapping: { category: [{ id: "orders.carrier" }], value: [{ id: "evidence_avg" }] },

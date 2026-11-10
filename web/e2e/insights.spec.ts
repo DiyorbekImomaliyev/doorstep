@@ -243,3 +243,33 @@ test("AS-06 with no model, Ask Doorstep still answers: a chart by keywords, the 
   expect(agentTurns.join(" ")).not.toContain("refund me");
   await expect(panel.getByTestId("ask-answer")).toHaveCount(1);
 });
+
+test("AS-09 Studio's page agent places a Doorstep widget by type alone, and it arrives mapped", async ({ page }) => {
+  // Routed agents: Doorstep hands the request to Studio's page agent, which adds a claim clock by type.
+  await page.route("**/insights/agent", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    const done = (name: string) => body.items.some((i: { kind: string; name?: string }) => i.kind === "call" && i.name === name);
+    let out: object = { message: "Added.", calls: [], mode: "model" };
+    if (body.agent === "doorstep" && !done("delegate_to")) {
+      out = { message: "", calls: [{ call_id: "c1", name: "delegate_to", arguments: { type: { id: "page" }, message: "Add a claim clock." } }], mode: "model" };
+    } else if (body.agent === "page" && !done("add_widget")) {
+      out = { message: "", calls: [{ call_id: "c2", name: "add_widget", arguments: { widgetId: "w1", type: "doorstep-claim-clock", xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 15 } }], mode: "model" };
+    } else if (body.agent === "page" && !done("complete_task")) {
+      out = { message: "", calls: [{ call_id: "c3", name: "complete_task", arguments: { summary: "Added a claim clock.", artifacts: [] } }], mode: "model" };
+    }
+    await route.fulfill({ json: out });
+  });
+  await openInsights(page);
+  await page.getByRole("button", { name: "New report" }).click();
+  await page.getByRole("button", { name: "Ask Doorstep" }).click();
+  const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
+  await panel.getByRole("textbox", { name: "Your question" }).fill("Add a claim clock to this page");
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText("Added a claim clock")).toBeVisible();
+  await expect(panel.getByText("Complete task")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Close Ask Doorstep" }).click();
+  await page.getByRole("button", { name: /Done editing/ }).click().catch(() => {});
+  // Mapped from Doorstep's defaults: dials with days left, and its title.
+  await expect(page.locator(".ds-clock li").first()).toContainText(/DAYS/i);
+  await expect(page.getByText("Claim deadlines")).toBeVisible();
+});
