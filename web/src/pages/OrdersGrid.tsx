@@ -953,8 +953,6 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         chartThemes={chartThemes}
         customChartThemes={customChartThemes}
         chartThemeOverrides={chartThemeOverrides}
-        // The grid grows with its rows (autoHeight), so popups (charts, menus) sit on the page, in view.
-        popupParent={document.body}
         domLayout="autoHeight"
       />
     </div>
