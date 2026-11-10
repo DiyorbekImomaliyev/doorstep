@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps,
+  AgGridReact, type CustomCellRendererProps,
   type CustomStatusPanelProps, type CustomToolPanelProps, type CustomTooltipProps,
 } from "ag-grid-react";
 import {
@@ -18,10 +18,11 @@ import {
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
 import type { OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
-import { FAILURE_POINT, METHOD, ROUTE, ago, money, pct, riskTone, stateTone, type Tone } from "../format";
+import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
 import { afterGlide, useMedia, useReducedMotion } from "../motion";
 import { Says, type Part } from "../components/ai";
+import DetailPanel from "../grid/DetailPanel";
 import { guideParts } from "../grid/guide";
 import Doorstep3D from "../components/Doorstep3D";
 import type { DoorstepNote } from "../grid/notes";
@@ -155,7 +156,7 @@ export function urgency(r: OrderRow): number {
 }
 export const byUrgency = (a: OrderRow, b: OrderRow) => urgency(a) - urgency(b) || b.money_at_stake_minor - a.money_at_stake_minor;
 
-function routeLabel(r: OrderRow): string {
+export function routeLabel(r: OrderRow): string {
   const key = r.case_state && ROUTE[r.case_state] ? r.case_state : r.route;
   return key && ROUTE[key] ? ROUTE[key].label : "";
 }
@@ -165,20 +166,20 @@ function haystack(r: OrderRow): string {
 }
 
 const PROOFS = ["address checked", "packing photo", "tracking", "delivered scan", "possession proof"];
-function proofList(r: OrderRow): { name: string; ok: boolean }[] {
+export function proofList(r: OrderRow): { name: string; ok: boolean }[] {
   const all = [...r.evidence.present.map((n) => ({ name: n, ok: true })), ...r.evidence.missing.map((n) => ({ name: n, ok: false }))];
   const rank = (n: string) => { const i = PROOFS.indexOf(n); return i < 0 ? 99 : i; };
   return all.sort((a, b) => rank(a.name) - rank(b.name));
 }
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function rowTone(r: OrderRow): Tone {
+export function rowTone(r: OrderRow): Tone {
   if (r.case_state) return ROUTE[r.case_state]?.tone ?? "accent";
   return stateTone(r.state);
 }
 
-const STEPS = ["Paid", "Packed", "Shipped", "Delivered", "Received"];
-const STEP_OF: Record<string, number> = {
+export const STEPS = ["Paid", "Packed", "Shipped", "Delivered", "Received"];
+export const STEP_OF: Record<string, number> = {
   CREATED: 0, PAID: 1, PACKED: 2, SHIPPED: 3, IN_TRANSIT: 3, EXCEPTION: 3,
   DELIVERED: 4, PICKED_UP: 4, CONFIRMED: 5, CASE_OPEN: 4, RESOLVED: 4,
 };
@@ -186,7 +187,7 @@ const STATE_RANK: Record<string, number> = {
   CREATED: 0, PAID: 1, PACKED: 2, SHIPPED: 3, IN_TRANSIT: 4, EXCEPTION: 5,
   DELIVERED: 6, PICKED_UP: 6, CONFIRMED: 7, CASE_OPEN: 8, RESOLVED: 9,
 };
-const COUNTRY: Record<string, string> = { GB: "United Kingdom", US: "United States" };
+export const COUNTRY: Record<string, string> = { GB: "United Kingdom", US: "United States" };
 
 /** Re-render when the grid opens or closes this row (detail panel or lane). */
 function useExpanded(node: IRowNode | undefined): boolean {
@@ -388,61 +389,6 @@ function GroupRow(p: CustomCellRendererProps<OrderRow>) {
       <span className="count-chip num">{rows.length}</span>
       {lane && <span className="lane-hint">{lane.hint}</span>}
       <span className="lane-meta num">{stake} at stake</span>
-    </div>
-  );
-}
-
-/** Master/detail: the order's proof, journey, risk and case, without leaving the table. */
-function DetailPanel(p: CustomDetailCellRendererProps<OrderRow> & { onOpen: (r: OrderRow) => void }) {
-  const r = p.data;
-  if (!r) return null;
-  const list = proofList(r);
-  const done = STEP_OF[r.state] ?? 0;
-  const tone = rowTone(r);
-  return (
-    <div className="detail">
-      <div className="detail-inner">
-        <section className="detail-journey">
-          <h4>Journey</h4>
-          <ol className={`stepper tone-${tone}`}>
-            {STEPS.map((s, i) => (
-              <li key={s} className={i < done ? (i === done - 1 ? "on last" : "on") : ""}>
-                <span className="dot" aria-hidden>{i < done && <Check />}</span>{s}
-              </li>
-            ))}
-          </ol>
-          <p className="faint" style={{ marginTop: 10 }}>{r.status} · updated {ago(r.last_update)}</p>
-        </section>
-        <section>
-          <h4>Proof on file</h4>
-          <ul className="checklist">
-            {list.map((x) => <li key={x.name} className={x.ok ? "ok" : "miss"}>{x.ok ? <Check aria-hidden /> : <Circle aria-hidden />}{cap(x.name)}</li>)}
-          </ul>
-        </section>
-        <section>
-          <h4>Delivery risk</h4>
-          {r.delivery_risk == null ? <p className="faint">Not scored.</p> : (
-            <>
-              <span className={`pill ${riskTone(r.delivery_risk) === "neutral" ? "plain" : riskTone(r.delivery_risk)}`}>{pct(r.delivery_risk)}</span>
-              <ul className="reasons">{r.risk_reasons.slice(0, 3).map((x) => <li key={x}>{x}</li>)}</ul>
-            </>
-          )}
-          <h4 style={{ marginTop: 14 }}>Buyer</h4>
-          <p style={{ margin: 0, fontSize: 13 }}>{r.buyer_area || "—"}, {COUNTRY[r.buyer_country] ?? r.buyer_country}</p>
-        </section>
-        <section>
-          <h4>Case</h4>
-          {r.case_id ? (
-            <dl className="mini-kv">
-              <dt>Likely cause</dt><dd>{r.failure_point ? FAILURE_POINT[r.failure_point] ?? r.failure_point : "Being worked out"}</dd>
-              <dt>Route</dt><dd>{routeLabel(r) || "—"}</dd>
-              <dt>Rule</dt><dd className="mono">{r.rule_id ?? "—"}</dd>
-              {r.confidence && <><dt>Confidence</dt><dd>{cap(r.confidence)}</dd></>}
-            </dl>
-          ) : <p className="faint">No problem reported.</p>}
-          <button className="btn" style={{ marginTop: 14 }} onClick={() => p.onOpen(r)}>Open order<ArrowUpRight size={15} aria-hidden /></button>
-        </section>
-      </div>
     </div>
   );
 }

@@ -996,3 +996,10 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .orders-grid .ds-panel .btn { height: 32px; font-size: 12.5px; }
 .orders-grid .ag-side-button[aria-expanded="true"], .orders-grid .ag-selected .ag-side-button { color: var(--accent); }
 @media (max-width: 640px) { .orders-grid .ag-toolbar { display: none; } }
+/* Detail panel: the case timeline, a small grid that reads as part of the panel */
+.detail-inner .detail-timeline { grid-column: 1 / -1; border-top: 1px solid var(--line); border-right: 0; padding: 14px 18px 12px; }
+.detail-timeline .timeline-grid { margin: 0 -10px; --ag-auto-height-min-body-height: 32px; }
+.detail-timeline .ag-root-wrapper { border: 0; background: transparent; }
+.detail-timeline .skeleton-lines { display: grid; gap: 8px; padding: 4px 0 6px; }
+.detail-timeline .timeline-more { margin-top: 6px; height: 28px; padding: 0 10px; font-size: 12.5px; }
+.detail-timeline .ag-cell > span { display: block; overflow: hidden; text-overflow: ellipsis; }
