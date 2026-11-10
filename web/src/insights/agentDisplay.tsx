@@ -189,3 +189,14 @@ const named = (name: (id: string) => string | undefined, id: unknown, fallback: 
   const n = id ? name(String(id)) : undefined;
   return n ? `“${n}”` : fallback;
 };
+
+/** S9: one to three plain words per tool, for the Steps list under a reply. Hidden tools have none. */
+const TRACE_LABEL: Record<string, string> = {
+  scan_for_anomalies: "Read orders", answer_question: "Answered", open_report: "Opened report", open_carrier_report: "Opened carrier",
+  create_report: "Built report", build_report_template: "Built report", check_page: "Checked page", explain_chart: "Read chart",
+  add_widget: "Built chart", configure_widget: "Set up chart", position_widget: "Moved chart", remove_widget: "Removed chart",
+  add_page_filter: "Filtered page", remove_page_filter: "Cleared filter", add_widget_filter: "Filtered chart",
+  remove_widget_filter: "Cleared filter", delegate_to: "Asked Studio",
+};
+export const traceLabel = (name: string): string | null =>
+  doorstepToolDisplay[name]?.hidden ? null : TRACE_LABEL[name] ?? name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());

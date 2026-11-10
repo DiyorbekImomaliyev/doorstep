@@ -29,7 +29,7 @@ import { AskPanel, type BuildActions } from "./AskPanel";
 import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
 import { widgetNameById } from "./explain";
 import { LedgerBar, useLedger } from "./Ledger";
-import { REPORTS, carrierDrillPage, reportState } from "./reports";
+import { KPI_H, REPORTS, carrierDrillPage, reportState } from "./reports";
 import { paperTheme } from "./theme";
 import { doorstepWidgetTypes, withDoorstepDefaults, type BriefContext, type DoorstepRegistry } from "./widgets";
 import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
@@ -111,11 +111,19 @@ const STACKED: AgResponsiveLayoutBreakpoint[] = [{
     const order = items.map((_, i) => i).sort((a, b) =>
       items[a].layout.yTrack - items[b].layout.yTrack || items[a].layout.xTrack - items[b].layout.xTrack);
     const out: AgWidgetLayoutState[] = new Array(items.length);
+    // KPI cards (authored a quarter wide and short) pair up, two to a row; anything else is full width.
+    const isKpi = (i: number) => items[i].layout.xSpan * 4 <= columns && items[i].layout.ySpan <= KPI_H;
+    const half = Math.floor(columns / 2);
     let y = 0;
-    for (const i of order) {
+    for (let n = 0; n < order.length; n++) {
+      const i = order[n];
       const ySpan = Math.max(items[i].layout.ySpan, items[i].minSize.ySpan);
-      out[i] = { xTrack: 0, yTrack: y, xSpan: columns, ySpan };
-      y += ySpan;
+      const j = isKpi(i) && n + 1 < order.length && isKpi(order[n + 1]) ? order[n + 1] : -1;
+      if (j < 0) { out[i] = { xTrack: 0, yTrack: y, xSpan: columns, ySpan }; y += ySpan; continue; }
+      const h = Math.max(ySpan, items[j].layout.ySpan, items[j].minSize.ySpan);
+      out[i] = { xTrack: 0, yTrack: y, xSpan: half, ySpan: h };
+      out[j] = { xTrack: half, yTrack: y, xSpan: columns - half, ySpan: h };
+      y += h; n++;
     }
     return out;
   },

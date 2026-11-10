@@ -214,7 +214,7 @@ export const W = {
 
 // ---------------------------------------------------------------- the three reports
 
-const KPI_H = 11;
+export const KPI_H = 11;
 
 /** The trend stops at the start of this week, so a week in progress never reads as a collapse. */
 const weekStart = (() => {

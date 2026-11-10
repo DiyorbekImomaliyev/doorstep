@@ -12,10 +12,10 @@ import type {
   AgAiChatMessage, AgAiChatMessagePart, AgAiChatSession, AgAiHarness, AgAiRunStatus, AgAiToolCallView, AgAiToolDetailParams,
   AgAiToolDisplayStatus, AgAiToolResult,
 } from "ag-studio";
-import { ArrowUp, Check, ChevronDown, Redo2, Square, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowUp, Check, CheckCircle2, ChevronDown, Redo2, Square, Undo2, X } from "lucide-react";
 import { ReadBy } from "../components/ai";
 import { BUILD_PLAN, STARTERS, chaseQuestion } from "./agent";
-import { AnswerActionsContext, doorstepToolDisplay, type AnswerActions } from "./agentDisplay";
+import { AnswerActionsContext, doorstepToolDisplay, traceLabel, type AnswerActions } from "./agentDisplay";
 
 const NO_MESSAGES: ReadonlyArray<AgAiChatMessage> = [];
 /** Steps whose detail opens by itself: the findings, the answer and the explanation are the point. */
@@ -82,11 +82,58 @@ function PlanCard({ calls, running }: { calls: AgAiToolCallView[]; running: bool
   );
 }
 
+/** When each call was first seen running and when it finished, for the Steps list (the views carry no clock). */
+function useCallClock(calls: AgAiToolCallView[]) {
+  const clock = useRef(new Map<string, { start: number; end?: number }>());
+  const now = performance.now();
+  for (const c of calls) {
+    const t = clock.current.get(c.toolCallId) ?? { start: now };
+    if (!clock.current.has(c.toolCallId)) clock.current.set(c.toolCallId, t);
+    if (!t.end && (c.status === "complete" || c.status === "error")) t.end = now;
+  }
+  return (id: string) => {
+    const t = clock.current.get(id);
+    // A call first seen already finished has no honest duration.
+    return t?.end && t.end - t.start > 60 ? t.end - t.start : undefined;
+  };
+}
+
+/** S9: under a finished reply, "Steps · n" opens to each step the agents took, in order. Labels only: no arguments, no rows. */
+function Trace({ calls, took }: { calls: AgAiToolCallView[]; took: (id: string) => number | undefined }) {
+  const [open, setOpen] = useState(false);
+  const rows = calls.map((c) => ({ c, label: traceLabel(c.name) })).filter((r): r is { c: AgAiToolCallView; label: string } => r.label !== null);
+  if (!rows.length) return null;
+  const fmt = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
+  return (
+    <div className="ask-trace" data-testid="ask-trace">
+      <button type="button" className="ask-trace-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <ChevronDown size={13} aria-hidden />Steps · {rows.length}
+      </button>
+      {open && (
+        <ol className="ask-trace-list">
+          {rows.map(({ c, label }) => {
+            const bad = c.status === "error" || (c.result as AgAiToolResult | undefined)?.success === false;
+            const ms = took(c.toolCallId);
+            return (
+              <li key={c.toolCallId} data-status={bad ? "warn" : "ok"}>
+                {bad ? <AlertTriangle size={13} aria-label="Needs a look" /> : <CheckCircle2 size={13} aria-label="Done" />}
+                <span>{label}</span>
+                {ms !== undefined && <span className="num">{fmt(ms)}</span>}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 /** A turn: the question, the plan card if it builds a page, each step, and Undo this build. */
 function Turn({ question, parts, harness, names, busy, build }: {
   question: string; parts: ReadonlyArray<AgAiChatMessagePart>; harness: AgAiHarness; names: Names; busy: boolean; build?: BuildActions;
 }) {
   const calls = useTurnCalls(harness, parts);
+  const took = useCallClock(calls);
   const made = calls.find((c) => BUILDS.has(c.name));
   const pageId = made && complete(made) ? (made.result as { data?: { pageId?: string } }).data?.pageId : undefined;
   return (
@@ -94,6 +141,7 @@ function Turn({ question, parts, harness, names, busy, build }: {
       <p className="ask-q">{question}</p>
       {made && <PlanCard calls={calls} running={busy} />}
       <Parts parts={parts} harness={harness} names={names} />
+      {!busy && calls.length > 0 && <Trace calls={calls} took={took} />}
       {busy && !parts.length && <p className="ask-thinking"><span className="ins-spinner" aria-hidden />Reading your question…</p>}
       {pageId && build && !busy && (
         build.has(pageId)
