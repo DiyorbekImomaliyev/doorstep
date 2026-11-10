@@ -110,6 +110,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
             <div className="row wrap" style={{ gap: 8 }}>
               <span className="rule-line" title={d.rule_id ? `Rule file ${d.rule_id}, version ${d.rule_version ?? "?"}` : undefined}>
                 <Scale aria-hidden /><span>{d.rule_name ? `Decided under ${d.rule_name}` : d.rule_id ? `Decided under rule ${d.rule_id}` : "No rule matched this country"}</span>
+                {d.rule_id && <code className="rule-id">{d.rule_id} · {d.rule_version ?? "?"}</code>}
               </span>
               {protection && (
                 <span className="rule-line" title="PayPal's own verdict on this payment. Information only; it does not change Doorstep's decision.">
