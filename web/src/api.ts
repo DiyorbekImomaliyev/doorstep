@@ -141,6 +141,22 @@ export type Address = {
 
 export type EvidenceScore = { score: number; present: string[]; missing: string[] };
 
+/** G3 Ask the grid: what the grid can filter by (no items, buyers or order refs), and the reading. */
+export type GridMenu = { status: string[]; next: string[]; method: string[] };
+export type GridPlan = {
+  answerable: boolean;
+  view: "needs_you" | "in_transit" | "cases" | "all";
+  journey: string[];
+  next_step: string[];
+  delivery: ("home" | "locker" | "signature")[];
+  min_at_stake: number | null;
+  max_proof: number | null;
+  sort: { col: "money" | "risk" | "proof" | "updated" | "status"; desc: boolean }[];
+  show: ("next" | "buyer" | "updated")[];
+  note: string;
+};
+export type GridAnswer = { question: string; plan: GridPlan; mode: "model" | "keywords"; provider: string | null };
+
 export type OrderRow = {
   order_id: string;
   order_ref: string;
@@ -395,6 +411,7 @@ export const api = {
   autopilotOff: (t: string, ruleId: string) =>
     call<SellerRule>("POST", `/api/seller/${t}/autopilot/${encodeURIComponent(ruleId)}/off`),
   orders: (t: string) => call<OrderRow[]>("GET", `/api/seller/${t}/orders`),
+  gridAsk: (t: string, question: string, menu: GridMenu) => call<GridAnswer>("POST", `/api/seller/${t}/grid/ask`, { question, menu }),
   casePage: (t: string, caseId: string) => call<CaseView>("GET", `/api/seller/${t}/cases/${caseId}`),
   act: (t: string, caseId: string, action: CaseAction) =>
     call<{ case_id: string; state: string; money_action_id: string | null }>(

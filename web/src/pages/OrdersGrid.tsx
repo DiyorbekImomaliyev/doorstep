@@ -1,21 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps,
-  type CustomNoRowsOverlayProps, type CustomStatusPanelProps, type CustomTooltipProps,
+  type CustomStatusPanelProps, type CustomTooltipProps,
 } from "ag-grid-react";
 import {
-  AllCommunityModule, ModuleRegistry, themeQuartz,
+  AllCommunityModule, ModuleRegistry,
   type ColDef, type DefaultMenuItem, type ExcelStyle, type GetContextMenuItemsParams, type GridApi, type IRowNode,
   type MenuItemDef, type RowClickedEvent, type SideBarDef, type StatusPanelDef,
 } from "ag-grid-community";
 import {
   ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, FiltersToolPanelModule, LicenseManager,
   MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
+  AiToolkitModule, NotesModule, PdfExportModule,
 } from "ag-grid-enterprise";
-import { ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, CircleCheck, SearchX } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
 import type { OrderRow } from "../api";
-import { DeliveryCell, JourneyCell, RiskCell, itemKind } from "../components/gridCells";
+import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
 import { FAILURE_POINT, METHOD, ROUTE, ago, money, pct, riskTone, stateTone, type Tone } from "../format";
+import { gridTheme } from "../grid/theme";
+import { afterGlide, useMedia, useReducedMotion } from "../motion";
+import { Says, type Part } from "../components/ai";
+import { guideParts } from "../grid/guide";
+import Doorstep3D from "../components/Doorstep3D";
+import { hasNote, notesFor, notesSource } from "../grid/notes";
 
 /**
  * The Control Room order grid, on AG Grid Enterprise. Patterns from AG Grid's own demos
@@ -31,47 +38,9 @@ if (__AG_GRID_LICENSE_KEY__) LicenseManager.setLicenseKey(__AG_GRID_LICENSE_KEY_
 ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
   ColumnsToolPanelModule, FiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
-  StatusBarModule,
+  StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule,
 ]);
 
-const theme = themeQuartz.withParams({
-  fontFamily: "inherit",
-  fontSize: 13.5,
-  foregroundColor: "#1f1a18",
-  backgroundColor: "#ffffff",
-  headerFontWeight: 600,
-  headerFontSize: 11,
-  headerBackgroundColor: "#ffffff",
-  headerTextColor: "#8b827d",
-  // Hairlines only: one rule under the header and between rows, no column lines or resize ticks
-  // (columns still resize from their edge).
-  headerColumnResizeHandleColor: "transparent",
-  headerColumnBorder: false,
-  borderColor: "#ede8e3",
-  rowBorder: { color: "#f3eee9" },
-  columnBorder: false,
-  rowHoverColor: "#fbf7f6",
-  selectedRowBackgroundColor: "#f6ecee",
-  accentColor: "#7b2d3d",
-  iconColor: "#8b827d",
-  wrapperBorder: false,
-  wrapperBorderRadius: 0,
-  rowHeight: 62,
-  headerHeight: 42,
-  spacing: 7,
-  cellHorizontalPadding: 16,
-  valueChangeValueHighlightBackgroundColor: "#f3e3e7",
-  tooltipBackgroundColor: "transparent",
-  tooltipBorder: false,
-  sideBarBackgroundColor: "#fcfbfa",
-  menuBackgroundColor: "#ffffff",
-  menuBorder: { color: "#e8e2dc" },
-  menuShadow: "0 12px 32px rgba(31, 26, 24, .14)",
-  statusBarLabelColor: "#736b67",
-  statusBarLabelFontWeight: 500,
-  statusBarValueColor: "#1f1a18",
-  statusBarValueFontWeight: 600,
-});
 
 // ---------- vocabulary ----------
 
@@ -112,6 +81,21 @@ function nextAction(r: OrderRow): { label: string; urgent: boolean; level: Level
   if (r.state === "PACKED") return { label: "Ship it", urgent: true, level: "tint" };
   return { label: "Open", urgent: false, level: "quiet" };
 }
+
+/**
+ * One work order for the seller: what costs money if it waits comes first. A PayPal dispute has a
+ * deadline (0), then a refund waiting on the seller (1), a held case (2), a packing check (3),
+ * a parcel to pack (4) or ship (5); everything else after (9). Ties: most money at stake first.
+ */
+export function urgency(r: OrderRow): number {
+  if (r.case_state === "DISPUTE_EVIDENCE" && r.needs_action) return 0;
+  if (r.case_state === "AWAITING_SELLER") return 1;
+  if (r.case_state === "HOLD_FOR_REVIEW") return 2;
+  if (r.state === "PAID") return r.packing_verdict && r.packing_verdict !== "match" ? 3 : 4;
+  if (r.state === "PACKED") return 5;
+  return 9;
+}
+export const byUrgency = (a: OrderRow, b: OrderRow) => urgency(a) - urgency(b) || b.money_at_stake_minor - a.money_at_stake_minor;
 
 function routeLabel(r: OrderRow): string {
   const key = r.case_state && ROUTE[r.case_state] ? r.case_state : r.route;
@@ -174,11 +158,15 @@ function useModelTick(api: CustomCellRendererProps<OrderRow>["api"]) {
 
 function OrderCell(p: CustomCellRendererProps<OrderRow>) {
   const open = useExpanded(p.node);
+  useModelTick(p.api);
   const r = p.data;
   if (!r) return null;
   const k = itemKind(r.item);
+  // In the Needs-you lane, a quiet step number: the order to work through them in.
+  const step = laneOf(r) === "you" ? (p.node.parent?.childrenAfterSort?.indexOf(p.node) ?? -1) + 1 : 0;
   return (
     <div className="order-cell">
+      {step > 0 && <span className="step-no num" aria-hidden>{step}</span>}
       <button data-own-click className="expander" aria-expanded={open}
         aria-label={`${open ? "Hide" : "Show"} details for ${r.item}`} onClick={() => p.node.setExpanded(!open)}>
         <ChevronRight aria-hidden />
@@ -190,6 +178,8 @@ function OrderCell(p: CustomCellRendererProps<OrderRow>) {
           <span className="tag">{k.label}</span>
           <span className="sub num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
         </span>
+        {/* A phone shows two columns, Order and Next: the journey rides here; the rest is in the order. */}
+        <span className={`order-journey phone-only tone-${journeyTone(r)}`}><span>{journeyLabel(r)}</span></span>
       </span>
     </div>
   );
@@ -338,6 +328,26 @@ function DetailPanel(p: CustomDetailCellRendererProps<OrderRow> & { onOpen: (r: 
   );
 }
 
+// ---------- the Doorstep row ----------
+
+/** The pinned Doorstep row's stand-in data: it is drawn full width and kept out of everything else. */
+const GUIDE_ID = "__doorstep";
+const GUIDE = { order_id: GUIDE_ID } as OrderRow;
+const isGuide = (n: IRowNode | null | undefined) => n?.rowPinned === "top";
+
+/** Doorstep speaks once, at the top of the grid: what needs the seller, and one Start button. */
+function DoorstepRow(p: CustomCellRendererProps<OrderRow> & { parts: Part[] | null; onStart: () => void }) {
+  if (!p.parts) return null;
+  return (
+    <div className="ds-row">
+      <Says parts={p.parts} className="ds-row-text" />
+      <button data-own-click className="row-action primary ds-row-start" onClick={p.onStart}>
+        Start<ArrowRight aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 // ---------- status bar ----------
 
 /** Status bar: money at stake in the rows the seller can see, per currency (never summed across). */
@@ -362,12 +372,16 @@ function SourcePanel({ text }: CustomStatusPanelProps<OrderRow> & { text: string
 const emptySelector = (p: { overlayType: string }) =>
   (p.overlayType === "noRows" || p.overlayType === "noMatchingRows" ? { component: EmptyOverlay } : undefined);
 
-/** Empty list: a calm line with an icon, not a bare sentence. */
-function EmptyOverlay({ text, searching }: CustomNoRowsOverlayProps<OrderRow> & { text?: string; searching?: boolean }) {
+/**
+ * Empty list: a calm line under a small 3D doorstep (a sealed parcel on the step) when the list is
+ * truly empty; a plain search icon when a search matched nothing.
+ */
+function EmptyOverlay({ text, searching, overlayType }: { text?: string; searching?: boolean; overlayType?: string }) {
+  const calm = !searching && overlayType !== "noMatchingRows";
   return (
     <div className="grid-empty">
-      <span className="grid-empty-icon" aria-hidden>{searching ? <SearchX /> : <CircleCheck />}</span>
-      <span>{text}</span>
+      {calm ? <Doorstep3D /> : <span className="grid-empty-icon" aria-hidden><SearchX /></span>}
+      <span>{!searching && overlayType === "noMatchingRows" ? "No orders match. Remove a chip or press Undo to see more." : text}</span>
     </div>
   );
 }
@@ -384,7 +398,7 @@ const excelStyles: ExcelStyle[] = [
 function exportValue(id: string, r: OrderRow, v: unknown): string {
   switch (id) {
     case "item": return `${r.item} (${r.order_ref})`;
-    case "status": return r.status;
+    case "status": return journeyLabel(r); // what the Journey cell says: the cause, not "Case open"
     case "next": return routeLabel(r) || (nextAction(r).urgent ? nextAction(r).label : "");
     case "method": return r.method ? METHOD[r.method] ?? r.method : "";
     case "risk": return r.delivery_risk == null ? "" : pct(r.delivery_risk);
@@ -403,10 +417,64 @@ function exportParams() {
     processCellCallback: (q: { column: { getColId(): string }; node?: IRowNode | null; value: unknown }) =>
       (q.node?.data ? exportValue(q.column.getColId(), q.node.data as OrderRow, q.value) : ""),
     processRowGroupCallback: (q: { node: IRowNode }) => LANES[q.node.key as Lane]?.label ?? String(q.node.key),
+    skipPinnedTop: true,
   };
 }
 
 /** Excel (Enterprise): what the seller sees, same filters and sort, lanes kept as groups. */
+const PDF_WIDTHS: Record<string, number> = { item: 174, buyer: 66, status: 122, next: 124, risk: 40, proof: 40, money: 80, method: 58, updated: 78 };
+
+/** PDFs use the built-in fonts (WinAnsi): swap the few symbols we print, and anything else unknown. */
+const CP1252 = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+export function pdfSafe(s: string): string {
+  return s.replace(/≥/g, ">=").replace(/≤/g, "<=").replace(/→/g, "->").replace(/✓/g, "Yes")
+    .replace(/[^\x20-\x7e\xa0-\xff]/g, (c) => (CP1252.includes(c) ? c : "?"));
+}
+
+/**
+ * G7: the hand-off report. What the grid shows (filters, sort, lanes), as a landscape PDF a seller
+ * can pass to a helper or keep: titled, paged, marked SANDBOX, and each case row's order linking to
+ * its signed receipts (/verify/{case_id}).
+ */
+export function exportHandoffPdf(api: GridApi, o: { shop: string; region: string; view: string; source: string }) {
+  const p = exportParams();
+  let n = 0;
+  api.forEachNodeAfterFilter((x) => { if (x.data && !x.group && !x.rowPinned) n++; });
+  const now = new Date();
+  const date = now.toLocaleDateString(o.region === "US" ? "en-US" : "en-GB", { day: "numeric", month: "long", year: "numeric" });
+  api.exportDataAsPdf({
+    ...p,
+    fileName: `doorstep-handoff-${now.toISOString().slice(0, 10)}.pdf`,
+    documentTitle: "Delivery hand-off",
+    documentSubtitle: pdfSafe(`${o.shop} · ${date} · ${o.view} (${n})`),
+    page: { size: o.region === "US" ? "Letter" : "A4", orientation: "landscape" },
+    headerFooterConfig: { all: { footer: [
+      { value: "Doorstep", position: "Left" },
+      { value: "Page &[Page] of &[Pages]", position: "Center" },
+      { value: pdfSafe(o.source || "PayPal sandbox"), position: "Right" },
+    ] } },
+    watermark: { text: "SANDBOX", opacity: 0.06 },
+    repeatHeader: true,
+    // Widths sized to what each column holds (points, landscape); anything else fits its text.
+    columnWidth: ({ column }) => PDF_WIDTHS[column?.getColId() ?? ""] ?? "auto",
+    processCellCallback: (q) => {
+      // A short local time ("10 Nov, 14:20") instead of the ISO stamp Excel keeps.
+      const r = q.node?.data as OrderRow | undefined;
+      if (r && q.column.getColId() === "updated") {
+        return new Date(r.last_update).toLocaleString(o.region === "US" ? "en-US" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      }
+      // "£58 at stake" when all of it is at stake; the long form only when part of it is.
+      if (r && q.column.getColId() === "money" && r.money_at_stake_minor === r.amount_minor) {
+        return pdfSafe(`${money(r.amount_minor, r.currency)} at stake`);
+      }
+      return pdfSafe(p.processCellCallback(q));
+    },
+    processRowGroupCallback: (q) => pdfSafe(p.processRowGroupCallback(q)),
+    processCellHyperlinkCallback: ({ node, column }) =>
+      column.getColId() === "item" && node.data?.case_id ? `${location.origin}/verify/${node.data.case_id}` : undefined,
+  });
+}
+
 export function exportExcel(api: GridApi) {
   const p = exportParams();
   api.exportDataAsExcel({ ...p, fileName: `${p.fileName}.xlsx`, sheetName: "Orders", author: "Doorstep" });
@@ -443,12 +511,18 @@ const sideBar: SideBarDef = {
 };
 
 const getRowId = (p: { data: OrderRow }) => p.data.order_id;
-const isRowMaster = (d: OrderRow | undefined) => !!d;
-const getRowHeight = (p: { node: IRowNode }) => (p.node.group ? 44 : undefined);
+const isRowMaster = (d: OrderRow | undefined) => !!d && d.order_id !== GUIDE_ID;
+/** On a phone the Doorstep row keeps its first sentence ("7 need you. Start with the PayPal dispute ($89).") on two lines. */
+function firstSentence(parts: Part[]): Part[] {
+  const end = parts.findIndex((x, i) => i > 1 && x === ".");
+  return end > 0 ? parts.slice(0, end + 1) : parts;
+}
+const isFullWidthRow = (p: { rowNode: IRowNode }) => isGuide(p.rowNode);
 const laneOrder = (p: { nodeA: IRowNode; nodeB: IRowNode }) =>
   (LANES[p.nodeA.key as Lane]?.rank ?? 9) - (LANES[p.nodeB.key as Lane]?.rank ?? 9);
 // Column filters live in the Filters panel and the right-click menu, not as icons on every header.
-const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true };
+// Notes are Doorstep's, read-only: no add or edit UI (existing notes still open on hover).
+const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true, suppressNoteActions: true };
 const rowStyle = { cursor: "pointer" };
 
 export type OrdersGridProps = {
@@ -461,26 +535,38 @@ export type OrdersGridProps = {
   source: string;
   /** Orders the last poll changed: they flash once and keep a thin rail for a few seconds. */
   changed?: { ids: Set<string>; at: Date } | null;
+  /** Orders are still loading: skeleton rows in the grid's own shape. */
+  loading?: boolean;
+  /** Show the Doorstep row (what needs the seller, and Start) when something does. */
+  guide?: boolean;
+  /** Download the hand-off report (PDF) of what the grid shows. */
+  onHandoff?: () => void;
 };
 
 const RAIL_MS = 8000;
+const loadingRows = { rowCount: 6 };
 
-export default function OrdersGrid({ rows, search, empty, onOpen, onReady, source, changed }: OrdersGridProps) {
+export default function OrdersGrid({ rows, search, empty, onOpen, onReady, source, changed, loading = false, guide = false, onHandoff }: OrdersGridProps) {
   const api = useRef<GridApi | null>(null);
+  const reduced = useReducedMotion();
+  const phone = useMedia("(max-width: 640px)");
+  const getRowHeight = useCallback((p: { node: IRowNode }) => (isGuide(p.node) ? (phone ? 84 : 64) : p.node.group ? 44 : undefined), [phone]);
+  useEffect(() => { const a = api.current; if (a && !a.isDestroyed()) a.resetRowHeights(); }, [phone]);
   const railed = useRef<Set<string>>(new Set());
   const rowClassRules = useMemo(() => ({ "row-changed": (p: { data?: OrderRow }) => !!p.data && railed.current.has(p.data.order_id) }), []);
   useEffect(() => {
     const a = api.current;
     if (!a || !changed) return;
     const nodes = () => [...changed.ids].map((id) => a.getRowNode(id)).filter((n): n is IRowNode => !!n);
-    // After the grid has taken the new rows: mark them, then flash once; the rail fades after a while.
-    const start = window.setTimeout(() => {
+    // After the grid has moved the rows to their new places (the glide): mark them, then flash once;
+    // the rail fades after a while.
+    const start = afterGlide(() => {
       if (a.isDestroyed()) return;
       railed.current = new Set(changed.ids);
       a.redrawRows({ rowNodes: nodes() });
       // Flash on the next frame, once the redrawn rows are in the page.
       window.requestAnimationFrame(() => { if (!a.isDestroyed()) a.flashCells({ rowNodes: nodes(), flashDuration: 700, fadeDuration: 1400 }); });
-    }, 60);
+    });
     const end = window.setTimeout(() => {
       if (a.isDestroyed()) return;
       const was = nodes();
@@ -489,6 +575,12 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     }, RAIL_MS);
     return () => { window.clearTimeout(start); window.clearTimeout(end); };
   }, [changed]);
+  // G6: Doorstep's reasons as read-only Cell Notes on the Journey and Delivery cells.
+  const notes = useMemo(() => notesFor(rows), [rows]);
+  const latestNotes = useRef(notes);
+  latestNotes.current = notes;
+  const notesDataSource = useMemo(() => notesSource(latestNotes), []);
+  useEffect(() => { const a = api.current; if (a && !a.isDestroyed()) a.refreshNotes(); }, [notes]);
   // Lanes only when they add something: a list with one lane (e.g. "Needs you") stays flat.
   const grouped = useMemo(() => new Set(rows.map(laneOf)).size > 1, [rows]);
   // Risk is scored only before delivery, so a list of delivered orders (e.g. "Needs you") would
@@ -502,60 +594,87 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       filterValueGetter: (p) => (p.data ? LANES[laneOf(p.data)].label : null),
     },
     {
-      colId: "item", headerName: "Order", field: "item", flex: 2.2, minWidth: 280, lockVisible: true,
+      // The work order (urgency()): hidden, sorted first, so the rows are already in the order to act.
+      colId: "urgency", headerName: "Urgency", hide: true, lockVisible: true, suppressColumnsToolPanel: true, suppressMovable: true, filter: false,
+      valueGetter: (p) => (p.data ? urgency(p.data) : 9),
+      comparator: (_a, _b, x, y) => (x.data && y.data ? byUrgency(x.data, y.data) : 0),
+      initialSort: "asc", initialSortIndex: 0,
+    },
+    {
+      colId: "item", headerName: "Order", field: "item", flex: 2.2, minWidth: phone ? 180 : 280, lockVisible: true,
       filter: "agTextColumnFilter", getQuickFilterText: (p) => haystack(p.data),
       cellRenderer: OrderCell,
     },
     {
-      colId: "status", headerName: "Journey", field: "status", width: 166, enableCellChangeFlash: true,
-      filter: "agSetColumnFilter",
-      comparator: (_a, _b, x, y) => (STATE_RANK[x.data?.state ?? ""] ?? 0) - (STATE_RANK[y.data?.state ?? ""] ?? 0),
-      cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <JourneyCell r={p.data} /> : null),
+      colId: "status", headerName: "Journey", field: "status", width: 166, hide: phone, enableCellChangeFlash: true,
+      // Filtered (and asked) by what the cell says: "Lost by carrier", not "Case open". Values a
+      // reading picked survive the 10 s poll even when the last matching row leaves.
+      filter: "agSetColumnFilter", filterValueGetter: (p) => (p.data ? journeyLabel(p.data) : null),
+      // The filter lists its labels A to Z (the column's own comparator sorts rows by journey stage).
+      filterParams: { preservePreviousValues: true, comparator: (a: string | null, b: string | null) => (a ?? "").localeCompare(b ?? "") },
+      comparator: (_a, _b, x, y) => (STATE_RANK[x?.data?.state ?? ""] ?? 0) - (STATE_RANK[y?.data?.state ?? ""] ?? 0),
+      // A cell with a note drops its own hover title, so one thing opens on hover.
+      cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <JourneyCell r={p.data} quiet={hasNote(latestNotes.current, p.data.order_id, "status")} /> : null),
     },
     {
-      colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned", hide: !scored,
+      colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned", hide: !scored || phone,
       filter: "agNumberColumnFilter", tooltipField: "delivery_risk", tooltipComponent: RiskTip,
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <RiskCell r={p.data} /> : null),
     },
     {
-      colId: "proof", headerName: "Proof", width: 112, enableCellChangeFlash: true,
+      colId: "proof", headerName: "Proof", width: 112, hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.evidence.score ?? 0,
+      // Filtered by how many of the five proofs are on file (0 to 5), as the cell shows them.
+      filter: "agNumberColumnFilter", filterValueGetter: (p) => (p.data ? proofList(p.data).filter((x) => x.ok).length : 0),
       tooltipValueGetter: () => "proof", tooltipComponent: EvidenceTip,
       cellRenderer: ProofCell,
     },
     {
-      colId: "money", headerName: "Value", width: 128, type: "rightAligned", enableCellChangeFlash: true,
+      colId: "money", headerName: "Value", width: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
+      filter: "agNumberColumnFilter",
       comparator: (_a, _b, x, y) =>
         ((x.data?.money_at_stake_minor ?? 0) - (y.data?.money_at_stake_minor ?? 0)) || ((x.data?.amount_minor ?? 0) - (y.data?.amount_minor ?? 0)),
       cellRenderer: MoneyCell,
     },
     {
-      colId: "method", headerName: "Delivery", field: "method", width: 120,
-      filter: "agSetColumnFilter", filterParams: { valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
+      colId: "method", headerName: "Delivery", field: "method", width: 120, hide: phone,
+      filter: "agSetColumnFilter", filterParams: { preservePreviousValues: true, valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
       valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <DeliveryCell r={p.data} /> : null),
     },
     {
       colId: "next", headerName: "Next step", hide: true, width: 160,
       valueGetter: (p) => (p.data ? routeLabel(p.data) || nextAction(p.data).label : ""), filter: "agSetColumnFilter",
+      filterParams: { preservePreviousValues: true },
     },
     {
       colId: "buyer", headerName: "Buyer area", field: "buyer_area", hide: true, width: 120, filter: "agSetColumnFilter",
     },
     {
-      colId: "updated", headerName: "Updated", field: "last_update", hide: true, width: 110, initialSort: "desc", type: "rightAligned",
+      colId: "updated", headerName: "Updated", field: "last_update", hide: true, width: 110, initialSort: "desc", initialSortIndex: 1, type: "rightAligned",
       valueFormatter: (p) => (p.value ? ago(String(p.value)) : ""), cellClass: "faint-cell", filter: false,
     },
     {
-      colId: "action", headerName: "Next", width: 150, pinned: "right", lockPinned: true, sortable: false, resizable: false,
+      colId: "action", headerName: "Next", width: phone ? 128 : 150, pinned: "right", lockPinned: true, sortable: false, resizable: false,
       suppressMovable: true, suppressColumnsToolPanel: true, filter: false, cellClass: "cell-end",
       cellRenderer: ActionCell, cellRendererParams: { onOpen },
     },
-  ], [grouped, onOpen, scored]);
+  ], [grouped, onOpen, scored, phone]);
+
+  // The Doorstep row: hidden while the seller searches (the rows below are then a search result).
+  const guideText = useMemo(() => (guide && !search ? guideParts(rows, urgency, byUrgency) : null), [guide, search, rows]);
+  const pinnedTop = useMemo(() => (guideText ? [GUIDE] : undefined), [guideText]);
+  // Start: the first order that needs the seller, in the grid's own order (so it follows a sort).
+  const onStart = useCallback(() => {
+    let first: OrderRow | null = null;
+    api.current?.forEachNodeAfterFilterAndSort((n) => { if (!first && !n.group && n.data?.needs_action) first = n.data; });
+    if (first) onOpen(first);
+  }, [onOpen]);
+  const guideParams = useMemo(() => ({ parts: guideText && phone ? firstSentence(guideText) : guideText, onStart }), [guideText, phone, onStart]);
 
   const getContextMenuItems = useCallback((p: GetContextMenuItemsParams<OrderRow>): (DefaultMenuItem | MenuItemDef)[] => {
-    const r = p.node?.data;
+    const r = isGuide(p.node) ? undefined : p.node?.data;
     const items: (DefaultMenuItem | MenuItemDef)[] = [];
     if (r) {
       items.push(
@@ -568,19 +687,25 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     items.push(
       { name: "Export to Excel", action: () => exportExcel(p.api) },
       { name: "Export to CSV", action: () => exportCsv(p.api) },
+      ...(onHandoff ? [{ name: "Hand-off report (PDF)", action: onHandoff }] : []),
       "separator",
       { name: "Columns and filters", action: () => toggleColumnsPanel(p.api) },
     );
     return items;
-  }, [onOpen]);
+  }, [onOpen, onHandoff]);
 
   const onRowClicked = useCallback((e: RowClickedEvent<OrderRow>) => {
+    if (isGuide(e.node)) return;
     if (e.node.group) { e.node.setExpanded(!e.node.expanded); return; }
     if ((e.event?.target as HTMLElement | null)?.closest("[data-own-click]")) return;
     if (e.data) onOpen(e.data);
   }, [onOpen]);
   const detailParams = useMemo(() => ({ onOpen }), [onOpen]);
-  const emptyParams = useMemo(() => ({ text: search ? "No orders match your search." : empty, searching: !!search }), [search, empty]);
+  // A search of two or more words that matches nothing is probably a question: say Enter asks it.
+  const emptyParams = useMemo(() => ({
+    text: !search ? empty : search.trim().includes(" ") ? "No orders contain those words. Press Enter and Doorstep will read it as a question." : "No orders match your search.",
+    searching: !!search,
+  }), [search, empty]);
   // AG Grid's status bar: where the orders come from, then the row count and money at stake, both
   // following search and filters.
   const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
@@ -592,9 +717,9 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   }), [source]);
 
   return (
-    <div className="orders-grid">
+    <div className="orders-grid" data-loading={loading || undefined}>
       <AgGridReact<OrderRow>
-        theme={theme}
+        theme={gridTheme}
         rowData={rows}
         columnDefs={columns}
         getRowId={getRowId}
@@ -612,6 +737,11 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         masterDefaultExpanded={0}
         initialGroupOrderComparator={laneOrder}
         getRowHeight={getRowHeight}
+        // The Doorstep row: pinned on top, drawn full width.
+        pinnedTopRowData={pinnedTop}
+        isFullWidthRow={isFullWidthRow}
+        fullWidthCellRenderer={DoorstepRow}
+        fullWidthCellRendererParams={guideParams}
         // Master/detail: the chevron in the order cell opens the proof panel under the row.
         masterDetail
         isRowMaster={isRowMaster}
@@ -627,7 +757,12 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         tooltipHideDelay={8000}
         overlayComponentSelector={emptySelector}
         overlayComponentParams={emptyParams}
-        animateRows
+        animateRows={!reduced}
+        loading={loading}
+        loadingRows={loadingRows}
+        notesDataSource={notesDataSource}
+        noteTrigger="hover"
+        noteShowDelay={300}
         suppressCellFocus
         domLayout="autoHeight"
       />

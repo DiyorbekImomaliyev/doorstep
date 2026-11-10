@@ -28,7 +28,7 @@ const STEP_OF: Record<string, number> = {
   DELIVERED: 4, PICKED_UP: 4, CONFIRMED: 5, CASE_OPEN: 4, RESOLVED: 4,
 };
 
-function journeyTone(r: OrderRow): Tone {
+export function journeyTone(r: OrderRow): Tone {
   if (r.state === "EXCEPTION") return "warn";
   if (r.case_state) return ROUTE[r.case_state]?.tone ?? "accent";
   if (r.state === "CONFIRMED") return "good";
@@ -43,18 +43,24 @@ const SHORT_CAUSE: Record<string, string> = {
 
 /** The order's journey as five short segments; the last one carries a colour only when
  * something needs attention (exception, open case) or the buyer confirmed receipt. */
-export function JourneyCell({ r }: { r: OrderRow }) {
+/**
+ * What the Journey cell says: an open case's likely cause ("Lost by carrier"), not "Case open" on
+ * every row; otherwise the status. The grid filters and asks by this label too.
+ */
+export function journeyLabel(r: OrderRow): string {
+  const cause = r.case_id && r.failure_point ? SHORT_CAUSE[r.failure_point] ?? FAILURE_POINT[r.failure_point] : null;
+  return cause ?? r.status;
+}
+
+export function JourneyCell({ r, quiet = false }: { r: OrderRow; quiet?: boolean }) {
   const done = STEP_OF[r.state] ?? 0;
   const tone = journeyTone(r);
-  // An open case says what went wrong (its likely cause), not "Case open" on every row; the
-  // status stays in the tooltip.
-  const cause = r.case_id && r.failure_point ? SHORT_CAUSE[r.failure_point] ?? FAILURE_POINT[r.failure_point] : null;
   return (
-    <div className="journey-cell" title={[r.status, ...STEPS.map((s, i) => `${i < done ? "✓" : "·"} ${s}`)].join("\n")}>
+    <div className="journey-cell" title={quiet ? undefined : [r.status, ...STEPS.map((s, i) => `${i < done ? "✓" : "·"} ${s}`)].join("\n")}>
       <span className={`journey-track tone-${tone}`} aria-hidden>
         {STEPS.map((s, i) => <span key={s} className={i < done ? (i === done - 1 ? "on last" : "on") : ""} />)}
       </span>
-      <span className="journey-label">{cause ?? r.status}</span>
+      <span className="journey-label">{journeyLabel(r)}</span>
     </div>
   );
 }

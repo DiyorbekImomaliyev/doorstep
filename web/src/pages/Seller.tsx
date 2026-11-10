@@ -1,18 +1,21 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { ArrowRight, BarChart3, BookOpen, Check, ReceiptText, Columns3, Copy, Download, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
-import { api, type Autopilot, type AutopilotStatement, type Economics, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
+import { BarChart3, BookOpen, Check, ReceiptText, Columns3, Copy, Download, FileText, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
+import { api, type Autopilot, type AutopilotStatement, type Economics, type GridAnswer, type GridPlan, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import CommandBar, { type Command } from "../components/CommandBar";
 import { itemKind } from "../components/gridCells";
 import { money } from "../format";
 import CaseDrawer from "./CaseDrawer";
-import OrdersGrid, { exportExcel, revealRows, sumStake, toggleColumnsPanel } from "./OrdersGrid";
+import OrdersGrid, { exportExcel, exportHandoffPdf, revealRows, sumStake, toggleColumnsPanel } from "./OrdersGrid";
+import Reading from "../grid/Reading";
+import { applyPlan, menuFromGrid, menuSource, restore, snapshot, type Snapshot } from "../grid/ask";
 
 // AG Studio is large: it loads only when the seller opens Insights.
 const Insights = lazy(() => import("../insights/Insights"));
 
 type Filter = "action" | "flight" | "cases" | "all";
+const VIEW_OF: Record<GridPlan["view"], Filter> = { needs_you: "action", in_transit: "flight", cases: "cases", all: "all" };
 
 const FILTERS: { key: Filter; label: string; icon: React.ReactNode; empty: string }[] = [
   { key: "action", label: "Needs you", icon: <Inbox />, empty: "Nothing needs you. You're all caught up." },
@@ -293,23 +296,77 @@ export default function Seller({ token }: { token: string }) {
     const t = window.setTimeout(load, 2500); // Safari has no requestIdleCallback
     return () => window.clearTimeout(t);
   }, [gridReady]);
-  // The one thing to do first: a PayPal dispute (it has a deadline), then a refund to approve, then a review.
-  const next = useMemo(() => {
-    const rank: Record<string, number> = { DISPUTE_EVIDENCE: 0, AWAITING_SELLER: 1, HOLD_FOR_REVIEW: 2 };
-    return filterRows(rows ?? [], "action")
-      .filter((r) => r.case_state && r.case_state in rank)
-      .sort((a, b) => rank[a.case_state!] - rank[b.case_state!] || b.money_at_stake_minor - a.money_at_stake_minor)[0] ?? null;
-  }, [rows]);
-  const pick = (f: Filter) => { setFilter(f); go("orders"); };
+  // G3 Ask the grid: Enter in the search box asks; the answer comes back as grid filters and sort.
+  const [asking, setAsking] = useState(false);
+  const [reading, setReading] = useState<GridAnswer | null>(null);
+  const undoStack = useRef<Snapshot[]>([]);
+  const answered = useRef<GridAnswer | null>(null);
+  /** Run once the grid has taken the rows of a newly picked view (or now, if the view is unchanged). */
+  const inView = (view: Filter, fn: () => void) => {
+    const a = gridApi.current;
+    if (!a || view === active) { fn(); return; }
+    const once = () => { a.removeEventListener("rowDataUpdated", once); window.requestAnimationFrame(fn); };
+    a.addEventListener("rowDataUpdated", once);
+    setFilter(view);
+  };
+  const askGrid = async (question: string) => {
+    const a = gridApi.current;
+    const q = question.trim();
+    if (!a || asking || q.length < 2) return;
+    setAsking(true);
+    try {
+      const menu = menuFromGrid(a);
+      if (import.meta.env.DEV) console.debug("grid menu from", menuSource, menu);
+      const res = await api.gridAsk(token, q, menu);
+      setSearch("");
+      if (res.plan.answerable) {
+        undoStack.current = [...undoStack.current, snapshot(a, active)].slice(-10);
+        answered.current = res;
+        inView(VIEW_OF[res.plan.view], () => { const g = gridApi.current; if (g && !g.isDestroyed()) applyPlan(g, res.plan); });
+      }
+      setReading(res);
+    } catch {
+      setToast("Doorstep couldn't read that question just now. Try again in a moment.");
+    } finally {
+      setAsking(false);
+    }
+  };
+  const undoReading = () => {
+    const prev = undoStack.current.pop();
+    if (!prev) { setReading(null); return; }
+    inView(prev.view as Filter, () => { const g = gridApi.current; if (g && !g.isDestroyed()) restore(g, prev); });
+    if (!undoStack.current.length) setReading(null);
+  };
+  /** The seller picked a view by hand: the grid goes back to its usual order first. */
+  const dropReading = useCallback(() => {
+    const a = gridApi.current, first = undoStack.current[0];
+    if (a && first) restore(a, first);
+    undoStack.current = [];
+    setReading(null);
+  }, []);
+  // G7: the hand-off report of what the grid shows.
+  const handoff = () => {
+    const a = gridApi.current;
+    if (!a) return;
+    exportHandoffPdf(a, {
+      shop: me.data?.name ?? "Your shop", region: me.data?.region ?? "UK", view: FILTERS.find((f) => f.key === active)!.label,
+      source: rows?.some((r) => r.simulated) ? "Demo orders · refunds simulated" : "PayPal sandbox orders",
+    });
+  };
+  const handoffNow = useRef(handoff);
+  handoffNow.current = handoff;
+  const choose = (f: Filter) => { if (reading) dropReading(); setFilter(f); go("orders"); };
+  const pick = choose;
   const shown = useMemo(() => filterRows(rows ?? [], active), [rows, active]);
   const commands = useMemo((): Command[] => {
     const views: Command[] = FILTERS.map((f) => ({
       id: `view-${f.key}`, group: "Go to", label: f.label, hint: rows ? `${counts[f.key]}` : undefined, icon: f.icon,
-      keywords: "view list filter", run: () => { setFilter(f.key); go("orders"); },
+      keywords: "view list filter", run: () => choose(f.key),
     }));
     views.push({ id: "view-insights", group: "Go to", label: "Insights", hint: "AG Studio reports", icon: <BarChart3 />, keywords: "analytics dashboard reports charts", run: () => go("insights") });
     const actions: Command[] = [
       { id: "act-excel", group: "Actions", label: "Export to Excel", hint: "What you see", icon: <Download />, keywords: "xlsx download", run: () => { go("orders"); window.setTimeout(() => gridApi.current && exportExcel(gridApi.current), 50); } },
+      { id: "act-handoff", group: "Actions", label: "Download hand-off report", hint: "PDF", icon: <FileText />, keywords: "pdf print report share helper", run: () => { go("orders"); window.setTimeout(() => handoffNow.current(), 50); } },
       { id: "act-columns", group: "Actions", label: "Columns and filters", icon: <Columns3 />, keywords: "side bar panel hide show", run: () => { go("orders"); window.setTimeout(() => gridApi.current && toggleColumnsPanel(gridApi.current), 50); } },
       { id: "act-refresh", group: "Actions", label: "Refresh now", icon: <RefreshCw />, keywords: "reload update", run: () => reload() },
       { id: "act-search", group: "Actions", label: "Search this list", hint: "/", icon: <Search />, keywords: "find filter", run: () => { go("orders"); window.setTimeout(() => searchBox.current?.focus(), 50); } },
@@ -340,7 +397,7 @@ export default function Seller({ token }: { token: string }) {
           <div className="nav-label">Orders</div>
           <div className="nav" role="group" aria-label="Filter orders">
             {FILTERS.map((f) => (
-              <button key={f.key} aria-pressed={page === "orders" && active === f.key} onClick={() => { setFilter(f.key); go("orders"); }}>
+              <button key={f.key} aria-pressed={page === "orders" && !!rows && active === f.key} onClick={() => choose(f.key)}>
                 {f.icon}{f.label}<span className="count">{rows ? counts[f.key] : ""}</span>
               </button>
             ))}
@@ -371,7 +428,6 @@ export default function Seller({ token }: { token: string }) {
               <p className="greet">
                 {greeting(me.data?.name)}
                 {rows ? <> · <b>{counts.action ? `${counts.action} need${counts.action === 1 ? "s" : ""} you` : "nothing needs you"}</b></> : null}
-                {next && <> · <button className="next-link" onClick={() => setOpen(next)}>Next: {NEXT_TEXT[next.case_state!]}{next.money_at_stake_minor ? ` (${money(next.money_at_stake_minor, next.currency)})` : ""}<ArrowRight aria-hidden /></button></>}
               </p>
               <h1>Delivery Control Room</h1>
             </div>
@@ -382,11 +438,17 @@ export default function Seller({ token }: { token: string }) {
           </div>
 
           {error && <ErrorBox message="This seller link isn't valid. Open a fresh demo from the home page." />}
-          {!rows && !error && <Loading height={320} />}
+          {!rows && !error && (
+            <section className="kpis" aria-hidden>
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="kpi kpi-skel"><span className="skel w40" /><span className="skel w20 tall" /><span className="skel w60" /></div>
+              ))}
+            </section>
+          )}
 
-          {rows && (
+          {!error && (
             <>
-              <section className="kpis" aria-label="Summary">
+              {rows && <section className="kpis" aria-label="Summary">
                 <button className={`kpi ${counts.action ? "attention" : ""}`} aria-pressed={page === "orders" && active === "action"} onClick={() => pick("action")}>
                   <span className="label"><Inbox aria-hidden />Needs you<Hint text="Cases to approve or review, and orders waiting for a packing check." /></span>
                   <span className="value">{counts.action}</span>
@@ -403,26 +465,26 @@ export default function Seller({ token }: { token: string }) {
                   <span className="sub">open cases and parcels in transit</span>
                 </button>
                 <RecoveredKpi s={recovered.data ?? null} onClick={() => go("insights")} />
-              </section>
+              </section>}
 
-              {auto.data && (
+              {rows && auto.data && (
                 <AutopilotCard
                   token={token} data={auto.data} statement={spent.data ?? null}
                   onChange={(m) => { setToast(m); reload(); }}
                   onOpen={(orderId) => { const r = rows?.find((x) => x.order_id === orderId); if (r) setOpen(r); }}
                 />
               )}
-              {policy.data && policy.data.issues.length > 0 ? (
+              {rows && (policy.data && policy.data.issues.length > 0 ? (
                 <PolicyCard check={policy.data} />
               ) : (
                 !auto.data?.suggestions.length && tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />
-              )}
+              ))}
 
               <div className="table-card">
                 <div className="head">
                   <div className="row" style={{ gap: 10 }}>
-                    <h2 style={{ fontSize: 15 }}>{activeMeta.label}</h2>
-                    <span className="count-chip num">{shown.length}</span>
+                    {rows ? <h2 style={{ fontSize: 15 }}>{activeMeta.label}</h2> : <span className="skel w-head" aria-hidden />}
+                    {rows && <span className="count-chip num">{shown.length}</span>}
                     {changedHere.length > 0 && changed && (
                       <button className="changed-chip" onClick={() => { gridApi.current && revealRows(gridApi.current, changedHere.map((r) => r.order_id)); setChanged(null); }}
                         title="Show the orders that changed">
@@ -433,8 +495,10 @@ export default function Seller({ token }: { token: string }) {
                   <div className="row" style={{ gap: 8 }}>
                     <label className="grid-search">
                       <Search aria-hidden />
-                      <input ref={searchBox} type="search" placeholder="Search orders, areas, status" aria-label="Search orders"
-                        value={search} onChange={(e) => setSearch(e.target.value)} />
+                      <input ref={searchBox} type="search" placeholder="Search, or ask: lost parcels over £50" aria-label="Search orders"
+                        value={search} onChange={(e) => setSearch(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); void askGrid(search); } }} />
+                      {search.trim().includes(" ") && <span className="ask-hint" aria-hidden>↵ Ask</span>}
                       <button type="button" className="kbd-hint" onClick={() => setCmd(true)} title="Command bar" aria-label="Open the command bar">⌘K</button>
                     </label>
                     <button className="btn icon-btn" title="Columns and filters" aria-label="Columns and filters"
@@ -445,12 +509,24 @@ export default function Seller({ token }: { token: string }) {
                       onClick={() => gridApi.current && exportExcel(gridApi.current)}>
                       <Download size={15} aria-hidden />
                     </button>
+                    <button className="btn icon-btn" title="Hand-off report (PDF): what you see, with links to each case's signed receipts" aria-label="Download hand-off report"
+                      onClick={handoff}>
+                      <FileText size={15} aria-hidden />
+                    </button>
                   </div>
                 </div>
+                {asking && <div className="ds-sweep grid-sweep" />}
+                {reading && gridApi.current && (
+                  <Reading api={gridApi.current} answer={reading} currency={rows?.[0]?.currency ?? "GBP"}
+                    onUndo={undoReading} onDone={dropReading}
+                    onDismiss={() => setReading(undoStack.current.length ? answered.current : null)} />
+                )}
                 <OrdersGrid rows={shown} search={search} empty={activeMeta.empty} onOpen={onOpen} onReady={onReady} changed={changed}
-                  source={rows.some((r) => r.simulated) ? "Demo orders · refunds simulated" : "PayPal sandbox orders"} />
+                  onHandoff={handoff}
+                  loading={!rows} guide={(active === "action" || active === "all") && !reading}
+                  source={!rows ? "" : rows.some((r) => r.simulated) ? "Demo orders · refunds simulated" : "PayPal sandbox orders"} />
               </div>
-              {costs.data && <PlanStrip e={costs.data} />}
+              {rows && costs.data && <PlanStrip e={costs.data} />}
             </>
           )}
           </>)}
@@ -483,12 +559,6 @@ function greeting(shop: string | undefined): string {
 function Hint({ text }: { text: string }) {
   return <span className="hint" aria-hidden data-tip={text}><Info /></span>;
 }
-
-const NEXT_TEXT: Record<string, string> = {
-  DISPUTE_EVIDENCE: "answer a PayPal dispute",
-  AWAITING_SELLER: "approve or decline a refund",
-  HOLD_FOR_REVIEW: "review a held case",
-};
 
 /** RC-05: what carriers paid back, and what is still claimable. */
 function RecoveredKpi({ s, onClick }: { s: RecoverySummary | null; onClick: () => void }) {
