@@ -13,13 +13,15 @@ import {
 import {
   CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, NewFiltersToolPanelModule, LicenseManager,
   MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule, StatusBarModule,
-  AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, AggregationModule, RowGroupingPanelModule, ShowValuesAsModule,
+  AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, AggregationModule, RowGroupingPanelModule, ShowValuesAsModule, IntegratedChartsModule, FindModule,
 } from "ag-grid-enterprise";
+import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
 import type { OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
 import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
+import { chartSelection, chartStakeByMethod, chartThemeOverrides, chartThemes, currencyColumns, customChartThemes } from "../grid/charts";
 import { afterGlide, useMedia, useReducedMotion } from "../motion";
 import { Says, type Part } from "../components/ai";
 import DetailPanel from "../grid/DetailPanel";
@@ -44,7 +46,8 @@ ModuleRegistry.registerModules([
   AllCommunityModule, MasterDetailModule, RowGroupingModule, SetFilterModule, SideBarModule,
   ColumnsToolPanelModule, NewFiltersToolPanelModule, ColumnMenuModule, ContextMenuModule, ExcelExportModule,
   StatusBarModule, AiToolkitModule, NotesModule, PdfExportModule, ToolbarModule, CellSelectionModule, ClipboardModule,
-  AggregationModule, RowGroupingPanelModule, ShowValuesAsModule,
+  AggregationModule, RowGroupingPanelModule, ShowValuesAsModule, FindModule,
+  IntegratedChartsModule.with(AgChartsEnterpriseModule),
 ]);
 
 
@@ -562,6 +565,14 @@ export function revealRows(api: GridApi, ids: string[]) {
   api.flashCells({ rowNodes: nodes, flashDuration: 700, fadeDuration: 1400 });
 }
 
+/** Cmd/Ctrl+F inside the grid goes to the page's search; AG Grid's Find then highlights the matches. */
+function findKey(e: React.KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+    const box = document.querySelector<HTMLInputElement>('input[aria-label="Search orders"]');
+    if (box) { e.preventDefault(); box.focus(); box.select(); }
+  }
+}
+
 export function toggleColumnsPanel(api: GridApi) {
   if (api.isSideBarVisible()) api.setSideBarVisible(false);
   else { api.setSideBarVisible(true); api.openToolPanel("columns"); }
@@ -578,6 +589,7 @@ const gridIcons = {
   excelExport: lucide('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 9v12"/><path d="M15 9v12"/>'),
   pdfExport: lucide(`${PAGE}<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`),
   filter: lucide('<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"/>'),
+  chart: lucide('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/>'),
   doorstep: lucide('<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>'),
 };
 
@@ -747,7 +759,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: ProofCell,
     },
     {
-      colId: "money", headerName: "At stake", width: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
+      colId: "money", headerName: "At stake", chartDataType: "excluded", width: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
       filter: "agNumberColumnFilter", suppressHeaderMenuButton: false,
       // AG Grid aggregates it for group rows (per currency) and offers "% of total" in the column menu.
@@ -757,11 +769,12 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: MoneyCell,
     },
     {
-      colId: "method", headerName: "Delivery", field: "method", width: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
+      colId: "method", headerName: "Delivery", field: "method", chartDataType: "category", width: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
       filter: "agSetColumnFilter", filterParams: { preservePreviousValues: true, valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
       valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <DeliveryCell r={p.data} /> : null),
     },
+    ...currencyColumns(),
     {
       colId: "next", headerName: "Next step", hide: true, width: 160,
       valueGetter: (p) => (p.data ? routeLabel(p.data) || nextAction(p.data).label : ""), filter: "agSetColumnFilter", enableRowGroup: true,
@@ -804,6 +817,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         "note",
       );
     }
+    if (p.api.getCellRanges()?.length) items.push({ name: "Chart", icon: gridIcons.chart, action: () => chartSelection(p.api) }, "separator");
     items.push(
       { name: "Export to Excel", action: () => exportExcel(p.api) },
       { name: "Export to CSV", action: () => exportCsv(p.api) },
@@ -849,6 +863,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       // AG Grid's Row Group Panel, in the toolbar: the grouping as pills; drag a header in to group by it.
       { key: "groups", toolbarItem: "agRowGroupPanelToolbarItem", alignment: "left" },
       { key: "columns", icon: "columns", tooltip: "Columns and filters", action: ({ api: a }) => toggleColumnsPanel(a) },
+      { key: "chart", icon: "chart", tooltip: "Chart", action: ({ api: a }) => chartStakeByMethod(a) },
       { key: "excel", icon: "excelExport", tooltip: "Export to Excel", action: ({ api: a }) => exportExcel(a) },
       { key: "handoff", icon: "pdfExport", tooltip: "Download hand-off report", action: () => handoffRef.current?.() },
     ],
@@ -870,7 +885,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   }), [source]);
 
   return (
-    <div className="orders-grid" data-loading={loading || undefined}>
+    <div className="orders-grid" data-loading={loading || undefined} onKeyDown={findKey}>
       <AgGridReact<OrderRow>
         theme={gridTheme}
         rowData={rows}
@@ -929,6 +944,10 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         noteTrigger="hover"
         localeText={gridText}
         noteShowDelay={300}
+        findSearchValue={search}
+        chartThemes={chartThemes}
+        customChartThemes={customChartThemes}
+        chartThemeOverrides={chartThemeOverrides}
         domLayout="autoHeight"
       />
     </div>
