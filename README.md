@@ -64,6 +64,9 @@ write goes through an outbox with one idempotency key. Click a diagram to open i
 4. Press **verify** next to the signed receipts: a public page re-checks every receipt in the chain.
 5. On Sam's page, open **Signed delivery record**, then press **Change one character and check
    again**: the same facts, one character different, fail the check.
+6. Back in the Control Room, type **lost parcels over £50, biggest first** into the search: the
+   grid becomes that view and shows how it read you. Open **Insights**, press **Ask Doorstep** and
+   ask **Which carrier cost me most this month?**, then open **Steps** under the answer.
 
 **Buy with PayPal** runs a real sandbox checkout. It needs a PayPal sandbox personal account: sign
 in at [developer.paypal.com](https://developer.paypal.com/dashboard/accounts), open **Sandbox
@@ -218,16 +221,37 @@ seller's own cases, and the greeting names the next thing to do.
 | **Journey** | Tracks the order through five steps and marks a problem in red. |
 | **Risk** | Scores the chance of a delivery failure before shipping; hover shows the reasons. |
 | **Proof** | Counts the proof on file: address check, packing photo, tracking, delivered scan, possession. |
-| **Value** | Shows the order value and the money still at stake. |
+| **At stake** | Shows the money still at stake, in the order's own currency: £ and $ are never added. |
+| **Due** | Counts down the days left on the order's carrier claim, from the carrier's own terms. |
 | **Delivery** | Shows the method the buyer chose: home, locker or signature. |
 | **Next** | Starts the one action the order needs now: pack, review, approve or send evidence. |
 
-Each row opens a detail panel without leaving the table.
+Each row opens a detail panel without leaving the table, and the grid does a seller's work itself:
+
+- **Ask the grid.** A plain sentence in the search box ("lost parcels over £50, biggest first")
+  becomes filters and a sort, shown as chips the seller can remove one by one, with Undo.
+- **Doorstep notes.** The anomaly scan pins its findings to the exact cell: a "Delivered" scan
+  from the wrong district, a risk score that jumped. Sellers add their own notes beside them.
+- **One guide row.** The pinned first row says what to do first and starts it in one tap.
+- **A toolbar that sells.** Saved views (Needs me, At stake, By delivery, the seller's own), a
+  New-since-last-visit filter, one-click charts that follow the grid's filters, a pivot of
+  delivery by journey, a packing-list PDF and a hand-off PDF.
+- **Money done right.** Group by delivery or journey and the totals stay per currency, with a
+  share of money at stake; select cells and the status bar sums them.
+- **Every hand.** Keyboard, Find that marks matches in place, Excel export, and on a phone each
+  order becomes one card in the same grid.
 
 <details>
 <summary>Screenshot: an order with its detail panel open</summary>
 
 <img src="docs/img/screens/grid-detail.png" alt="The order grid with one row's detail open: journey, proof on file, delivery risk and case" width="100%">
+
+</details>
+
+<details>
+<summary>Screenshot: money at stake by delivery method, charted from the grid</summary>
+
+<img src="docs/img/screens/grid-chart.png" alt="An integrated chart over the grid: money at stake by delivery method; a bar click filters the rows" width="100%">
 
 </details>
 
@@ -277,18 +301,65 @@ signed delivery proof the assistant can check (see below).
 
 ### Insights
 
-- **Reports** orders, case rate, prevention rate and net delivery loss, week by week, on AG Studio.
-- **Breaks down** where deliveries failed, where the money went and which delivery method keeps
-  proof on file.
-- **Ask Doorstep** turns a plain question into a chart. The model picks the measure; the browser
-  computes every number.
+Reports on AG Studio, with an agent that reads them and builds them.
+
+- **The brief.** The Overview opens with one sentence ("2,052 of 2,107 orders arrived with no
+  problem"), a ring, two signals (what moved in four weeks, the next claim and its days left) and
+  up to three things to do, each one a button.
+- **Reports** orders, case rate, prevention rate and net delivery loss week by week; where
+  deliveries failed; where the money went; which carrier to trust; and an **Areas** report with a
+  3D atlas of postcode areas (height is orders, colour is failures; a click filters the page).
+- **Ask Doorstep.** Studio's agent, in view mode. A question gets a figure, a chart or a page:
+  "Which carrier cost me most this month?" answers in words with the chart beside it; "Chase
+  Evri" plans a page and lets Studio's own page and widget agents build it. Every change the agent
+  makes is listed, attributed and one click from undone. **Steps** under each reply shows how it
+  worked it out. It sees no buyer details and cannot move money.
+- **Doorstep's widgets** (the brief, the parcel journey, money flow, the claim clock, the evidence
+  meter, failure points, the atlas) are Studio widgets with AI descriptions, so the agent can add
+  them to a page like any chart.
 
 <details>
-<summary>Screenshot: Insights on AG Studio</summary>
+<summary>Screenshot: the Overview's brief and KPIs</summary>
 
-<img src="docs/img/screens/insights.png" alt="Insights on AG Studio: orders, case rate, prevention rate, net delivery loss and where the money went" width="100%">
+<img src="docs/img/screens/insights.png" alt="Insights on AG Studio: the brief with its ring, signals and Do next rows, then the KPIs" width="100%">
 
 </details>
+
+<details>
+<summary>Screenshot: the Delivery atlas on the Areas report</summary>
+
+<img src="docs/img/screens/atlas.png" alt="The Delivery atlas: postcode areas as 3D tiles, height is orders, colour is the failed rate, with a tooltip" width="100%">
+
+</details>
+
+<details>
+<summary>Screenshot: Ask Doorstep, with Steps open</summary>
+
+<img src="docs/img/screens/ask.png" alt="Ask Doorstep answers a question in words with the chart beside it; Steps lists how it worked it out" width="100%">
+
+</details>
+
+### Built on AG Grid and AG Studio
+
+The Control Room is AG Grid 36 Enterprise and Insights is AG Studio 3.1. Each feature uses the
+platform's own capability, with Doorstep's rules on top.
+
+| Feature | AG capability | Doorstep's rule |
+| --- | --- | --- |
+| Ask the grid | AI Toolkit: the grid's own menu of filters and sorts | The sentence is data; a plan outside the menu is refused |
+| Doorstep notes and seller notes | Notes module, cell notes with a custom owner | The anomaly scan writes, the seller writes, neither overwrites the other |
+| Guide row, journey, proof, risk cells | Custom cell renderers, pinned top row, cell flashing | One sentence of guidance, never a paragraph |
+| Saved views, New filter, Pivot, Packing list | Quick Access Toolbar, external filters, Pivot module, PDF export | Views survive live data; £ and $ never meet in a total |
+| Charts | Integrated Charts with AG Charts Enterprise, cross-filter | One series per currency; a bar click filters the grid |
+| Group totals, share of money | Row grouping, aggregation, "show values as" | Per-currency sums; the grand total stays in exports |
+| Find, cell selection, side bar | Find module, cell selection with the status bar, New Filters tool panel | The Doorstep panel counts lanes and clears them |
+| Detail panel | Master detail with a nested grid | The case timeline, six rows then "Show all" |
+| Phone cards | One custom column below 600 px, row height per node | The same grid, the same data, a thumb's layout |
+| The brief and the atlas | Studio custom widgets with `ai` metadata, `defaultState` and the widget menu | The agent can add them; they read the postcode area only |
+| Ask Doorstep | Studio Agent Framework: lead agent, Studio's page and widget agents, tool overrides | A read-only toolset; the browser computes every number |
+| Chase a carrier | `create_report`, `check_page`, `build_report_template` | A plan card first; a template fallback with no model |
+| Change ledger | Studio state with an `ai` source, undo and redo | "Undo everything Doorstep did" is one click |
+| Theme | One token set for the grid, the charts and Studio | Maroon accent, paper surfaces, Inter and Source Serif |
 
 ### Signed receipts and delivery proof
 
@@ -359,12 +430,12 @@ those claims ask for. Prices: [WiserReview, Jul 2026](https://wiserreview.com/bl
 
 | Check | Result | Measured |
 | --- | --- | --- |
-| Unit and property tests (`make test`) | 1,816 passed | every push, in CI |
+| Unit and property tests (`make test`) | 1,890 passed | every push, in CI |
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% | every push, in CI |
 | Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 3,129; only wording changes may survive | CI run, Nov 9; CI re-runs it on every change to `app/policy`, and new money code is mutation-tested before it is committed |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease | every push, in CI |
 | API fuzzing, Schemathesis (`make fuzz`) | 49 API operations fuzzed from the OpenAPI schema, 0 failures | every push, in CI |
-| Browser tests, Playwright (`make e2e`) | 18 passed in Chromium | locally, against a running server |
+| Browser tests, Playwright (`make e2e`) | 56 passed in Chromium: the buyer and seller journeys, the grid (Ask, notes, views, charts, pivot, Due, phone cards) and Insights (the brief, Ask Doorstep, Chase, the ledger, Steps, the atlas) | locally, against a running server, Nov 10 |
 | Failure-point engine (`make evals`) | 96.7% agreement with the expected cause on 60 hand-written scenarios, 30 situations each in the UK and the US (target 85%); 95.0% on a 20-case hold-out. This measures rule consistency, not accuracy on real deliveries | recorded run, Nov 7 |
 | Policy reader, Ragas (`make evals`) | faithfulness 0.91 (target 0.90) and context recall 0.97 on 30 questions over six seller policies | recorded run, Nov 7 |
 | Prompt-injection red team, Promptfoo (`make redteam`) | 64 probes from 40 attacks in 8 kinds: code checks caught 21 unsafe drafts, the other 43 answers were safe, 0 unsafe answers reached a buyer. With a stand-in model that obeys every attack, the refund still never changes | replays of recorded Claude Sonnet and Gemini answers, Nov 7 |
@@ -613,7 +684,7 @@ render.yaml       Render blueprint: web service, worker, Postgres
 | Backend | Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2, Postgres 16 |
 | PayPal | PayPal Server SDK (APIMatic), REST for tracking, disputes and webhooks, PayPal Agent Toolkit |
 | AI | Claude Sonnet with Gemini fallback through one adapter; XGBoost with TreeSHAP; BM25; FastMCP |
-| Frontend | React 19, Vite, AG Grid Enterprise, AG Studio |
+| Frontend | React 19, Vite, AG Grid 36 Enterprise (AI Toolkit, Notes, Integrated Charts, Pivot), AG Studio 3.1 (Agent Framework, custom widgets) |
 | Quality | pytest, Hypothesis, Schemathesis, mutmut, import-linter, Playwright, Promptfoo, Ragas |
 | Hosting | Render (web service, worker, Postgres), GitHub Actions |
 

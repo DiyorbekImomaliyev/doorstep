@@ -46,8 +46,8 @@ APPROVED_EDITS: dict[str, list[tuple[str, str, str]]] = {
         (
             'await expect(page.getByRole("status")).toContainText("Approved");',
             'await expect(page.getByRole("status").filter({ hasText: "Approved" })).toBeVisible();',
-            "approved by the human on Nov 10, 2026: AG Grid's status bar and the case drawer also carry "
-            "role=status, so the test picks the status that says Approved",
+            "approved by the human on Nov 10, 2026: AG Grid's status bar and the case drawer also "
+            "carry role=status, so the test picks the status that says Approved",
         ),
     ],
 }
