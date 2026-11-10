@@ -79,7 +79,7 @@ const drillWidgets = createWidgets<DoorstepRegistry>({ additionalTypes: doorstep
 const AI_TEXT = {
   "tools.add_widget.description":
     "Add a widget to the grid. Position is 0-indexed. Prefer Doorstep widgets (doorstep-claim-clock, doorstep-failure-points, " +
-    "doorstep-evidence-meter, doorstep-money-flow) for claims, causes of failure, proof and money; they arrive mapped and titled.",
+    "doorstep-evidence-meter, doorstep-money-flow, doorstep-atlas) for claims, causes of failure, proof, money and where deliveries fail; they arrive mapped and titled.",
 };
 const LOCALE = {
   widgetPanelWidgetCategoryUncategorized: "More widgets",

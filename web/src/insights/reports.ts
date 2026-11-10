@@ -10,6 +10,7 @@
  *  - Overview: are deliveries working, and what did failures cost?
  *  - Carriers: which carrier cost me most, and what did I claw back?
  *  - Cases: what went wrong, how it was decided, who paid.
+ *  - Areas: where deliveries fail, on the delivery atlas.
  *
  * Every widget reads the model's measures (data.ts), so a number means the same thing everywhere.
  */
@@ -183,6 +184,18 @@ export const W = {
     sort: [{ field: { id: "cases.opened_at" }, direction: "desc" }],
     format: head("Every case"),
   },
+  atlas: { type: "doorstep-atlas", ...DEFAULTS.atlas },
+  /** The exact numbers behind the atlas, by postcode district. */
+  areaTable: {
+    type: "pivot-grid",
+    dataMapping: {
+      rows: [{ id: "orders.district" }],
+      columns: [],
+      values: [{ id: "order_count" }, { id: "orders_with_case" }, { id: "case_rate" }, { id: "area_loss" }],
+    },
+    sort: [{ field: { id: "order_count" }, direction: "desc" }],
+    format: { ...head("Areas"), style: { grandTotalRow: { enabled: true } } },
+  },
   /** S1: Doorstep's brief, the Overview's first words (widgets.tsx). Method is there to filter by. */
   brief: {
     type: "doorstep-brief",
@@ -328,14 +341,30 @@ export const carrierDrillPage: Page = {
   ) as Page["widgetLayout"],
 };
 
+export const areasPage: Page = {
+  id: "areas",
+  widgets: {
+    t: title("Areas"),
+    atlas: W.atlas,
+    table: W.areaTable,
+  },
+  widgetLayout: {
+    t: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 4 },
+    atlas: { xTrack: 0, yTrack: 4, xSpan: 24, ySpan: 30 },
+    table: { xTrack: 0, yTrack: 34, xSpan: 24, ySpan: 16 },
+  },
+  filter: {},
+};
+
 export const REPORTS = [
   { id: "overview", name: "Overview", hint: "Delivery health and cost" },
   { id: "carriers", name: "Carriers", hint: "Cost and recovery" },
   { id: "cases", name: "Cases", hint: "Causes and decisions" },
+  { id: "areas", name: "Areas", hint: "Where deliveries fail" },
 ];
 
 export const reportState: AgReportState<DoorstepRegistry> = {
-  pages: [overviewPage, carriersPage, casesPage],
+  pages: [overviewPage, carriersPage, casesPage, areasPage],
   selectedPageId: "overview",
   panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true }, ai: { collapsed: true } },
 };

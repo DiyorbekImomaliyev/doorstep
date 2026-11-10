@@ -246,6 +246,14 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
   const shippedOrders = new Set(shipments.map((x) => x.order_id));
   const deliveredOrders = new Set(shipments.filter((x) => x.delivered_at).map((x) => x.order_id));
   const orderOfCase = new Map(cases.map((c) => [c.case_id, c.order_id]));
+  // What each order cost: refunded minus recovered over its cases (home currency), so an area's loss
+  // sums on the orders table alone, with no join to repeat a row.
+  const lossOf = new Map<string, number>();
+  for (const c of cases) {
+    const rec = claimOf.get(c.case_id);
+    const back = rec ? homeMajor(rec.recovered_minor, rec.currency, home) ?? 0 : 0;
+    lossOf.set(c.order_id, (lossOf.get(c.order_id) ?? 0) + (refundedBy.get(c.case_id) ?? 0) - back);
+  }
   const refundedOrders = new Set(cases.filter((c) => (refundedBy.get(c.case_id) ?? 0) > 0).map((c) => c.order_id));
   const recoveredOrders = new Set(recoveries.filter((r) => (r.recovered_minor ?? 0) > 0).map((r) => orderOfCase.get(r.case_id)));
 
@@ -274,6 +282,7 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
     on_way: !caseOrders.has(o.order_id) && shippedOrders.has(o.order_id) && !deliveredOrders.has(o.order_id) ? 1 : 0,
     refunded_flag: refundedOrders.has(o.order_id) ? 1 : 0,
     recovered_flag: recoveredOrders.has(o.order_id) ? 1 : 0,
+    loss: lossOf.has(o.order_id) ? Math.max(0, lossOf.get(o.order_id)!) : null,
     source: source(o.order_id),
   }));
   const shipmentRows = shipments.map((x) => ({
@@ -365,6 +374,7 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
     measure("claim_paid", "Recovered", { operator: "coalesce", inputs: [{ id: "recoveries.recovered", aggregation: "sum" }, num(0)] }, MONEY),
     measure("recovery_rate", "Carrier recovery rate", ratio("recovered", "claimed"), PCT),
     measure("net_loss", "Net delivery loss", { operator: "subtract", inputs: [{ operator: "coalesce", inputs: [{ id: "paid_out" }, num(0)] }, { operator: "coalesce", inputs: [{ id: "recovered" }, num(0)] }] }, MONEY),
+    measure("area_loss", "Money lost", { id: "orders.loss", aggregation: "sum" }, MONEY),
     measure("stage_shipped", "Shipped", { id: "orders.shipped", aggregation: "sum" }, INT),
     measure("stage_delivered", "Delivered, no problem", { id: "orders.delivered_ok", aggregation: "sum" }, INT),
     measure("stage_on_way", "On the way", { id: "orders.on_way", aggregation: "sum" }, INT),
@@ -387,7 +397,7 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
           f("transit_days", "Days in transit", { format: "decimalFormat", formatOptions: { format: "#,##0.0" } }), f("source", "Source"),
           f("shipped", "Shipped", { ...INT, hide: true }), f("delivered_ok", "Delivered, no problem", { ...INT, hide: true }),
           f("on_way", "On the way", { ...INT, hide: true }), f("refunded_flag", "Refunded", { ...INT, hide: true }),
-          f("recovered_flag", "Recovered from carrier", { ...INT, hide: true }),
+          f("recovered_flag", "Recovered from carrier", { ...INT, hide: true }), f("loss", "Money lost", { ...MONEY, hide: true }),
         ],
       },
       {

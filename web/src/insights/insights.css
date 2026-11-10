@@ -424,3 +424,33 @@ li[data-kind="method"] .ds-next-ico { color: #2f6f73; }
 .ask-trace-list li svg { flex: none; color: var(--good); }
 .ask-trace-list li[data-status="warn"] svg { color: #b9822a; }
 .ask-trace-list .num { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-3); font-size: 11.5px; }
+
+/* ---------------------------------------------------------------- delivery atlas (AS-15) */
+.ds-atlas { position: relative; width: 100%; height: 100%; min-height: 220px; overflow: hidden; color: var(--ag-foreground-color, #1f1a18); }
+.ds-atlas svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ds-atlas-cell { fill: #f6f1ed; stroke: #ece5df; stroke-width: 1; }
+.ds-atlas-tile { cursor: pointer; outline: none; transition: opacity .25s; }
+.ds-atlas-body { transition: transform .16s cubic-bezier(.2, .7, .2, 1); }
+.ds-atlas-tile:hover .ds-atlas-body, .ds-atlas-tile:focus-visible .ds-atlas-body, .ds-atlas-tile[data-picked] .ds-atlas-body { transform: translateY(-6px); }
+.ds-atlas-top { stroke: rgb(255 255 255 / .55); stroke-width: 1; }
+.ds-atlas-ring { fill: none; stroke: var(--ag-accent-color, #7b2d3d); stroke-width: 2; opacity: 0; transition: opacity .16s; }
+.ds-atlas-tile[data-picked] .ds-atlas-ring, .ds-atlas-tile:focus-visible .ds-atlas-ring { opacity: 1; }
+.ds-atlas-tile:focus-visible .ds-atlas-top { stroke: var(--ag-accent-color, #7b2d3d); stroke-width: 2; }
+.ds-atlas[data-picking] .ds-atlas-tile:not([data-picked]), .ds-atlas-tile[data-out] { opacity: .38; }
+.ds-atlas-code { fill: #5a524e; font-weight: 600; letter-spacing: .02em; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.ds-atlas-switch { position: absolute; top: 2px; right: 2px; display: inline-flex; padding: 2px; gap: 2px; border: 1px solid #e8e2dc; border-radius: 999px; background: #fff; }
+.ds-atlas-switch button { appearance: none; border: 0; background: transparent; font: inherit; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 999px; color: #736b67; cursor: pointer; transition: background .15s, color .15s; }
+.ds-atlas-switch button:hover { color: #1f1a18; }
+.ds-atlas-switch button[aria-pressed="true"] { background: var(--ag-accent-color, #7b2d3d); color: #fff; }
+.ds-atlas-switch button:focus-visible { outline: 2px solid var(--ag-accent-color, #7b2d3d); outline-offset: 1px; }
+.ds-atlas-legend { position: absolute; left: 2px; bottom: 2px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: 12px; color: #736b67; pointer-events: none; }
+.ds-atlas-key { display: inline-flex; align-items: center; gap: 8px; }
+.ds-atlas-bars { display: inline-block; width: 14px; height: 14px; background: linear-gradient(#bf7486, #bf7486) 0 100% / 4px 60% no-repeat, linear-gradient(#bf7486, #bf7486) 5px 100% / 4px 100% no-repeat, linear-gradient(#bf7486, #bf7486) 10px 100% / 4px 35% no-repeat; border-radius: 1px; }
+.ds-atlas-ramp { display: inline-block; width: 72px; height: 8px; border-radius: 4px; }
+.ds-atlas-ends { font-variant-numeric: tabular-nums; }
+.ds-atlas-tip { position: absolute; z-index: 3; transform: translate(-50%, calc(-100% - 12px)); display: flex; flex-direction: column; gap: 2px; min-width: 132px; padding: 9px 12px; border-radius: 10px; background: #fff; border: 1px solid #e8e2dc; box-shadow: 0 12px 32px rgba(31, 26, 24, .14); font-size: 12.5px; color: #5a524e; white-space: nowrap; pointer-events: none; }
+.ds-atlas-tip[data-below] { transform: translate(-50%, 28px); }
+.ds-atlas-tip strong { font-size: 13px; color: #1f1a18; margin-bottom: 2px; }
+.ds-atlas-tip strong span { font-weight: 600; color: #8b827d; }
+.ds-atlas-tip b { font-weight: 600; color: #1f1a18; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .ds-atlas-body, .ds-atlas-tile, .ds-atlas-ring { transition: none; } }

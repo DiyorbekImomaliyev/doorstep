@@ -13,15 +13,17 @@
  *  - Failure points: every case cause ranked, with its share and the money it cost. Click a row
  *    to filter the page; another widget's selection shows as a solid bar over a faint total.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  AgBaseRegistry, AgBaseWidgetDefinition, AgDefaultWidgetDefinition, AgWidgetApi, AgWidgetDataFormat, AgWidgetField,
+  AgBaseRegistry, AgBaseWidgetDefinition, AgDefaultWidgetDefinition, AgWidgetDataFormat, AgWidgetField,
   AgWidgetFieldReference, AgWidgetFormParams, AgWidgetParams,
 } from "ag-studio";
 import { Says } from "../components/ai";
 import Doorstep3D from "../components/Doorstep3D";
 import type { Prepared } from "./data";
+import { AtlasWidget, type AtlasDef } from "./Atlas";
 import { brief, headline, share, type DoNext, type Signal } from "./story";
+import { count, keyOf, num, pctOf, useSelection, useSize, useWidgetRows } from "./widgetKit";
 import { ArrowRight, CircleCheck, Clock, FileText, SlidersHorizontal, TrendingDown, TrendingUp, Truck } from "lucide-react";
 
 // ---------------------------------------------------------------- types
@@ -74,81 +76,11 @@ export interface DoorstepRegistry extends AgBaseRegistry {
     | AgBaseWidgetDefinition<"doorstep-journey", JourneyDef>
     | AgBaseWidgetDefinition<"doorstep-claim-clock", ClockDef>
     | AgBaseWidgetDefinition<"doorstep-brief", BriefDef>
+    | AgBaseWidgetDefinition<"doorstep-atlas", AtlasDef>
   )[];
 }
 
-type Row = Record<string, unknown>;
-type AnyDef = MeterDef | FailureDef | FlowDef | JourneyDef | ClockDef | BriefDef;
-type Loaded = { rows: Row[]; hi: Row[] | null };
-type LoadOpts = { min?: number; highlight?: boolean; quiet?: boolean };
-
-/**
- * Shared loading: one query, superseded loads ignored, display states set like a built-in widget.
- * `highlight` asks Studio for the rows without other widgets' cross filters plus the filtered
- * rows, so a list can keep every row and mark the selected part. `quiet` leaves the widget's
- * display state to its main query.
- */
-function useWidgetRows<D extends AnyDef>(
-  params: AgWidgetParams<D>, fields: (AgWidgetField | undefined)[], sortBy: AgWidgetField | undefined, opts: LoadOpts = {},
-): Loaded | null {
-  // Rows are kept with the fields they were fetched for: when Studio reuses this widget on another
-  // page, the old rows are never drawn against the new fields.
-  const sig = fields.map((f) => f?.key ?? "").join("|");
-  const [got, setGot] = useState<(Loaded & { sig: string }) | null>(null);
-  const loaded = useRef(false);
-  useEffect(() => {
-    let current = true;
-    const { widgetApi } = params;
-    const need = fields.filter(Boolean) as AgWidgetField[];
-    if (need.length < (opts.min ?? 2)) { if (!opts.quiet) widgetApi.setDisplayState("incompleteDataMapping"); return; }
-    if (!opts.quiet) widgetApi.setDisplayState("loading", { prominent: !loaded.current });
-    widgetApi.getData(
-      { fields: need, sort: sortBy ? [{ field: sortBy, direction: "desc" }] : [] },
-      opts.highlight ? { crossFilter: "highlight" } : undefined,
-    ).then((res) => {
-      if (!current) return;
-      const rows = res.results.rows as Row[];
-      loaded.current = true;
-      if (!opts.quiet) widgetApi.setDisplayState(rows.length ? "displayed" : "noData");
-      setGot({ sig, rows, hi: (res.crossFilter?.rows as Row[] | undefined) ?? null });
-    }).catch(() => { if (current && !opts.quiet) widgetApi.setDisplayState("noData"); });
-    return () => { current = false; };
-    // Studio hands over new params on every refresh, so each one loads again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params]);
-  return got?.sig === sig ? got : null;
-}
-
-/** This widget's own cross-filter selection (values of its category field), and a toggle. */
-function useSelection(widgetApi: AgWidgetApi, field: AgWidgetField | undefined) {
-  const picked = new Set<unknown>();
-  for (const s of widgetApi.getCrossFilterSelections() ?? []) if (s.type === "value") s.values.forEach((v) => picked.add(v));
-  const toggle = (value: unknown) => field && widgetApi.toggleCrossFilter({ type: "value", field, value, group: 0 });
-  return { picked, toggle };
-}
-
-/** The element's size, kept up to date (for drawing SVG at real pixels, not a stretched viewBox). */
-function useSize<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setSize({ w: Math.round(e.contentRect.width), h: Math.round(e.contentRect.height) }));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, size] as const;
-}
-
-const num = (v: unknown) => Number(v ?? 0) || 0;
-const count = (n: number) => Math.round(n).toLocaleString("en-GB");
-const pctOf = (n: number, of: number) => {
-  if (of <= 0) return "—";
-  const p = Math.round((n / of) * 100);
-  return p === 0 && n > 0 ? "<1%" : `${p}%`;
-};
-const keyOf = (v: unknown) => (v instanceof Date ? v.getTime() : String(v));
+export type AnyDef = MeterDef | FailureDef | FlowDef | JourneyDef | ClockDef | BriefDef | AtlasDef;
 
 // ---------------------------------------------------------------- parcel journey
 
@@ -318,11 +250,19 @@ export const DEFAULTS = {
     dataMapping: { category: [{ id: "cases.failure_point" }], value: [{ id: "case_count" }], money: [{ id: "paid_out" }] },
     format: titled("Failure points"),
   } satisfies Partial<FailureDef>,
+  atlas: {
+    dataMapping: {
+      area: [{ id: "orders.district" }], country: [{ id: "orders.country" }], orders: [{ id: "order_count" }],
+      failed: [{ id: "orders_with_case" }], lost: [{ id: "area_loss" }],
+    },
+    format: titled("Delivery atlas"),
+  } satisfies Partial<AtlasDef>,
 };
 
 const BY_TYPE: Record<string, { dataMapping: Record<string, unknown>; format: unknown }> = {
   "doorstep-journey": DEFAULTS.journey, "doorstep-money-flow": DEFAULTS.moneyFlow, "doorstep-claim-clock": DEFAULTS.claimClock,
   "doorstep-evidence-meter": DEFAULTS.evidence, "doorstep-failure-points": DEFAULTS.failurePoints,
+  "doorstep-atlas": DEFAULTS.atlas,
 };
 type WidgetLike = { type: string; dataMapping?: Record<string, unknown>; format?: unknown };
 
@@ -836,4 +776,37 @@ export const briefWidget: AgBaseWidgetDefinition<"doorstep-brief", BriefDef> = {
   minSize: { width: 320, height: 140 },
 };
 
-export const doorstepWidgetTypes = [briefWidget, journeyWidget, moneyFlowWidget, claimClockWidget, evidenceMeterWidget, failurePointsWidget];
+// ---------------------------------------------------------------- delivery atlas
+
+const ATLAS_ICON = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 22L4 15.5 16 9l12 6.5z" fill="#efe9e3"/><g><path d="M9 14.5l4-2.2 4 2.2-4 2.2z" fill="#d9a8b3"/><path d="M9 14.5v-5l4-2.2v5z" fill="#b86a7d"/><path d="M13 16.7v-5l4-2.2v5z" fill="#9c4a5d"/><path d="M17 17.5l4-2.2 4 2.2-4 2.2z" fill="#7b2d3d"/><path d="M17 17.5v-9l4-2.2v9z" fill="#5c1f2c"/><path d="M21 19.7v-9l4-2.2v9z" fill="#471823"/></g></svg>`;
+
+export const atlasWidget: AgBaseWidgetDefinition<"doorstep-atlas", AtlasDef> = {
+  id: "doorstep-atlas",
+  label: "Delivery atlas",
+  icon: ATLAS_ICON,
+  dataMapping: {
+    area: { type: "field", supportedRoles: ["category"], required: true, intent: "category", aiDescription: "The buyer's postcode district (orders.district). Only the district is ever read, never an address or a name." },
+    country: { type: "field", supportedRoles: ["category"], required: true, intent: "category", aiDescription: "The buyer's country (orders.country), to tell UK areas from US areas." },
+    orders: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Number of orders (order_count). Sets the height of each tile." },
+    failed: { type: "field", supportedRoles: ["numeric"], required: true, intent: "value", aiDescription: "Orders with a problem (orders_with_case). Sets the colour of each tile as a share of its orders." },
+    lost: { type: "field", supportedRoles: ["numeric"], intent: "value", aiDescription: "Net money lost to failed deliveries (area_loss). Shown in the tooltip. Optional." },
+  },
+  ai: {
+    label: "Delivery atlas",
+    description: "An isometric 3D map of the shop's postcode areas. Each area is a tile placed by its real position: taller means more orders, darker maroon means a higher share of failed deliveries. Hovering shows orders, failed deliveries and money lost; clicking an area filters the page to it.",
+    usage: "Use for questions about where deliveries fail: which postcode areas, regions or cities have the most orders, the highest failure rate or the most money lost. One per page. Not for carriers or causes.",
+    configuration: "area orders.district, country orders.country, orders order_count, failed orders_with_case, lost area_loss. About 24 tracks wide and 26 to 32 high.",
+  },
+  defaultState: DEFAULTS.atlas,
+  form: (p: AgWidgetFormParams<AtlasDef>) => p.createDefaults({
+    dataMappingItems: [
+      { key: "area", label: "Area" }, { key: "country", label: "Country" }, { key: "orders", label: "Orders (height)" },
+      { key: "failed", label: "Failed (colour)" }, { key: "lost", label: "Money lost" },
+    ],
+  }),
+  comp: captioned(AtlasWidget, "Delivery atlas"),
+  defaultSize: { width: 840, height: 480 },
+  minSize: { width: 280, height: 260 },
+};
+
+export const doorstepWidgetTypes = [briefWidget, journeyWidget, moneyFlowWidget, claimClockWidget, evidenceMeterWidget, failurePointsWidget, atlasWidget];
