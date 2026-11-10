@@ -22,7 +22,8 @@ import { afterGlide, useMedia, useReducedMotion } from "../motion";
 import { Says, type Part } from "../components/ai";
 import { guideParts } from "../grid/guide";
 import Doorstep3D from "../components/Doorstep3D";
-import { hasNote, notesFor, notesSource } from "../grid/notes";
+import type { DoorstepNote } from "../grid/notes";
+import { doorstepOwns, hasNote, notesFor, notesSource } from "../grid/notes";
 
 /**
  * The Control Room order grid, on AG Grid Enterprise. Patterns from AG Grid's own demos
@@ -521,8 +522,11 @@ const isFullWidthRow = (p: { rowNode: IRowNode }) => isGuide(p.rowNode);
 const laneOrder = (p: { nodeA: IRowNode; nodeB: IRowNode }) =>
   (LANES[p.nodeA.key as Lane]?.rank ?? 9) - (LANES[p.nodeB.key as Lane]?.rank ?? 9);
 // Column filters live in the Filters panel and the right-click menu, not as icons on every header.
-// Notes are Doorstep's, read-only: no add or edit UI (existing notes still open on hover).
-const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true, suppressNoteActions: true };
+// Doorstep's own notes stay read-only; the seller can add, edit and delete their own anywhere else.
+const liveNotes = { current: new Map<string, DoorstepNote>() };
+const defaultColDef: ColDef<OrderRow> = { sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true,
+  suppressNoteActions: (p) => doorstepOwns(liveNotes.current, p.data?.order_id, p.column.getColId()) };
+const noteText = { addNote: "Add note", editNote: "Edit note", viewNote: "View note", deleteNote: "Delete note", notePlaceholder: "Note" };
 const rowStyle = { cursor: "pointer" };
 
 export type OrdersGridProps = {
@@ -579,6 +583,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   const notes = useMemo(() => notesFor(rows), [rows]);
   const latestNotes = useRef(notes);
   latestNotes.current = notes;
+  liveNotes.current = notes;
   const notesDataSource = useMemo(() => notesSource(latestNotes), []);
   useEffect(() => { const a = api.current; if (a && !a.isDestroyed()) a.refreshNotes(); }, [notes]);
   // Lanes only when they add something: a list with one lane (e.g. "Needs you") stays flat.
@@ -682,6 +687,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         { name: p.node!.expanded ? "Hide details" : "Show details", action: () => p.node!.setExpanded(!p.node!.expanded) },
         { name: "Copy order reference", action: () => { void navigator.clipboard?.writeText(r.order_ref); } },
         "separator",
+        "note",
       );
     }
     items.push(
@@ -762,6 +768,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         loadingRows={loadingRows}
         notesDataSource={notesDataSource}
         noteTrigger="hover"
+        localeText={noteText}
         noteShowDelay={300}
         suppressCellFocus
         domLayout="autoHeight"

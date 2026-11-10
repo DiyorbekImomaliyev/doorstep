@@ -953,3 +953,7 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .order-journey.tone-good::before { background: var(--good); }
 .order-journey.tone-warn::before { background: #d29a3a; }
 .order-journey.tone-bad::before { background: var(--bad); }
+
+/* The seller's own notes get a quiet corner; Doorstep's (Journey, Delivery) keep the maroon one. */
+.ag-has-cell-notes { --ag-note-indicator-color: #b7aca6; }
+.ag-has-cell-notes[col-id="status"], .ag-has-cell-notes[col-id="method"] { --ag-note-indicator-color: var(--accent); }

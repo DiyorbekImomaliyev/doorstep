@@ -2,7 +2,7 @@
  * G6: Doorstep's reasons as read-only AG Grid Cell Notes, on the Journey and Delivery cells only. A
  * maroon corner marks a cell Doorstep has something to say about; hovering opens the note, by
  * "Doorstep", that the seller can read but not edit. Templates from fields already on the row: no
- * model call. Neutral wording (rule 7: a held case is waiting for a person, never "refused"), and a
+ * model call. The seller can also keep a private note of their own on any other cell. Neutral wording (rule 7: a held case is waiting for a person, never "refused"), and a
  * note never names the item. Every fact here is also in the detail panel and the case drawer.
  */
 import type { Note, NotesDataSource } from "ag-grid-community";
@@ -51,12 +51,56 @@ export function notesFor(rows: OrderRow[]): Map<string, DoorstepNote> {
   return m;
 }
 
-/** A read-only data source over the latest notes (`getNote` is synchronous; `setNote` does nothing). */
-export function notesSource(latest: { current: Map<string, DoorstepNote> }): NotesDataSource<{ kind: NoteKind }> {
+// The seller's own notes: kept in this browser, keyed by seller token, order and column. Every storage
+// access is guarded, so the grid works (and a note lasts until reload) without storage.
+type Saved = { text: string; at: string };
+const memory = new Map<string, Saved>();
+const sellerToken = () => /\/seller\/([^/?#]+)/.exec(window.location.pathname)?.[1] ?? "";
+const storeKey = (orderId: string, colId: string) => `doorstep.note.${sellerToken()}.${orderId}.${colId}`;
+
+function readSaved(orderId: string, colId: string): Saved | undefined {
+  const k = storeKey(orderId, colId);
+  try {
+    const raw = window.localStorage.getItem(k);
+    if (raw) {
+      const v = JSON.parse(raw) as Partial<Saved>;
+      if (typeof v.text === "string" && typeof v.at === "string") return { text: v.text, at: v.at };
+    }
+  } catch { /* storage blocked or unreadable */ }
+  return memory.get(k);
+}
+
+function writeSaved(orderId: string, colId: string, v: Saved | undefined) {
+  const k = storeKey(orderId, colId);
+  if (v) memory.set(k, v); else memory.delete(k);
+  try {
+    if (v) window.localStorage.setItem(k, JSON.stringify(v)); else window.localStorage.removeItem(k);
+  } catch { /* storage blocked or full */ }
+}
+
+/** Doorstep's notes are read-only; a cell without one holds the seller's own note, by "You". */
+export function notesSource(latest: { current: Map<string, DoorstepNote> }): NotesDataSource<{ kind: NoteKind } | undefined> {
   return {
-    getNote: ({ column, rowNode }) => (rowNode.data ? latest.current.get(noteKey(rowNode.data.order_id, column.getColId())) : undefined),
-    setNote: () => {},
+    getNote: ({ column, rowNode }) => {
+      if (!rowNode.data) return undefined;
+      const id = rowNode.data.order_id as string, col = column.getColId();
+      const own = latest.current.get(noteKey(id, col));
+      if (own) return own;
+      const mine = readSaved(id, col);
+      return mine ? { text: mine.text, author: "You", createdAt: ago(mine.at) } : undefined;
+    },
+    setNote: ({ column, rowNode, note }) => {
+      if (!rowNode.data) return;
+      const id = rowNode.data.order_id as string, col = column.getColId();
+      if (latest.current.has(noteKey(id, col))) return;
+      const text = note?.text.trim();
+      writeSaved(id, col, text ? { text, at: new Date().toISOString() } : undefined);
+    },
   };
 }
+
+/** Add, edit and delete are off only where Doorstep has its own note. */
+export const doorstepOwns = (notes: Map<string, DoorstepNote>, orderId: string | undefined, colId: string) =>
+  !!orderId && notes.has(noteKey(orderId, colId));
 
 export const hasNote = (notes: Map<string, DoorstepNote>, orderId: string, colId: string) => notes.has(noteKey(orderId, colId));
