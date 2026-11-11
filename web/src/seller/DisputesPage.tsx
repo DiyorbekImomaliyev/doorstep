@@ -1,80 +1,316 @@
-import { useMemo } from "react";
-import type { ColDef, ICellRendererParams } from "ag-grid-community";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps } from "ag-grid-react";
+import { ModuleRegistry, type CellKeyDownEvent, type ColDef, type GridApi, type RowClickedEvent, type StatusPanelDef } from "ag-grid-community";
+import { MasterDetailModule, StatusBarModule } from "ag-grid-enterprise";
+import { ArrowUpRight, ChevronDown, Gavel, Info, RefreshCw, Scale, Send, ShieldCheck, Trophy, Wallet } from "lucide-react";
 import type { DisputeRow } from "../api";
-import { ErrorBox } from "../components/ui";
-import { FAILURE_POINT, REASONS, money, type Tone } from "../format";
-import LedgerGrid, { RIGHT, CopyId, ItemCell, Kpis, PageHead, StatusPill, joinMoney, sumByCurrency, type Totalled } from "./LedgerGrid";
+import { ErrorBox, useAsync, usePoll } from "../components/ui";
+import { ago, money } from "../format";
+import { gridTheme } from "../grid/theme";
+import { useMedia } from "../motion";
+import { CopyId, ItemCell, PageHead } from "./LedgerGrid";
+import { disputesDesk, type DeskRow, type Stage } from "./disputes/disputesApi";
+import { DisputeDetail, ProtectionMeter, ReplyBy, SEGMENTS, StagePill, actionOf, causeText, reasonText, shortId, stageOf } from "./disputes/parts";
+import "./disputes/disputes.css";
 
-type Row = DisputeRow & Totalled;
+ModuleRegistry.registerModules([MasterDetailModule, StatusBarModule]);
 
-const ROUTE: Record<string, string> = { evidence: "Evidence sent", offer: "Offer made", waiting: "Waiting" };
-const PROTECTION: Record<string, { label: string; tone: Tone }> = {
-  ELIGIBLE: { label: "Eligible", tone: "good" },
-  PARTIALLY_ELIGIBLE: { label: "Partly", tone: "warn" },
-  NOT_ELIGIBLE: { label: "Not eligible", tone: "bad" },
-};
-const reasonOf = (r: DisputeRow) =>
-  (r.reason && (FAILURE_POINT[r.reason] ?? REASONS.find((x) => x.value === r.reason)?.label)) || (r.reason ? r.reason.replaceAll("_", " ").toLowerCase() : "—");
-const outcomeOf = (o: string | null) => (o ? o.replaceAll("_", " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : "—");
+type Seg = Stage | "all";
 
-function Protection({ v }: { v: string | null }) {
-  if (!v) return <span className="faint">—</span>;
-  const p = PROTECTION[v] ?? { label: v.toLowerCase().replaceAll("_", " "), tone: "neutral" as Tone };
-  return <StatusPill tone={p.tone}>{p.label}</StatusPill>;
+/** The latest rows and the drawer opener, for detail panels the grid renders in its own tree. */
+const Desk = createContext<{ byId: Map<string, DeskRow>; open: (r: DeskRow) => void }>({ byId: new Map(), open: () => {} });
+
+const sig = (r: DeskRow) => [r.status, r.stage, r.evidence?.status, r.offer?.status, r.protection.met, r.timeline.length].join("|");
+
+function perCurrency(rows: DeskRow[]): string[] {
+  const by: Record<string, number> = {};
+  for (const r of rows) by[r.currency] = (by[r.currency] ?? 0) + r.amount_minor;
+  return Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => money(v, c));
 }
 
-export default function DisputesPage({ rows, error, onOpenOrder }: { rows: DisputeRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void; token: string; onChanged: () => void }) {
-  const kpis = useMemo(() => {
-    const r = rows ?? [];
-    const open = r.filter((x) => x.status === "open");
-    return { open: open.length, stake: joinMoney(sumByCurrency(open, (x) => x.amount_minor)), resolved: r.length - open.length };
-  }, [rows]);
-  const totals = useMemo((): Row[] => {
-    const by = sumByCurrency((rows ?? []).filter((x) => x.status === "open"), (x) => x.amount_minor);
-    return Object.entries(by).map(([currency, amount_minor]) => ({ __total: `Open ${currency}`, currency, amount_minor }) as Row);
-  }, [rows]);
+function Hint({ text }: { text: string }) {
+  return <span className="hint" tabIndex={0} role="note" aria-label={text} data-tip={text}><Info aria-hidden /></span>;
+}
 
-  const columns = useMemo((): ColDef<Row>[] => [
-    { headerName: "Item", field: "item", flex: 2, minWidth: 200,
-      cellRenderer: (p: ICellRendererParams<Row>) => p.data && <ItemCell item={p.data.item} sub={p.data.order_ref} total={p.data.__total} /> },
-    { headerName: "PayPal dispute", field: "paypal_dispute_id", width: 170,
-      cellRenderer: (p: ICellRendererParams<Row>) => (p.data && !p.data.__total ? <CopyId value={p.data.paypal_dispute_id} /> : null) },
-    { headerName: "Reason", field: "reason", flex: 1, minWidth: 190, valueFormatter: (p) => (p.data && !p.data.__total ? reasonOf(p.data) : "") },
-    { headerName: "Amount", field: "amount_minor", ...RIGHT, width: 120,
-      valueFormatter: (p) => (p.data ? money(p.data.amount_minor, p.data.currency) : "") },
-    { headerName: "Status", field: "status", width: 110,
-      cellRenderer: (p: ICellRendererParams<Row>) => (p.data && !p.data.__total ? <StatusPill tone={p.data.status === "open" ? "bad" : "good"}>{p.data.status === "open" ? "Open" : "Resolved"}</StatusPill> : null),
-      valueFormatter: (p) => (p.value === "open" ? "Open" : "Resolved") },
-    { headerName: "Doorstep", field: "route", width: 130, valueFormatter: (p) => (p.data?.__total ? "" : ROUTE[p.value] ?? p.value) },
-    { headerName: "Protection", field: "protection", width: 130, headerTooltip: "PayPal Seller Protection verdict on the payment",
-      cellRenderer: (p: ICellRendererParams<Row>) => (p.data && !p.data.__total ? <Protection v={p.data.protection} /> : null) },
-    { headerName: "Outcome", field: "outcome", flex: 1, minWidth: 120, valueFormatter: (p) => (p.data?.__total ? "" : outcomeOf(p.value)) },
-  ], []);
-
-  const card = (r: Row) => (
-    <>
-      <span className="lc-top"><span className="lc-item">{r.item}</span><span className="lc-money num">{money(r.amount_minor, r.currency)}</span></span>
-      <span className="lc-meta">{r.order_ref} · {reasonOf(r)} · {ROUTE[r.route] ?? r.route}</span>
-      <span className="lc-bottom">
-        <StatusPill tone={r.status === "open" ? "bad" : "good"}>{r.status === "open" ? "Open" : "Resolved"}</StatusPill>
-        <Protection v={r.protection} />
-      </span>
-    </>
-  );
-
+function DeskKpis({ rows }: { rows: DeskRow[] | null }) {
+  if (!rows) {
+    return (
+      <section className="dd-kpis" aria-hidden>
+        {[0, 1, 2, 3].map((i) => <div key={i} className="kpi kpi-skel"><span className="skel w40" /><span className="skel w20 tall" /><span className="skel w60" /></div>)}
+      </section>
+    );
+  }
+  const open = rows.filter((r) => r.status !== "resolved");
+  const reply = open.filter((r) => r.stage === "needs_reply").length;
+  const resolved = rows.filter((r) => r.status === "resolved");
+  const won = resolved.filter((r) => r.outcome?.result === "won").length;
+  const lost = resolved.filter((r) => r.outcome?.result === "lost").length;
+  const stake = perCurrency(open);
+  const meets = open.filter((r) => r.protection.met === r.protection.total).length;
+  const checks = open[0]?.protection.total ?? 5;
   return (
-    <>
-      <PageHead title="Disputes" line="PayPal disputes on your orders" />
-      {error && <ErrorBox message="Disputes did not load. Refresh to try again." />}
-      <Kpis items={[
-        { label: "Open", value: String(kpis.open), sub: kpis.open ? kpis.stake : "none open", tone: kpis.open ? "attention" : undefined },
-        { label: "Resolved", value: String(kpis.resolved), sub: "decided by PayPal" },
-      ]} />
-      <LedgerGrid<Row>
-        label="PayPal disputes" rows={rows as Row[] | null} columns={columns} getRowId={(r) => r.dispute_id}
-        onOpen={(r) => onOpenOrder(r.order_id)} empty="No disputes." totals={totals} card={card}
-        totalLines={totals.map((t) => `${t.__total}: ${money(t.amount_minor, t.currency)}`)}
+    <section className="dd-kpis" aria-label="Summary">
+      <div className={`kpi ${reply ? "attention" : ""}`}>
+        <span className="label"><Gavel aria-hidden />Open</span>
+        <span className="value num">{open.length}</span>
+        <span className="sub">{reply ? `${reply} need${reply === 1 ? "s" : ""} a reply` : "none need you"}</span>
+      </div>
+      <div className="kpi">
+        <span className="label"><Wallet aria-hidden />In dispute<Hint text="Open disputes, one total per currency. PayPal's disputed amount when it sent one, else the order amount." /></span>
+        <span className="value num dd-money">{stake.length ? stake.map((s) => <span key={s}>{s}</span>) : "—"}</span>
+        <span className="sub">{stake.length > 1 ? "per currency" : "open disputes"}</span>
+      </div>
+      <div className="kpi">
+        <span className="label"><Trophy aria-hidden />Outcomes<Hint text="From PayPal's stored outcome codes only: seller favour or buyer cancelled is a win, buyer favour a loss." /></span>
+        <span className="value num">{resolved.length ? <>{won} won · {lost} lost</> : "—"}</span>
+        <span className="sub">{resolved.length ? `of ${resolved.length} resolved` : "none resolved yet"}</span>
+      </div>
+      <div className="kpi">
+        <span className="label"><ShieldCheck aria-hidden />Seller Protection<Hint text="Open disputes that meet every check: PayPal's verdict, shipped to the PayPal address, delivered scan, tracking on PayPal, reply sent." /></span>
+        <span className="value num">{open.length ? `${meets} of ${open.length}` : "—"}</span>
+        <span className="sub">{open.length ? `meet all ${checks} checks` : "no open disputes"}</span>
+      </div>
+    </section>
+  );
+}
+
+// ---------- grid cells ----------
+
+function DisputeCell(p: CustomCellRendererProps<DeskRow>) {
+  const r = p.data;
+  if (!r) return null;
+  return <ItemCell item={r.item} sub={`${r.order_ref} · ${ago(r.opened_at)}`} />;
+}
+
+function ReasonCell(p: CustomCellRendererProps<DeskRow>) {
+  const r = p.data;
+  if (!r) return null;
+  const cause = causeText(r);
+  return (
+    <span className="cell-two">
+      <span>{reasonText(r)}</span>
+      {cause && <span className="sub" title="Doorstep's likely cause">{cause}</span>}
+    </span>
+  );
+}
+
+function ActionCell(p: CustomCellRendererProps<DeskRow>) {
+  const { open } = useContext(Desk);
+  const r = p.data;
+  if (!r) return null;
+  const a = actionOf(r);
+  return (
+    <button type="button" className={`btn ${a.primary ? "primary" : "ghost"} dd-row-act`} onClick={() => open(r)}>
+      {a.label === "Send evidence" ? <Send size={14} aria-hidden /> : <ArrowUpRight size={14} aria-hidden />}{a.label}
+    </button>
+  );
+}
+
+function Detail(p: CustomDetailCellRendererProps<DeskRow>) {
+  const { byId, open } = useContext(Desk);
+  const r = (p.data && byId.get(p.data.dispute_id)) ?? p.data;
+  if (!r) return null;
+  return <DisputeDetail r={r} onOpen={() => open(r)} />;
+}
+
+const statusBar: { statusPanels: StatusPanelDef[] } = { statusPanels: [{ statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" }] };
+
+function DeskGrid({ rows, onReady, openFirst }: { rows: DeskRow[]; onReady: (a: GridApi<DeskRow>) => void; openFirst: string | null }) {
+  const hasDue = rows.some((r) => r.paypal.response_due_at);
+  const columns = useMemo((): ColDef<DeskRow>[] => [
+    { headerName: "Dispute", field: "item", flex: 2, minWidth: 220, cellRenderer: "agGroupCellRenderer", cellRendererParams: { innerRenderer: DisputeCell, suppressCount: true } },
+    { headerName: "PayPal ID", field: "paypal_dispute_id", width: 198, cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <CopyId value={q.data.paypal_dispute_id} shown={shortId(q.data.paypal_dispute_id)} /> },
+    { headerName: "Reason", colId: "reason", flex: 1, minWidth: 160, valueGetter: (q) => (q.data ? reasonText(q.data) : ""), cellRenderer: ReasonCell },
+    { headerName: "Amount", field: "amount_minor", width: 104, headerClass: "ag-right-aligned-header", cellClass: "ag-right-aligned-cell num lg-money",
+      valueFormatter: (q) => (q.data ? money(q.data.amount_minor, q.data.currency) : ""),
+      tooltipValueGetter: (q) => (q.data?.amount_from === "paypal" ? "PayPal's disputed amount" : "Order amount") },
+    { headerName: "Stage", colId: "stage", width: 138, valueGetter: (q) => (q.data ? stageOf(q.data).label : ""), cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <StagePill r={q.data} /> },
+    ...(hasDue ? [{ headerName: "Reply by", colId: "due", width: 118, valueGetter: (q: { data?: DeskRow }) => q.data?.paypal.response_due_at ?? "",
+      cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <ReplyBy iso={q.data.paypal.response_due_at} /> } as ColDef<DeskRow>] : []),
+    { headerName: "Protection", colId: "protection", width: 124, headerTooltip: "Seller Protection checks met",
+      // The states are in the value, so the cell redraws when any check changes; it sorts by checks met.
+      valueGetter: (q) => (q.data ? `${q.data.protection.met}:${q.data.protection.checks.map((c) => c.state).join(",")}` : ""),
+      comparator: (a: string, b: string) => parseInt(a, 10) - parseInt(b, 10), cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <ProtectionMeter r={q.data} /> },
+    { headerName: "", colId: "action", width: 156, sortable: false, resizable: false, valueGetter: (q) => (q.data ? actionOf(q.data).label : ""), cellRenderer: ActionCell, cellClass: "dd-act-cell" },
+  ], [hasDue]);
+  const defaultColDef = useMemo<ColDef<DeskRow>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true }), []);
+  const clicked = (e: RowClickedEvent<DeskRow>) => {
+    if ((e.event?.target as HTMLElement | null)?.closest("button, a, summary, .ag-group-contracted, .ag-group-expanded")) return;
+    e.node.setExpanded(!e.node.expanded);
+  };
+  const keyed = (e: CellKeyDownEvent<DeskRow>) => {
+    const k = (e.event as KeyboardEvent | null)?.key;
+    if (k !== "Enter" && k !== " ") return;
+    if ((e.event?.target as HTMLElement | null)?.closest("button, a")) return;
+    e.event?.preventDefault();
+    e.node.setExpanded(!e.node.expanded);
+  };
+  return (
+    <section className="table-card ledger-grid orders-grid dd-grid" aria-label="PayPal disputes">
+      <AgGridReact<DeskRow>
+        theme={gridTheme}
+        rowData={rows}
+        columnDefs={columns}
+        defaultColDef={defaultColDef}
+        getRowId={(q) => q.data.dispute_id}
+        masterDetail
+        isRowMaster={() => true}
+        detailCellRenderer={Detail}
+        detailRowAutoHeight
+        onRowClicked={clicked}
+        onCellKeyDown={keyed}
+        onGridReady={(e) => onReady(e.api)}
+        onFirstDataRendered={(e) => { if (openFirst) e.api.getRowNode(openFirst)?.setExpanded(true); }}
+        rowHeight={60}
+        statusBar={statusBar}
+        tooltipShowDelay={250}
+        domLayout="autoHeight"
       />
-    </>
+    </section>
+  );
+}
+
+// ---------- phone ----------
+
+function PhoneCards({ rows, changed }: { rows: DeskRow[]; changed: Set<string> }) {
+  const { open } = useContext(Desk);
+  const [shown, setShown] = useState<string | null>(() => rows.find((r) => r.stage === "needs_reply")?.dispute_id ?? null);
+  return (
+    <section className="table-card dd-cards" aria-label="PayPal disputes">
+      <ul className="ledger-cards">
+        {rows.map((r) => {
+          const a = actionOf(r);
+          const isOpen = shown === r.dispute_id;
+          return (
+            <li key={r.dispute_id} className={changed.has(r.dispute_id) ? "dd-flash" : ""}>
+              <div className="ledger-card dd-card">
+                <span className="lc-top"><span className="lc-item">{r.item}</span><span className="lc-money num">{money(r.amount_minor, r.currency)}</span></span>
+                <span className="lc-meta">{r.order_ref} · {reasonText(r)} · {ago(r.opened_at)}</span>
+                <span className="lc-bottom"><StagePill r={r} /><ProtectionMeter r={r} />{r.paypal.response_due_at && <ReplyBy iso={r.paypal.response_due_at} />}</span>
+                <span className="dd-card-acts">
+                  <button type="button" className="btn ghost" aria-expanded={isOpen} onClick={() => setShown(isOpen ? null : r.dispute_id)}>
+                    <ChevronDown size={15} aria-hidden className={isOpen ? "dd-rot" : ""} />{isOpen ? "Hide" : "Details"}
+                  </button>
+                  <button type="button" className={`btn ${a.primary ? "primary" : ""}`} onClick={() => open(r)}>{a.label}</button>
+                </span>
+              </div>
+              {isOpen && <DisputeDetail r={r} onOpen={() => open(r)} />}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+// ---------- page ----------
+
+export default function DisputesPage({ rows, error, onOpenOrder, token, onChanged }: { rows: DisputeRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void; token: string; onChanged: () => void }) {
+  const desk = useAsync(() => disputesDesk(token), [token]);
+  const data = desk.data;
+  const phone = useMedia("(max-width: 600px)");
+  const [seg, setSeg] = useState<Seg>("all");
+  const [updated, setUpdated] = useState<Date | null>(null);
+  const gridApi = useRef<GridApi<DeskRow> | null>(null);
+
+  // The drawer's actions reload the page's rows; follow them. The worker then finishes the job:
+  // poll while a dispute is open (faster while a reply is on its way).
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    desk.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+  const anyOpen = !!data?.some((r) => r.status !== "resolved");
+  const inFlight = !!data?.some((r) => r.evidence?.status === "queued" || r.offer?.status === "queued");
+  usePoll(desk.reload, anyOpen, inFlight ? 2000 : 5000);
+
+  // What changed since the last read: flash those rows, and refresh the sidebar when the open count moved.
+  const seen = useRef<Map<string, string> | null>(null);
+  const [changed, setChanged] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!data) return;
+    setUpdated(new Date());
+    const next = new Map(data.map((r) => [r.dispute_id, sig(r)]));
+    const prev = seen.current;
+    seen.current = next;
+    if (!prev) return;
+    const ids = data.filter((r) => prev.get(r.dispute_id) !== next.get(r.dispute_id)).map((r) => r.dispute_id);
+    if (!ids.length) return;
+    setChanged(new Set(ids));
+    const api = gridApi.current;
+    if (api && !api.isDestroyed()) {
+      const nodes = ids.map((id) => api.getRowNode(id)).filter((n) => !!n);
+      window.requestAnimationFrame(() => { if (!api.isDestroyed()) api.flashCells({ rowNodes: nodes }); });
+    }
+    const t = window.setTimeout(() => setChanged(new Set()), 2400);
+    const openNow = data.filter((r) => r.status !== "resolved").length;
+    if (rows && openNow !== rows.filter((r) => r.status === "open").length) onChanged();
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const counts = useMemo(() => {
+    const c: Record<Seg, number> = { all: 0, needs_reply: 0, evidence: 0, offer: 0, resolved: 0 };
+    for (const r of data ?? []) { c.all += 1; c[r.stage] += 1; }
+    return c;
+  }, [data]);
+  const shown = useMemo(() => (data ?? []).filter((r) => seg === "all" || r.stage === seg), [data, seg]);
+  const ctx = useMemo(() => ({ byId: new Map((data ?? []).map((r) => [r.dispute_id, r])), open: (r: DeskRow) => onOpenOrder(r.order_id) }), [data, onOpenOrder]);
+
+  const onReady = useCallback((api: GridApi<DeskRow>) => { gridApi.current = api; }, []);
+  // The first dispute that needs a reply opens with its story showing.
+  const openFirst = (data?.find((r) => r.stage === "needs_reply") ?? data?.[0])?.dispute_id ?? null;
+
+  const failed = (desk.error && !data) || error;
+  const label = SEGMENTS.find((s) => s.key === seg)!.label;
+  return (
+    <Desk.Provider value={ctx}>
+      <div className="dd-page">
+        <PageHead title="Disputes" line="PayPal disputes on your orders" right={
+          <div className="row" style={{ gap: 10 }}>
+            <span className="live" title={anyOpen ? "Refreshes every few seconds while a dispute is open" : "Up to date"}>
+              <span className="live-dot" aria-hidden />Live{updated ? ` · ${updated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+            </span>
+            <button className="btn icon-btn" onClick={() => desk.reload()} aria-label="Refresh disputes" title="Refresh now"><RefreshCw size={15} aria-hidden /></button>
+          </div>
+        } />
+        {failed && <ErrorBox message="Disputes did not load. Refresh to try again." />}
+        <DeskKpis rows={data} />
+        {!data && !failed && (
+          <div className="dd-skel" aria-busy="true" aria-label="Loading disputes">
+            <span className="skel dd-skel-seg" />
+            <div className="table-card">{[0, 1, 2].map((i) => <div key={i} className="dd-skel-row"><span className="skel w40" /><span className="skel w20" /><span className="skel w20" /></div>)}</div>
+          </div>
+        )}
+        {data && data.length === 0 && (
+          <section className="table-card dd-empty" aria-label="No disputes">
+            <span className="dd-empty-icon" aria-hidden><Scale /></span>
+            <h2>No disputes</h2>
+            <p className="muted">PayPal disputes on your orders land here.</p>
+          </section>
+        )}
+        {data && data.length > 0 && (
+          <>
+            <div className="dd-bar">
+              <div className="dd-segs-ctl" role="group" aria-label="Filter disputes">
+                {SEGMENTS.map((s) => (
+                  <button key={s.key} type="button" aria-pressed={seg === s.key} title={s.tip} onClick={() => setSeg(s.key)}>
+                    {s.label}<span className="num dd-count">{counts[s.key]}</span>
+                  </button>
+                ))}
+              </div>
+              {data.some((r) => r.simulated) && <span className="faint dd-source">Demo disputes · simulated</span>}
+            </div>
+            {shown.length === 0 ? (
+              <section className="table-card dd-none" aria-label="PayPal disputes">
+                <span>Nothing in {label}</span>
+                <button type="button" className="btn ghost" onClick={() => setSeg("all")}>Show all</button>
+              </section>
+            ) : phone ? <PhoneCards rows={shown} changed={changed} /> : <DeskGrid rows={shown} onReady={onReady} openFirst={openFirst} />}
+          </>
+        )}
+      </div>
+    </Desk.Provider>
   );
 }
