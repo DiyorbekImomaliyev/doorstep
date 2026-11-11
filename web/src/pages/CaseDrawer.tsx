@@ -102,11 +102,6 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
         <Recommendation c={c} refund={refund} queued={!!queued} />
         {d && (
           <section className="sec">
-            <div className="facts">
-              <div><span className="k">Likely cause</span><span className="v">{FAILURE_POINT[d.failure_point ?? ""] ?? d.failure_point ?? "—"}</span></div>
-              <div><span className="k">Confidence</span><span className="v" style={{ textTransform: "capitalize" }}>{d.confidence ?? "—"}</span></div>
-              <div><span className="k">Refund</span><span className="v num">{c.state === "DISPUTE_EVIDENCE" ? "PayPal decides" : closedUnpaid(c) ? "None" : refund ?? "—"}</span></div>
-            </div>
             <div className="row wrap" style={{ gap: 8 }}>
               <span className="rule-line" title={d.rule_id ? `Rule file ${d.rule_id}, version ${d.rule_version ?? "?"}` : undefined}>
                 <Scale aria-hidden /><span>{d.rule_name ? `Decided under ${d.rule_name}` : d.rule_id ? `Decided under rule ${d.rule_id}` : "No rule matched this country"}</span>
@@ -128,13 +123,10 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
               </div>
             )}
             {c.counterfactual && (
-              <div className="notice" aria-label="What would have changed this">
-                <Info aria-hidden />
-                <div className="col" style={{ gap: 2 }}>
-                  <strong>{c.counterfactual.possession_proven ? "Possession proof" : "What would have changed this"}</strong>
-                  <span className="muted">{d.rule_id && d.rule_name ? c.counterfactual.text.replaceAll(d.rule_id, d.rule_name) : c.counterfactual.text}</span>
-                </div>
-              </div>
+              <details className="fold" aria-label="What would have changed this">
+                <summary><Info aria-hidden /><span>{c.counterfactual.possession_proven ? "Possession proof" : "What would have changed this"}</span></summary>
+                <p className="muted">{counterText(c.counterfactual.text, d.rule_id, d.rule_name)}</p>
+              </details>
             )}
           </section>
         )}
@@ -280,12 +272,23 @@ const closedUnpaid = (c: CaseView) => c.state === "CLOSED" && !c.dispute_resolve
  * inside the dispute is the better first move than sending weak evidence. */
 const offerFirst = (c: CaseView) => !!c.offer && c.scan_audit?.verdict === "contradicted";
 
+/** The "what would have changed this" text without the law's name: the pill above cites it once. */
+function counterText(text: string, id?: string | null, name?: string | null): string {
+  let t = id ? text.replaceAll(id, name ?? id) : text;
+  if (name) {
+    const lead = new RegExp(`^Under ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},\\s*`);
+    t = t.replace(lead, "");
+    t = t.replaceAll(name, "the law");
+  }
+  return cap(t);
+}
+
 /** One line at the top of every case: what Doorstep recommends, and why, before any detail. */
 function Recommendation({ c, refund, queued }: { c: CaseView; refund: string | null; queued: boolean }) {
   const d = c.decision;
   const cause = d ? (FAILURE_POINT[d.failure_point ?? ""] ?? "Cause unclear") : null;
-  const law = d?.rule_name ?? d?.rule_id ?? null;
-  const why = [cause && `${cause}${d?.confidence ? ` (${d.confidence} confidence)` : ""}`, law && `under ${law}`].filter(Boolean).join(", ");
+  // The law is cited once, as the pill under this box, and the refund is in the title. Here: why.
+  const why = [cause, d?.confidence && `${cap(d.confidence)} confidence`].filter(Boolean).join(" · ");
   const demo = c.order.simulated ? " This is a demo order, so the refund is simulated." : "";
   let tone = "accent";
   let title: string;
@@ -294,7 +297,7 @@ function Recommendation({ c, refund, queued }: { c: CaseView; refund: string | n
     [title, text] = [`Refund ${refund ?? ""} on its way`, `Nothing else to do.${demo}`];
   } else if (c.state === "AWAITING_SELLER") {
     title = d?.fix === "reship" ? "Recommended: send a replacement" : refund ? `Recommended: refund ${refund}` : "Your decision";
-    text = `${why}.`;
+    text = why;
   } else if (c.state === "HOLD_FOR_REVIEW") {
     [title, text] = ["Recommended: check the evidence first", "The evidence disagrees, so Doorstep decided nothing on its own. Nothing has been refused."];
   } else if (c.state === "DISPUTE_EVIDENCE" && offerFirst(c)) {
