@@ -49,7 +49,7 @@ function PolicyCard({ check }: { check: PolicyCheck }) {
 }
 
 /** NV-03: the shop policy against the law. */
-export default function PolicyPage({ check, failed }: { check: PolicyCheck | null; failed?: boolean }) {
+export default function PolicyPage({ check, failed }: { check: PolicyCheck | null; failed?: boolean; token: string; onChanged: () => void }) {
   return (
     <>
       <PageHead title="Policy" line="Your shop policy against the law" />

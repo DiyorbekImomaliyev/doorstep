@@ -23,7 +23,7 @@ function Protection({ v }: { v: string | null }) {
   return <StatusPill tone={p.tone}>{p.label}</StatusPill>;
 }
 
-export default function DisputesPage({ rows, error, onOpenOrder }: { rows: DisputeRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void }) {
+export default function DisputesPage({ rows, error, onOpenOrder }: { rows: DisputeRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void; token: string; onChanged: () => void }) {
   const kpis = useMemo(() => {
     const r = rows ?? [];
     const open = r.filter((x) => x.status === "open");

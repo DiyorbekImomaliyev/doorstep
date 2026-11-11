@@ -3,7 +3,7 @@ import type { GridApi } from "ag-grid-community";
 import { BarChart3, BookOpen, ReceiptText, Columns3, Download, FileText, FileWarning, FolderOpen, Gavel, HandCoins, Info, Inbox, Landmark, Lightbulb, List, PackageX, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
 import { api, type Economics, type GridAnswer, type GridPlan, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
-import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
+import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync, usePoll } from "../components/ui";
 import CommandBar, { type Command } from "../components/CommandBar";
 import { itemKind } from "../components/gridCells";
 import { money } from "../format";
@@ -161,6 +161,8 @@ export default function Seller({ token }: { token: string }) {
   const gridApi = useRef<GridApi | null>(null);
   const [page, setPage] = useState<Page>(() => pageOfHash(location.hash));
   const go = (p: Page) => { setPage(p); history.replaceState(null, "", p === "orders" ? location.pathname + location.search : `#${p}`); };
+  // The Money page follows the worker: a queued or pending refund turns completed on screen.
+  usePoll(moneyRows.reload, page === "money" && !!moneyRows.data?.some((r) => r.status === "queued" || r.status === "pending"));
   // A plain <a href="#claims"> anywhere opens that page.
   useEffect(() => {
     const on = () => setPage(pageOfHash(location.hash));
@@ -358,15 +360,15 @@ export default function Seller({ token }: { token: string }) {
               <Insights token={token} />
             </Suspense>
           ) : page === "claims" ? (
-            <ClaimsPage rows={claims.data} error={claims.error} onOpenOrder={openOrder} />
+            <ClaimsPage token={token} rows={claims.data} error={claims.error} onOpenOrder={openOrder} onChanged={reload} />
           ) : page === "money" ? (
-            <MoneyPage rows={moneyRows.data} error={moneyRows.error} onOpenOrder={openOrder} />
+            <MoneyPage token={token} rows={moneyRows.data} error={moneyRows.error} onOpenOrder={openOrder} onChanged={reload} />
           ) : page === "disputes" ? (
-            <DisputesPage rows={disputes.data} error={disputes.error} onOpenOrder={openOrder} />
+            <DisputesPage token={token} rows={disputes.data} error={disputes.error} onOpenOrder={openOrder} onChanged={reload} />
           ) : page === "autopilot" ? (
             <AutopilotPage token={token} data={auto.data} statement={spent.data} onChange={(m) => { setToast(m); reload(); }} onOpen={openOrder} />
           ) : page === "policy" ? (
-            <PolicyPage check={policy.data} failed={!!policy.error} />
+            <PolicyPage token={token} check={policy.data} failed={!!policy.error} onChanged={reload} />
           ) : (<>
           <div className="page-head">
             <div>

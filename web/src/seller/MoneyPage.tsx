@@ -30,7 +30,7 @@ function Receipt({ r }: { r: MoneyRow }) {
   return <a className="lg-link" href={`/verify/${r.case_id}`} target="_blank" rel="noreferrer">Receipt<ExternalLink aria-hidden /></a>;
 }
 
-export default function MoneyPage({ rows, error, onOpenOrder }: { rows: MoneyRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void }) {
+export default function MoneyPage({ rows, error, onOpenOrder }: { rows: MoneyRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void; token: string; onChanged: () => void }) {
   const kpis = useMemo(() => {
     const r = rows ?? [];
     return {
