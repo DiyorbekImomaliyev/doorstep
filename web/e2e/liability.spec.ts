@@ -50,6 +50,11 @@ test("SA-02 RC-05 RT-01 CF-01 Diyorbek's scan is contradicted and Malika claims 
   if (shots) await buyer.screenshot({ path: `${shots}/22-rights-card.png`, fullPage: true });
 
   await page.goto(seller);
+  // The demo shop may already hold money the carriers paid back; this claim adds £60 to it.
+  const recovered = page.locator(".kpi", { hasText: "Recovered from carriers" }).locator(".value");
+  const pounds = async () => Number(((await recovered.textContent()) ?? "").match(/£([\d,]+)/)?.[1].replace(/,/g, "") ?? NaN);
+  await expect(recovered).toContainText("£");
+  const before = await pounds();
   await page.getByText("Black jacket, size M").click();
   const audit = page.getByLabel("Delivered-scan audit");
   await expect(audit.getByText("Contradicted")).toBeVisible();
@@ -70,7 +75,7 @@ test("SA-02 RC-05 RT-01 CF-01 Diyorbek's scan is contradicted and Malika claims 
 
   await page.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: "Refresh" }).click();
-  await expect(page.locator(".kpi", { hasText: "Recovered from carriers" })).toContainText("£60");
+  await expect.poll(pounds).toBe(before + 60);
 });
 
 test("DE-01 possession proven, PayPal dispute open: Malika sends the facts once", async ({ page }) => {
