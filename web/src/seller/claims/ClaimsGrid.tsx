@@ -48,8 +48,10 @@ function ItemColumn(p: CustomCellRendererProps<Row> & { onToggle: (id: string) =
 }
 
 /** Days left to file, with how much of the window is left; "Filed" once submitted. */
-export function DueCell({ r }: { r: DeskRow }) {
-  const { now } = useDesk();
+export function DueCell({ r: given }: { r: DeskRow }) {
+  // The grid refreshes a cell when its own value changes; the latest row comes from the desk.
+  const { now, rows } = useDesk();
+  const r = rows.get(given.recovery_id) ?? given;
   if (r.status === "SUBMITTED") return <span className="cd-due filed">Filed</span>;
   if (r.status !== "PREPARED") return <span className="faint">—</span>;
   const d = daysLeft(r, now);
@@ -65,8 +67,8 @@ export function DueCell({ r }: { r: DeskRow }) {
 
 function NextCell(p: CustomCellRendererProps<Row> & { onNext: (r: DeskRow) => void; onCase: (r: DeskRow) => void }) {
   const desk = useDesk();
-  const r = p.data;
-  if (!r || r.__total) return null;
+  const r = p.data && !p.data.__total ? desk.rows.get(p.data.recovery_id) ?? p.data : null;
+  if (!r) return null;
   const busy = desk.busy === r.recovery_id;
   if (r.actions.includes("submitted")) return <button type="button" data-own-click className="row-action tint" disabled={busy} onClick={() => p.onNext(r)}>I submitted it</button>;
   if (r.actions.includes("paid")) return <button type="button" data-own-click className="row-action tint" disabled={busy} onClick={() => p.onNext(r)}>Carrier paid</button>;

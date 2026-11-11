@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Check, Copy, ExternalLink, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, Check, ChevronDown, Copy, ExternalLink, Sparkles, TriangleAlert } from "lucide-react";
 import { Badge, ErrorBox } from "../../components/ui";
 import { ROUTE, money } from "../../format";
 import { CopyId } from "../LedgerGrid";
@@ -9,6 +9,8 @@ import { FAULT, carrierOf, daysLeft, plural, shortDate, statusOf, urgency } from
 
 /** Claims whose fact-only pack was already sent to the model this session (one try per claim). */
 const asked = new Set<string>();
+/** Sentences shown before "All n": enough to read the claim, short enough to see its actions. */
+const FIRST = 6;
 
 const BY: Record<DeskEvent["by"], string> = { you: "You", doorstep: "Doorstep", carrier: "Carrier scan", demo: "Demo" };
 
@@ -54,8 +56,11 @@ function ClaimPack({ r }: { r: DeskRow }) {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.recovery_id]);
+  const [all, setAll] = useState(false);
   const facts = new Map(r.facts.map((f) => [f.id, f.text]));
   const text = r.sentences.map((x) => x.text).join(" ");
+  const long = r.sentences.length > FIRST;
+  const shown = all || !long ? r.sentences : r.sentences.slice(0, FIRST);
   const copy = async () => {
     try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch { /* clipboard blocked */ }
   };
@@ -69,8 +74,8 @@ function ClaimPack({ r }: { r: DeskRow }) {
         <Hint text={r.pack_source === "model" ? "AI wrote it from the facts; code checked every sentence against them." : "Built from the stored facts only."} />
       </div>
       {drafting && <div className="ds-sweep cd-sweep" aria-hidden />}
-      <ol className="claim-sentences cd-sentences">
-        {r.sentences.map((x, i) => (
+      <ol className={`claim-sentences cd-sentences${long && !all ? " cut" : ""}`}>
+        {shown.map((x, i) => (
           <li key={i}>
             {x.text}
             {x.fact_ids.map((id) => <span key={id} className="fact-chip" title={facts.get(id) ?? id}>{id}</span>)}
@@ -82,6 +87,11 @@ function ClaimPack({ r }: { r: DeskRow }) {
           {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}{copied ? "Copied" : "Copy claim"}
         </button>
         {r.terms_url && <a className="btn ghost" href={r.terms_url} target="_blank" rel="noreferrer">Carrier terms<ExternalLink size={13} aria-hidden /></a>}
+        {long && (
+          <button type="button" className="btn ghost cd-more" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+            {all ? "Fewer" : `All ${r.sentences.length}`}<ChevronDown size={14} aria-hidden />
+          </button>
+        )}
       </div>
     </section>
   );
@@ -114,9 +124,7 @@ function Deadline({ r }: { r: DeskRow }) {
         <span className="num">{r.cover_minor != null ? money(r.cover_minor, r.currency) : <span className="cd-warn"><TriangleAlert aria-hidden />Unconfirmed</span>}</span>
       </div>
       {r.terms_rule && (
-        <span className="cd-rule" title={`${r.service_basis}. Versioned carrier terms file.`}>
-          <span className="rule-id">{r.terms_rule.split(" ")[0]}</span><span className="faint num">{r.terms_rule.split(" ")[1] ?? ""}</span>
-        </span>
+        <span className="rule-id cd-rule" title={`${r.service_basis}. Versioned carrier terms file.`}>{r.terms_rule.replace(" ", " · ")}</span>
       )}
       {!r.carrier_known && r.terms_note && <p className="faint cd-note">{r.terms_note}</p>}
     </section>

@@ -92,7 +92,8 @@ export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged
     const r = byId.get(id);
     if (r && seg !== "all" && seg !== r.status) setSeg("all");
     pick(id);
-    if (!phone) window.setTimeout(() => gridBox.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 60);
+    // The picked row at the top, its story under it (the phone list scrolls its card itself).
+    if (!phone) window.setTimeout(() => gridBox.current?.querySelector(`.ag-row[row-id="${id}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
   }, [byId, seg, phone, pick]);
   const next = useCallback((r: DeskRow) => {
     if (r.actions.includes("submitted")) void act(r, "submitted");
@@ -157,7 +158,8 @@ export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged
           <section className="cd-card cd-empty" aria-label="Carrier claims">
             <span className="cd-empty-icon" aria-hidden><PackageCheck /></span>
             <h2>No claims yet</h2>
-            <p className="muted">Lost or damaged parcels land here, ready to file.</p>
+            <p className="muted">Lost or damaged parcels land here.</p>
+            <a className="btn cd-empty-link" href="#orders">View orders</a>
           </section>
         ) : (
           <section className="table-card cd-table" aria-label="Carrier claims" ref={gridBox}>

@@ -28,6 +28,7 @@ from app.worker.simulated import is_simulated
 Actor = Literal["you", "doorstep", "carrier", "demo"]
 _REFUNDS = (MoneyActionKind.REFUND.value, MoneyActionKind.PARTIAL_REFUND.value)
 _PREFIX = "recovery."
+_STEP = {"PREPARED": 0, "SUBMITTED": 1}  # then the outcome: paid, refused, withdrawn, expired
 
 
 class DeskEvent(BaseModel):
@@ -127,12 +128,12 @@ def build_claims_desk_router(deps: AppDeps, services: Services) -> APIRouter:
         cases = {c.id: c for c in s.scalars(select(Case).where(Case.id.in_(case_ids)))}
         history: dict[str, list[DeskEvent]] = defaultdict(list)
         for row in s.scalars(
-            select(AuditLog)
-            .where(AuditLog.entity_type == "recovery", AuditLog.entity_id.in_(ids))
-            .order_by(AuditLog.at, AuditLog.id)
+            select(AuditLog).where(AuditLog.entity_type == "recovery", AuditLog.entity_id.in_(ids))
         ):
             if row.action.startswith(_PREFIX):
                 history[row.entity_id].append(_event(row))
+        for events in history.values():  # two marks in the same instant keep the claim's order
+            events.sort(key=lambda e: (e.at, _STEP.get(e.status, len(_STEP))))
         refunded: dict[str, int] = defaultdict(int)
         for m in s.scalars(
             select(MoneyAction).where(

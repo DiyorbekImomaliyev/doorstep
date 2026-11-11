@@ -114,6 +114,13 @@ test.describe("desktop", () => {
     const s = story(page, "Denim jacket, size S");
     await expect(s).toBeVisible();
     await expect(s.getByLabel("Claim pack").locator("li").first()).toContainText("The buyer paid £75");
+    // A long pack shows its first six sentences, then all of them.
+    const total = (await apiRow(page, "Denim jacket, size S")).sentences.length;
+    expect(total).toBeGreaterThan(6);
+    await expect(s.getByLabel("Claim pack").locator("li")).toHaveCount(6);
+    await s.getByRole("button", { name: `All ${total}` }).click();
+    await expect(s.getByLabel("Claim pack").locator("li")).toHaveCount(total);
+    await expect(s.getByRole("button", { name: "Fewer" })).toHaveAttribute("aria-expanded", "true");
     await expect(s.getByLabel("Deadline")).toContainText("days left");
     await expect(s.getByLabel("Deadline")).toContainText("14-day window");
     await expect(s.getByLabel("Deadline")).toContainText("carrier_claims_v1");
@@ -176,6 +183,7 @@ test.describe("desktop actions", () => {
     await expect.poll(() => statusOn(page, "Denim jacket")).toBe("Submitted");
     await expect(segCount(page, "Ready")).toHaveText("2");
     await expect(segCount(page, "Submitted")).toHaveText("1");
+    await expect(row(page, "Denim jacket").locator(".cd-due")).toHaveText("Filed");
     await expect(page.getByLabel("Claim clock").locator(".cd-pill.u-filed")).toHaveCount(1);
     expect((await apiRow(page, "Denim jacket, size S")).status).toBe("SUBMITTED");
     // Carrier paid needs an amount up to the claim.
@@ -268,6 +276,8 @@ test.describe("desktop actions", () => {
     await expect(page.getByRole("heading", { name: "No claims yet" })).toBeVisible();
     await expect(page.getByLabel("Summary")).toContainText("Open0none waiting");
     await shot(page, "cl-desktop-empty");
+    await page.getByRole("link", { name: "View orders" }).click();
+    await expect(page.getByRole("heading", { name: "Delivery Control Room" })).toBeVisible();
   });
 });
 
