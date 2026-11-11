@@ -1,4 +1,4 @@
-.PHONY: assistant-demo setuplint test test-explore mutmut mutmut-gate test-integration test-pg cov locked-untouched gate evals redteam web-build dev demo e2e fuzz smoke risk-model
+.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration test-pg cov locked-untouched gate evals redteam web-build dev demo e2e fuzz smoke risk-model assistant-demo
 
 setup:
 	uv sync

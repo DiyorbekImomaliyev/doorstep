@@ -256,7 +256,13 @@ Each row opens a detail panel without leaving the table. The grid also does a se
 </details>
 
 Buyers' AI assistants use the same process through the MCP server at `/agent/mcp`. One tool reads the delivery status, one reports a problem. Neither can move
-money. Every status answer carries a signed delivery proof the assistant can check (see below).
+money. Every status answer carries a signed delivery proof the assistant can check (see below). The buyer page's "Using an AI assistant?" gives a token for
+that one order; it travels in the header, not in the chat:
+
+```bash
+claude mcp add --transport http doorstep https://doorstep-ojmg.onrender.com/agent/mcp -H "Authorization: Bearer <order token>"
+make assistant-demo   # an assistant checks delivery, verifies the signed proof itself, then reports a problem
+```
 
 ### Insights
 
@@ -419,6 +425,7 @@ make setup                # Python dependencies (uv) and web dependencies (npm c
 make web-build            # build the web app, so http://localhost:8000 serves it
 make dev                  # API on :8000, worker, and the Vite dev server on :5173
 make demo                 # in a second terminal: seed the demo shop and print its links
+make assistant-demo       # a buyer's AI assistant uses the order over MCP
 make lint test            # lint, types, import contracts, tests
 ```
 
