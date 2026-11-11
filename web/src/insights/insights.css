@@ -22,6 +22,9 @@
 .rb-item[aria-current="true"]::before { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
 .rb-new { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; padding: 9px; border: 1px dashed var(--line-2); border-radius: 8px; background: transparent; font: inherit; font-size: 13px; color: var(--text-2); cursor: pointer; }
 .rb-new:hover { border-color: var(--accent-3); color: var(--accent); }
+/* AS-17: Reset report, quiet under New report; one click asks, the second confirms. */
+.rb-reset { margin-top: 6px; border-color: transparent; }
+.rb-reset[data-sure] { border-color: var(--accent-3); color: var(--accent); background: var(--accent-soft); }
 .rb-foot { margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
 .rb-tips { list-style: none; margin: 0; padding: 0 4px; display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: var(--text-3); line-height: 1.35; }
 .rb-tips strong { color: var(--text-2); font-weight: 600; }
@@ -416,6 +419,8 @@ li[data-kind="method"] .ds-next-ico { color: #2f6f73; }
 /* ---------- S9 · Steps under a finished reply ---------- */
 .ask-trace-btn { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; }
 .ask-trace-btn:hover { background: var(--surface-2); color: var(--text); }
+/* AS-22: who answered, quietly, under the reply. */
+.ask-by { margin: 2px 0 0; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .ask-trace-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ask-trace-btn svg { transition: transform var(--dur) var(--ease); transform: rotate(-90deg); }
 .ask-trace-btn[aria-expanded="true"] svg { transform: none; }
@@ -457,3 +462,27 @@ li[data-kind="method"] .ds-next-ico { color: #2f6f73; }
 
 /* A report title is a plain text widget: it has no data, so Studio's "No data to display" never applies. */
 .ag-studio-layout-widget-container:has(.ag-studio-text-widget) :is(.ag-studio-layout-widget-no-data-overlay, .ag-studio-widget-no-data) { display: none; }
+
+/* ---------- AS-20: print or save as PDF. Only the report; no rail, console, header or buttons ---------- */
+.ins-print-head { display: none; }
+@page { size: A4 landscape; margin: 10mm; }
+@media print {
+  body[data-printing="insights"] { background: #fff; }
+  /* The app's own print rule hides everything but the QR seal; this one wins for Insights. */
+  body[data-printing="insights"] * { visibility: visible; }
+  body[data-printing="insights"] .sidebar,
+  body[data-printing="insights"] .topbar,
+  body[data-printing="insights"] .page-head,
+  body[data-printing="insights"] .rb-side,
+  body[data-printing="insights"] .ask,
+  body[data-printing="insights"] .ins-note,
+  body[data-printing="insights"] .ia-pop,
+  body[data-printing="insights"] .site-foot { display: none !important; }
+  body[data-printing="insights"] .shell { display: block; }
+  body[data-printing="insights"] .main .page { max-width: none; padding: 0; }
+  body[data-printing="insights"] .rb { display: block; height: auto; border: 0; box-shadow: none; border-radius: 0; overflow: visible; background: #fff; }
+  body[data-printing="insights"] .rb-canvas { height: var(--print-h, auto); }
+  body[data-printing="insights"] .ins-print-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 0 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line-2); font-size: 12px; color: var(--text-2); }
+  body[data-printing="insights"] .ins-print-head strong { font-family: var(--serif); font-size: 18px; color: var(--text); }
+  body[data-printing="insights"] .ds-brief-3d { display: none; }
+}

@@ -99,7 +99,8 @@ test("AS-07 the Doorstep agent runs on Studio's Agent Framework: scans in code, 
   });
   await openInsights(page);
   await page.getByRole("button", { name: "Agent" }).click();
-  await page.getByText("What changed in the last four weeks?").first().click();
+  await page.getByRole("textbox", { name: "Your question" }).fill("What changed in the last four weeks?");
+  await page.keyboard.press("Enter");
   await expect(page.getByText("Your case rate rose in the last four weeks.")).toBeVisible();
 
   // The scan ran in the browser and its findings went back to the agent as text, never as rows.
@@ -138,7 +139,7 @@ test("AS-08 the Overview opens with Doorstep's brief: figures match the journey,
   // Do next: the nearest open claim on a live order opens that order's drawer.
   const brief = page.getByRole("region", { name: "Doorstep's brief" });
   await expect(brief.getByText("Do next")).toBeVisible();
-  await brief.getByRole("button", { name: "Open case" }).click();
+  await brief.getByRole("button", { name: "Open case" }).first().click();
   await expect(page.getByRole("dialog", { name: /^Order / })).toBeVisible();
   if (shots) await page.screenshot({ path: `${shots}/as08-open-case.png` });
 });
@@ -187,7 +188,8 @@ test("AS-06 Ask Doorstep turns a question into a Studio widget whose number matc
   const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
 
   // The criterion's question: a ranked chart on the Answers report, and a sentence naming the carrier.
-  await panel.getByRole("button", { name: "Which carrier cost me most this month?" }).click();
+  await panel.getByRole("textbox", { name: "Your question" }).fill("Which carrier cost me most this month?");
+  await page.keyboard.press("Enter");
   const first = panel.getByTestId("ask-answer").first();
   await expect(first).toContainText(/^.+ cost you the most this month: £[\d,]+ net delivery loss\./);
   await expect(first.getByLabel("How I read your question")).toContainText("Net delivery lossBy carrierThis monthHighest first");
@@ -227,7 +229,8 @@ test("AS-06 with no model, Ask Doorstep still answers: a chart by keywords, the 
   await page.getByRole("button", { name: "Ask Doorstep" }).click();
   const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
 
-  await panel.getByRole("button", { name: "Which carrier cost me most this month?" }).click();
+  await panel.getByRole("textbox", { name: "Your question" }).fill("Which carrier cost me most this month?");
+  await page.keyboard.press("Enter");
   await expect(panel.getByTestId("ask-answer").first()).toContainText(/cost you the most this month: £[\d,]+ net delivery loss\./);
   await expect(panel).toContainText("Read by keywords");
 

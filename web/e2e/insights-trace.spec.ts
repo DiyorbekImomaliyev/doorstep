@@ -19,7 +19,8 @@ test("AS-13 a finished reply has Steps: labelled, in order, with no buyer detail
   await openInsights(page);
   await page.getByRole("button", { name: "Ask Doorstep" }).click();
   const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
-  await panel.getByRole("button", { name: "Which carrier cost me most this month?" }).click();
+  await panel.getByRole("textbox", { name: "Your question" }).fill("Which carrier cost me most this month?");
+  await page.keyboard.press("Enter");
   await expect(panel.getByTestId("ask-answer").first()).toBeVisible();
   const trace = panel.getByTestId("ask-trace");
   const toggle = trace.getByRole("button", { name: /^Steps · \d+$/ });

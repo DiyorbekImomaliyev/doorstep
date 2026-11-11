@@ -373,6 +373,8 @@ export function buildSources(api: InsightsOut, opts: { history: boolean }): Prep
     measure("claim_value", "Claim value", { id: "recoveries.claimed", aggregation: "sum" }, MONEY),
     measure("claim_paid", "Recovered", { operator: "coalesce", inputs: [{ id: "recoveries.recovered", aggregation: "sum" }, num(0)] }, MONEY),
     measure("recovery_rate", "Carrier recovery rate", ratio("recovered", "claimed"), PCT),
+    // AS-18: for the claim gauges. A carrier whose claims are all still open has won 0%, not "no data".
+    measure("won_share", "Share of claims won", { operator: "divide", inputs: [{ operator: "coalesce", inputs: [{ id: "recovered" }, num(0)] }, { id: "claimed" }] }, PCT),
     measure("net_loss", "Net delivery loss", { operator: "subtract", inputs: [{ operator: "coalesce", inputs: [{ id: "paid_out" }, num(0)] }, { operator: "coalesce", inputs: [{ id: "recovered" }, num(0)] }] }, MONEY),
     measure("area_loss", "Money lost", { id: "orders.loss", aggregation: "sum" }, MONEY),
     measure("stage_shipped", "Shipped", { id: "orders.shipped", aggregation: "sum" }, INT),
