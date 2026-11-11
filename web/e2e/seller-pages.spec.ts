@@ -35,8 +35,10 @@ test("NV-01 CL-01 Claims lists carrier claims and opens the case", async ({ page
   const grid = page.getByLabel("Carrier claims");
   await expect(grid.locator(".ag-row:not(.ag-row-pinned)").first()).toBeVisible();
   await expect(grid.locator(".ag-row-pinned").first()).toContainText("Total");
-  await expect(page.getByLabel("Summary")).toContainText("Due soon");
+  await expect(page.getByLabel("Summary")).toContainText("Due in 7 days");
+  // CL-04: a row opens its story under it; the case opens from there.
   await grid.locator(".ag-row:not(.ag-row-pinned)").first().click();
+  await page.getByRole("region", { name: /^Claim for / }).getByRole("button", { name: "Open in case" }).click();
   await expect(page.getByRole("dialog").or(page.locator(".drawer"))).toBeVisible();
   if (shots) { await page.keyboard.press("Escape"); await page.waitForTimeout(300); await page.screenshot({ path: `${shots}/claims.png` }); }
 });
