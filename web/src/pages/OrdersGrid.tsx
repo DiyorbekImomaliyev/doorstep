@@ -8,7 +8,7 @@ import {
   type CellKeyDownEvent, type ColDef, type DefaultMenuItem, type ExcelStyle, type FullWidthCellKeyDownEvent, type GetContextMenuItemsParams,
   type GetMainMenuItemsParams, type GridApi, type IAggFuncParams, type IRowNode, type IStatusPanelValueFormatterParams, type MenuItemDef,
   type ProcessCellForExportParams, type RowClickedEvent, type ShowValuesAsDef, type ShowValuesAsTransformParams, type SideBarDef,
-  type StatusPanelDef, type Toolbar,
+  type GridState, type GridStateKey, type StatusPanelDef, type Toolbar,
 } from "ag-grid-community";
 import {
   CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, NewFiltersToolPanelModule, LicenseManager,
@@ -34,6 +34,7 @@ import Doorstep3D from "../components/Doorstep3D";
 import type { DoorstepNote } from "../grid/notes";
 import { doorstepOwns, hasNote, notesFor, notesSource } from "../grid/notes";
 import { useGridViews } from "../grid/views";
+import { IGNORE } from "../grid/ask";
 import { NameView } from "../grid/NameView";
 import "../grid/extras.css";
 import { NewItem, bindSeen, doesExternalFilterPass, isExternalFilterPresent, newIds, syncSeen } from "../grid/seen";
@@ -652,6 +653,35 @@ export function toggleColumnsPanel(api: GridApi) {
   else { api.setSideBarVisible(true); api.openToolPanel("columns"); }
 }
 
+// ---------- remembered layout (GS-01) ----------
+
+/** Column order, widths and grouping are kept per browser (never the filters). */
+const KEPT = ["columnOrder", "columnSizing", "rowGroup"] as const;
+const REST: GridStateKey[] = [...IGNORE.filter((k) => !(KEPT as readonly string[]).includes(k)), "filter", "sort"];
+const layoutKey = () => `doorstep.grid.${/\/seller\/([^/?#]+)/.exec(window.location.pathname)?.[1] ?? ""}`;
+
+function readLayout(): Partial<GridState> | null {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(layoutKey()) ?? "null") as unknown;
+    return v && typeof v === "object" ? (v as Partial<GridState>) : null;
+  } catch { return null; }
+}
+
+function writeLayout(state: GridState) {
+  const out: Partial<GridState> = {};
+  for (const k of KEPT) if (state[k] !== undefined) Object.assign(out, { [k]: state[k] });
+  try { window.localStorage.setItem(layoutKey(), JSON.stringify(out)); } catch { /* storage blocked or full */ }
+}
+
+function restoreLayout(api: GridApi) {
+  const saved = readLayout();
+  if (!saved) return;
+  try {
+    api.setState(saved, REST);
+    api.setColumnsVisible(["lane", "urgency"], false); // helper columns stay hidden when ungrouped
+  } catch { /* a stale layout is ignored */ }
+}
+
 // ---------- the grid ----------
 
 /** Lucide's strokes for the icons AG Grid draws in the toolbar and side bar, so they match the page's. */
@@ -982,10 +1012,11 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         getRowId={getRowId}
         defaultColDef={defaultColDef}
         quickFilterText={search}
-        onGridReady={(e) => { api.current = e.api; views.bind(e.api); bindSeen(e.api); syncSeen(rows); onReady(e.api); }}
+        onGridReady={(e) => { api.current = e.api; if (!card && !phone) restoreLayout(e.api); views.bind(e.api); bindSeen(e.api); syncSeen(rows); onReady(e.api); }}
         isExternalFilterPresent={isExternalFilterPresent}
         doesExternalFilterPass={doesExternalFilterPass}
         rowClassRules={rowClassRules}
+        onStateUpdated={(e) => { if (!card && !phone && !e.sources.includes("gridInitializing") && !e.sources.includes("api") && e.sources.some((x) => (KEPT as readonly string[]).includes(x))) writeLayout(e.state); }}
         onRowClicked={onRowClicked}
         onCellKeyDown={onCellKeyDown}
         rowStyle={rowStyle}
