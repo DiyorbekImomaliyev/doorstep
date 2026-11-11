@@ -439,7 +439,7 @@ class _Desk:
             ProtectionCheck(
                 id="verdict",
                 state=verdict,
-                detail=_words(status).capitalize() if status else "Not reported by PayPal",
+                detail=_words(status).capitalize() if status else "Not reported",
             )
         )
         shipment = s.scalars(
@@ -486,7 +486,7 @@ class _Desk:
         if shipment is None:
             return ProtectionCheck(id="tracking", state="missing", detail="Not shipped")
         if is_simulated(order.capture_id):
-            return ProtectionCheck(id="tracking", state="missing", detail="Demo: PayPal not called")
+            return ProtectionCheck(id="tracking", state="missing", detail="Demo order")
         key = f"{ADD_TRACKING}:{shipment.id}"
         jobs = list(
             self.s.scalars(
