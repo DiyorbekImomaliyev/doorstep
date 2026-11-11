@@ -144,7 +144,7 @@ cap.
 ```
 app/
   *.py            app factory, ASGI entry, settings, database, money and clock
-  api/            FastAPI routes: checkout, buyer, seller, seal, webhooks, verify
+  api/            FastAPI routes: journey (checkout, buyer, seller, seal, demo), views, webhooks, agent, insights, autopilot, policy_check, proof
   orders/         tables, enums and the two state machines (state.py)
   checkout/       address check, delivery options, risk rule of thumb
   shipping/       Shippo client, tracking events, packing step

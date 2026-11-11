@@ -16,10 +16,11 @@ const ICON: Record<string, ReactNode> = { home: <House size={17} />, locker: <Lo
 function RiskNote({ q }: { q: Quote }) {
   const pct = Math.round(q.risk * 100);
   const why = q.reasons[0]?.split(": ").slice(1).join(": ");
+  const name = q.recommended === "locker" ? "Locker pickup" : q.recommended === "signature" ? "Signed-for delivery" : "Home delivery";
   return (
-    <p className="risk-note" title={q.reasons.slice(1).join(" · ")}>
+    <p className="risk-note" title={[`Delivery risk ${pct}%`, ...q.reasons.slice(1)].join(" · ")}>
       <Sparkles aria-hidden />
-      <span>Delivery risk on this order: <b>{pct}%</b>{why ? `. ${why.charAt(0).toUpperCase() + why.slice(1)}.` : "."}</span>
+      <span><b>{name}</b> suits this order{why ? `: ${why}.` : "."}</span>
     </p>
   );
 }
