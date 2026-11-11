@@ -152,7 +152,8 @@ def build_facts(
     )
     add(
         "shipment",
-        f"The parcel was handed to {terms.carrier_name} with tracking number "
+        f"The parcel was handed to {'the carrier' if terms.is_default else terms.carrier_name} "
+        "with tracking number "
         f"{shipment.tracking_number} on {_when(shipment.created_at)}.",
     )
     district = postcode_district(str((shipment.delivery_address or {}).get("postal_code") or ""))
@@ -198,7 +199,12 @@ def build_facts(
         if terms.cover_minor is not None
         else "standard cover is not confirmed"
     )
-    add("terms", f"{terms.carrier_name} ({terms.service_basis}): {cover}.")
+    add(
+        "terms",
+        "The carrier's claim terms and standard cover are not confirmed."
+        if terms.is_default
+        else f"{terms.carrier_name} ({terms.service_basis}): {cover}.",
+    )
     add(
         "claim",
         f"Claim amount: {money(terms.claim_minor)}. File by {_when(terms.deadline_at)} "
