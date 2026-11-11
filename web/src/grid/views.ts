@@ -66,12 +66,13 @@ const PRESETS: Preset[] = [
 ];
 
 /** The toolbar's Views menu, and a `bind` to call when the grid is ready. */
-export function useGridViews(): { item: ToolbarItemDef; bind: (api: GridApi) => void } {
+export function useGridViews(): { item: ToolbarItemDef; bind: (api: GridApi) => void; naming: boolean; finish: (name: string | null) => void } {
   const apiRef = useRef<GridApi | null>(null);
   const mark = useRef<string | null>(null); // fingerprint of the active view, once it has settled
   const settleUntil = useRef(0);
   const [saved, setSaved] = useState<Saved[]>(readViews);
   const [active, setActive] = useState<string | null>(null);
+  const [naming, setNaming] = useState(false);
   const activeRef = useRef(active);
   activeRef.current = active;
 
@@ -108,11 +109,20 @@ export function useGridViews(): { item: ToolbarItemDef; bind: (api: GridApi) => 
   }, []);
 
   const save = useCallback(() => {
+    setNaming(true);
+  }, []);
+
+  // The name popover is done: save under the name, or cancel (null). Focus goes back to the toolbar.
+  const finish = useCallback((typed: string | null) => {
+    setNaming(false);
+    window.setTimeout(() => {
+      for (const b of document.querySelectorAll<HTMLElement>(".orders-grid .ag-toolbar button")) {
+        if (b.getAttribute("aria-label") === "Views" || b.textContent?.trim() === "Views") { b.focus(); break; }
+      }
+    }, 0);
     const api = apiRef.current;
-    if (!api || api.isDestroyed()) return;
-    const typed = window.prompt("View name", "");
     const name = typed?.trim().slice(0, MAX_NAME);
-    if (!name) return;
+    if (!api || api.isDestroyed() || !name) return;
     const needs = needsFilterOn();
     const next = [...readViews().filter((v) => v.name !== name), { name, state: pick(api.getState()), needs }];
     writeViews(next);
@@ -150,5 +160,5 @@ export function useGridViews(): { item: ToolbarItemDef; bind: (api: GridApi) => 
   }, [saved, active, apply, save, remove]);
 
   useEffect(() => () => { setNeedsFilter(false); }, []);
-  return { item, bind };
+  return { item, bind, naming, finish };
 }

@@ -34,6 +34,8 @@ import Doorstep3D from "../components/Doorstep3D";
 import type { DoorstepNote } from "../grid/notes";
 import { doorstepOwns, hasNote, notesFor, notesSource } from "../grid/notes";
 import { useGridViews } from "../grid/views";
+import { NameView } from "../grid/NameView";
+import "../grid/extras.css";
 import { NewItem, bindSeen, doesExternalFilterPass, isExternalFilterPresent, newIds, syncSeen } from "../grid/seen";
 
 /**
@@ -978,6 +980,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         chartThemeOverrides={chartThemeOverrides}
         domLayout="autoHeight"
       />
+      {views.naming && <NameView onDone={views.finish} />}
     </div>
   );
 }

@@ -1,0 +1,12 @@
+/* Control Room grid extras: the view-name popover, the empty state. */
+.orders-grid { position: relative; }
+.name-view {
+  position: absolute; top: 46px; right: 12px; z-index: 30; display: flex; gap: 8px; align-items: center;
+  padding: 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow-lg);
+}
+.name-view input {
+  font: inherit; font-size: 13.5px; height: 32px; width: 168px; padding: 0 10px; color: var(--text);
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface);
+}
+.name-view input:focus { outline: 2px solid var(--accent-line); border-color: var(--accent); }
+.name-view .btn { height: 32px; }
