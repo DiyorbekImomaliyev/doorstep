@@ -19,7 +19,7 @@ test("AP-07 the autopilot statement shows what the rule refunded and opens the c
   // 60 s: with the whole suite seeding shops in parallel, one worker drains a long job queue.
   await expect.poll(async () => (await (await request.get(`/api/seller/${t}/autopilot/statement`)).json()).cases.length, { timeout: 60_000 }).toBe(1);
 
-  await page.goto(`/seller/${t}`);
+  await page.goto(`/seller/${t}#autopilot`); // NV-02: the statement lives on the Autopilot page
   const s = page.getByLabel("Autopilot statement");
   await expect(s).toContainText("Last 7 days: 1 automatic refund, £52");
   await s.getByRole("button", { name: /Wool beret, burgundy/ }).click();
