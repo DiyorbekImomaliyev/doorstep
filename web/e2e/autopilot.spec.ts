@@ -25,8 +25,9 @@ test("AP-06 Malika approves Diyorbek, turns autopilot on, then off", async ({ pa
   await page.locator("aside.sidebar").getByRole("button", { name: "Autopilot" }).click(); // NV-02: the rules live on their page
   const rules = page.getByLabel("Autopilot rules");
   await expect(rules).toContainText("Autopilot on: lost parcels up to £60");
-  await rules.getByRole("button", { name: "Turn off" }).click();
+  await rules.getByRole("switch", { name: "Lost parcels" }).click(); // AP-13: the rule's own switch
   await expect(rules).toContainText("Autopilot is off");
-  await page.locator("aside.sidebar").getByRole("button", { name: "All orders" }).click();
+  await page.locator("aside.sidebar").getByRole("button", { name: "All orders" }).click(); // leaving sends the off at once
+  await expect.poll(async () => (await (await request.get(`/api/seller/${seed.seller_token}/autopilot`)).json()).rules.length).toBe(0);
   await expect(page.getByLabel("Autopilot suggestion")).toHaveCount(0); // turned off: never offered again
 });
