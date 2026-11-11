@@ -7,12 +7,12 @@ const CLOSED = ["SETTLED", "CLOSED"];
 test("AS-07 the case queue shows every open case, Approve shows the PayPal result, no address", async ({ page, context, request }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const sellerHref = (await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href"))!;
-  const samHref = (await page.getByRole("link", { name: /Be Sam/ }).getAttribute("href"))!;
+  const sellerHref = (await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href"))!;
+  const diyorbekHref = (await page.getByRole("link", { name: /Be Diyorbek/ }).getAttribute("href"))!;
 
-  // Sam reports "Not here": a new case that waits for the seller.
+  // Diyorbek reports "Not here": a new case that waits for the seller.
   const buyer = await context.newPage();
-  await buyer.goto(samHref);
+  await buyer.goto(diyorbekHref);
   await buyer.getByRole("button", { name: "Not here" }).click();
   await buyer.getByRole("radio", { name: "It didn't arrive" }).click();
   await buyer.getByRole("button", { name: "Send report" }).click();

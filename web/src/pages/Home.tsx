@@ -20,7 +20,7 @@ const NAV = (
 );
 
 // The demo shop survives Back and a reload in this tab, so a judge who leaves the Control Room
-// comes back to the same shop, and Sam's report still reaches it.
+// comes back to the same shop, and Diyorbek's report still reaches it.
 const SEED_KEY = "doorstep.demo-shop";
 
 function savedSeed(): SeedOut | null {
@@ -77,7 +77,7 @@ export default function Home() {
         <div className="section-head">
           <span className="kicker">How it works</span>
           <h2>One parcel, start to finish</h2>
-          <p>Sam buys a £60 jacket. The courier says &ldquo;Delivered&rdquo;. It wasn't.</p>
+          <p>Diyorbek buys a £60 jacket. The courier says &ldquo;Delivered&rdquo;. It wasn't.</p>
         </div>
         <Journey3D />
       </section>
@@ -104,12 +104,12 @@ export default function Home() {
         <div className="section-head">
           <span className="kicker">Live demo</span>
           <h2>Try it in a minute</h2>
-          <p>Your own copy of Maria's shop, in the PayPal sandbox.</p>
+          <p>Your own copy of Malika's shop, in the PayPal sandbox.</p>
         </div>
         <div className="demo">
           <div className="demo-top">
             <div className="col" style={{ gap: 4 }}>
-              <h3>Maria's shop</h3>
+              <h3>Malika's shop</h3>
               <span className="muted">{seed ? "Ready. Pick a role." : "Ready in a few seconds."}</span>
             </div>
             {!seed ? (
@@ -120,18 +120,18 @@ export default function Home() {
           </div>
           {err && <div style={{ padding: "0 28px 16px" }}><ErrorBox message={err} /></div>}
           <div className="demo-grid">
-            <DemoItem href={seed ? `/seller/${seed.seller_token}` : null} icon={<Store />} title="Maria's Control Room"
-              text="Approve refunds. Send evidence." go="Open Maria's Control Room" />
-            <DemoItem href={seed ? `/t/${seed.buyers["sam-jacket"]}` : null} newTab icon={<House />} title="Be Sam"
+            <DemoItem href={seed ? `/seller/${seed.seller_token}` : null} icon={<Store />} title="Malika's Control Room"
+              text="Approve refunds. Send evidence." go="Open Malika's Control Room" />
+            <DemoItem href={seed ? `/t/${seed.buyers["sam-jacket"]}` : null} newTab icon={<House />} title="Be Diyorbek"
               text="“Delivered”, but not there." go="Tap Not here" />
-            <DemoItem href={seed ? `/t/${seed.buyers["failed-attempt"]}` : null} newTab icon={<Truck />} title="Be Priya"
+            <DemoItem href={seed ? `/t/${seed.buyers["failed-attempt"]}` : null} newTab icon={<Truck />} title="Be Dilnoza"
               text="The courier missed her." go="Choose a locker" />
             <DemoItem href={seed ? `/shop/${seed.summary.seller_id}` : null} newTab icon={<CreditCard />} title="Buy with PayPal"
               text="A real sandbox checkout." go="Go to checkout" />
           </div>
           <div className="demo-path">
             <span style={{ fontWeight: 600, color: "var(--text)" }}>Suggested path</span>
-            <span>Be Sam</span><ChevronRight className="chev" />
+            <span>Be Diyorbek</span><ChevronRight className="chev" />
             <span>Approve the refund</span><ChevronRight className="chev" />
             <span>Verify the receipt</span>
             {seed && (
@@ -172,7 +172,7 @@ function Previews() {
     <div className="previews" aria-hidden>
       <div className="preview">
         <div className="pv-top">
-          <span className="pv-who"><Smartphone />Sam, the buyer</span>
+          <span className="pv-who"><Smartphone />Diyorbek, the buyer</span>
           <span className="pv-title">Taps Not here. Answer in minutes.</span>
         </div>
         <div className="pv-shot">
@@ -193,7 +193,7 @@ function Previews() {
 
       <div className="preview">
         <div className="pv-top">
-          <span className="pv-who"><Store />Maria, the seller</span>
+          <span className="pv-who"><Store />Malika, the seller</span>
           <span className="pv-title">Sees the facts. Approves in one tap.</span>
         </div>
         <div className="pv-shot">

@@ -14,7 +14,7 @@ const kpiNumber = async (page: Page, label: string) => Number((await kpiValue(pa
 async function openInsights(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const sellerHref = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
+  const sellerHref = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
   await page.goto(`${sellerHref!}#insights`);
   await expect(page.getByRole("navigation", { name: "Reports" })).toBeVisible();
   await expect(kpiValue(page, "Orders")).toHaveText(/\d/);

@@ -212,33 +212,33 @@ def test_AP_07_statement_over_http(session_factory, settings, clock):
     seed = api.post("/demo/seed?scratch=1").json()
     out = api.get(f"/api/seller/{seed['seller_token']}/autopilot/statement")
     assert out.status_code == 200, out.text
-    assert out.json() == {"days": 7, "totals": [], "cases": []}  # Maria has no rule on yet
+    assert out.json() == {"days": 7, "totals": [], "cases": []}  # Malika has no rule on yet
     assert api.get("/api/seller/not-a-token/autopilot/statement").status_code == 404
 
 
-def test_AP_07_seeded_demo_priya_is_refunded_by_marias_rule(session_factory, settings, clock):
-    """The demo story: Maria approves Sam, turns the rule on, and Priya's lost beret is refunded
-    by it without waiting for her."""
+def test_AP_07_seeded_demo_dilnoza_is_refunded_by_malikas_rule(session_factory, settings, clock):
+    """The demo story: Malika approves Diyorbek, turns the rule on, and Dilnoza's lost beret is
+    refunded by it without waiting for her."""
     api = _api(session_factory, settings, clock)
     seed = api.post("/demo/seed?scratch=1").json()
     token = seed["seller_token"]
-    sam = api.post(
+    diyorbek = api.post(
         f"/api/buyer/{seed['buyers']['sam-jacket']}/not-here",
         json={"reason": "not_received", "note": ""},
     ).json()
-    assert api.post(f"/api/seller/{token}/cases/{sam['case_id']}/approve").status_code == 200
+    assert api.post(f"/api/seller/{token}/cases/{diyorbek['case_id']}/approve").status_code == 200
     on = api.post(
         f"/api/seller/{token}/autopilot", json={"failure_point": "CARRIER_LOST", "currency": "GBP"}
     )
     assert on.status_code == 200, on.text
-    priya = api.post(
+    dilnoza = api.post(
         f"/api/buyer/{seed['buyers']['priya-beret']}/not-here",
         json={"reason": "not_received", "note": ""},
     )
-    assert priya.status_code == 200, priya.text
-    assert priya.json()["status"] == CaseState.AUTO_REFUND.value
+    assert dilnoza.status_code == 200, dilnoza.text
+    assert dilnoza.json()["status"] == CaseState.AUTO_REFUND.value
     with session_factory() as s:
         [approval] = s.scalars(
-            select(Approval).where(Approval.case_id == priya.json()["case_id"])
+            select(Approval).where(Approval.case_id == dilnoza.json()["case_id"])
         ).all()
         assert approval.approver_id.startswith("seller-rule:")

@@ -1,7 +1,7 @@
 """TR-03: the delivery choice after a failed attempt reads as plain words in the history.
 
-Found by the Nov 7 UI review: Priya's history said "Shipment choice", the audit action name, and her
-headline still said "Choose what happens next" after she chose. The history now says what she
+Found by the Nov 7 UI review: Dilnoza's history said "Shipment choice", the audit action name, and
+her headline still said "Choose what happens next" after she chose. The history now says what she
 chose; the seller reads the same step about the buyer.
 """
 

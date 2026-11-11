@@ -13,9 +13,9 @@ const STEPS: Step[] = [
   { stage: "Prevent", short: "Pay", title: "Pays with PayPal", text: "Address checked before he's charged.", icon: <CreditCard /> },
   { stage: "Prove", short: "Seal", title: "Packed with a seal", text: "A QR inside the box proves who opened it.", icon: <QrCode /> },
   { stage: "Prove", short: "Ship", title: "Shipped and tracked", text: "Tracking goes on the PayPal payment.", icon: <Truck /> },
-  { stage: "Resolve", short: "Not here", title: "“Delivered”, but not here", text: "Wrong street. Sam taps Not here.", icon: <ScanLine /> },
+  { stage: "Resolve", short: "Not here", title: "“Delivered”, but not here", text: "Wrong street. Diyorbek taps Not here.", icon: <ScanLine /> },
   { stage: "Resolve", short: "Facts", title: "Doorstep checks the facts", text: "Courier data, the seal and the law.", icon: <Scale /> },
-  { stage: "Resolve", short: "Refund", title: "Refunded through PayPal", text: "Sam gets £60 back. Maria taps once.", icon: <Banknote /> },
+  { stage: "Resolve", short: "Refund", title: "Refunded through PayPal", text: "Diyorbek gets £60 back. Malika taps once.", icon: <Banknote /> },
   { stage: "Recover", short: "Claim", title: "A claim on the courier", text: "Checked, with the evidence, before the deadline.", icon: <Landmark /> },
 ];
 
@@ -36,7 +36,7 @@ const READOUT: { title: string; icon: ReactNode; rows: Row[] }[] = [
   ] },
   { title: "Courier: “Delivered”", icon: <ScanLine />, rows: [
     { kind: "no", text: <>Scanned in <b>E8</b>, not N1</> },
-    { kind: "no", text: <>Sam taps <b>Not here</b></> },
+    { kind: "no", text: <>Diyorbek taps <b>Not here</b></> },
   ] },
   { title: "The facts", icon: <Scale />, rows: [
     { kind: "no", text: "Scan from the wrong area" },
@@ -44,14 +44,14 @@ const READOUT: { title: string; icon: ReactNode; rows: Row[] }[] = [
     { kind: "law", text: <>Seller's risk <span className="faint">(CRA 2015 s.29)</span></> },
   ] },
   { title: "Refunded", icon: <Banknote />, rows: [
-    { kind: "ok", text: <>Sam refunded <b>£60.00</b></> },
+    { kind: "ok", text: <>Diyorbek refunded <b>£60.00</b></> },
     { kind: "ok", text: "Approved in one tap" },
     { kind: "ok", text: "Signed receipt" },
   ] },
   { title: "Carrier recovery", icon: <Landmark />, rows: [
     { kind: "ok", text: <>Claim checked: <b>8 of 8</b> facts</> },
     { kind: "ok", text: <>Royal Mail pays <b>£60.00</b></> },
-    { kind: "ok", text: <>Maria's loss: <b>£0</b></> },
+    { kind: "ok", text: <>Malika's loss: <b>£0</b></> },
   ] },
 ];
 
@@ -134,13 +134,13 @@ function Flow({ from, to, children }: { from: P3; to: P3; children: ReactNode })
 }
 
 function Flows({ step }: { step: number }) {
-  if (step === 0) return <Flow key="pay" from={AT_SAM} to={AT_SHOP}><CreditCard />£60 via PayPal</Flow>;
-  if (step === 5) return <Flow key="refund" from={AT_SHOP} to={AT_SAM}><Banknote />£60 back to Sam</Flow>;
+  if (step === 0) return <Flow key="pay" from={AT_BUYER} to={AT_SHOP}><CreditCard />£60 via PayPal</Flow>;
+  if (step === 5) return <Flow key="refund" from={AT_SHOP} to={AT_BUYER}><Banknote />£60 back to Diyorbek</Flow>;
   if (step === 6) return <Flow key="recover" from={AT_E8} to={[-112, 76, 18]}><Landmark />Royal Mail pays £60</Flow>;
   return null;
 }
 
-const AT_SAM: P3 = [150, 14, 64];
+const AT_BUYER: P3 = [150, 14, 64];
 const AT_SHOP: P3 = [-206, 34, 66];
 const AT_E8: P3 = [250, 52, 40];
 
@@ -173,8 +173,8 @@ function Scene({ step }: { step: number }) {
     { x: 238, y: 16, z: 0, o: 1 },
     { x: 238, y: 16, z: 0, o: 1 },
   ][step];
-  const sam: Pose = step === 0 || step === 3 || step === 4 ? "phone" : step >= 5 ? "cheer" : "stand";
-  const maria: Pose = step === 5 ? "phone" : step === 6 ? "cheer" : "stand";
+  const diyorbek: Pose = step === 0 || step === 3 || step === 4 ? "phone" : step >= 5 ? "cheer" : "stand";
+  const malika: Pose = step === 5 ? "phone" : step === 6 ? "cheer" : "stand";
   const parcelStyle: CSSProperties = { transform: `translate3d(${parcel.x}px, ${parcel.y}px, ${parcel.z}px)`, opacity: parcel.o, left: 0, top: 0 };
   const sealed = step >= 1;
 
@@ -183,14 +183,14 @@ function Scene({ step }: { step: number }) {
       <div className="floor" />
       <div className="road" />
 
-      {/* Maria's shop */}
+      {/* Malika's shop */}
       <Box x={-300} y={-72} w={104} d={84} h={66} top="#ffffff" front="#efe8e2" side="#e0d6cc"
         frontChildren={<><Door left={44} /><Windows count={2} left={10} bottom={40} gap={64} /></>}>
         <div style={{ position: "absolute", inset: 10, borderRadius: 4, background: "#f3eee9" }} />
       </Box>
       <Box x={-304} y={12} w={112} d={10} h={9} top="#a24c5e" front="#7b2d3d" side="#64222f" className="awning" style={{ transform: "translateZ(50px)" }} />
-      <Tag x={-248} y={-30} z={96}><Store />Maria's shop</Tag>
-      <Person x={-206} y={34} color="#4a403c" pose={maria} />
+      <Tag x={-248} y={-30} z={96}><Store />Malika's shop</Tag>
+      <Person x={-206} y={34} color="#4a403c" pose={malika} />
 
       {/* courier van (moves) */}
       <div className="obj parcel" style={{ left: 0, top: 0, transform: `translate3d(${vanX}px, 0px, 0px)`, opacity: step >= 3 ? 0 : 1 }}>
@@ -201,12 +201,12 @@ function Scene({ step }: { step: number }) {
         <Tag x={-64} y={52} z={74} show={step < 3}><Truck />Courier</Tag>
       </div>
 
-      {/* Sam's home, N1 */}
+      {/* Diyorbek's home, N1 */}
       <Box x={58} y={-96} w={92} d={84} h={74} top="#ffffff" front="#efe8e2" side="#e0d6cc"
         frontChildren={<><Door left={38} /><Windows count={2} left={10} bottom={44} gap={60} /></>} />
-      <Tag x={104} y={-54} z={98}><House />Sam <span className="sub">N1</span></Tag>
+      <Tag x={104} y={-54} z={98}><House />Diyorbek <span className="sub">N1</span></Tag>
       <div className="ghost-box" style={{ left: 92, top: 18, width: 30, height: 30, opacity: step >= 3 ? 1 : 0 }} />
-      <Person x={150} y={14} color="#7b2d3d" pose={sam} />
+      <Person x={150} y={14} color="#7b2d3d" pose={diyorbek} />
       <Tag x={150} y={14} z={64} tone="accent" show={step === 3 || step === 4}><Smartphone />Not here</Tag>
 
       {/* another street, E8 */}

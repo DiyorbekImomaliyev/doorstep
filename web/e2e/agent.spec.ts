@@ -7,7 +7,7 @@ const shots = process.env.E2E_SHOTS;
 test("AT-04 the agent checks PayPal, asks the policy and stops", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const sellerHref = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
+  const sellerHref = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
   await page.goto(sellerHref!);
 
   await page.getByText("Denim jacket, size S").click();

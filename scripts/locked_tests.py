@@ -24,6 +24,10 @@ import subprocess
 import sys
 
 PLACEHOLDERS = "tests/unit/test_unbuilt_xfail.py"
+_RENAMED = (
+    "approved by the human on Nov 11, 2026: the demo cast was renamed (Maria to Malika, Sam to "
+    "Diyorbek), so the specs find the renamed links"
+)
 # locked file -> {removed test: (approval, the test file that replaced it)}
 APPROVED_REMOVALS: dict[str, dict[str, tuple[str, str]]] = {
     "tests/unit/test_pp_paypal_client.py": {
@@ -49,6 +53,31 @@ APPROVED_EDITS: dict[str, list[tuple[str, str, str]]] = {
             "approved by the human on Nov 10, 2026: AG Grid's status bar and the case drawer also "
             "carry role=status, so the test picks the status that says Approved",
         ),
+        (
+            "name: /Open Maria's Control Room/",
+            "name: /Open Malika's Control Room/",
+            _RENAMED,
+        ),
+        ("name: /Be Sam/", "name: /Be Diyorbek/", _RENAMED),
+        (
+            "// Buyer: Sam's jacket says delivered, but it isn't there.",
+            "// Buyer: Diyorbek's jacket says delivered, but it isn't there.",
+            _RENAMED,
+        ),
+    ],
+    "web/e2e/agent.spec.ts": [
+        ("name: /Open Maria's Control Room/", "name: /Open Malika's Control Room/", _RENAMED),
+    ],
+    "web/e2e/packing.spec.ts": [
+        (
+            "// PK in a real browser: Maria photographs a paid order before shipping.",
+            "// PK in a real browser: Malika photographs a paid order before shipping.",
+            _RENAMED,
+        ),
+        ("name: /Open Maria's Control Room/", "name: /Open Malika's Control Room/", _RENAMED),
+    ],
+    "web/e2e/policy.spec.ts": [
+        ("name: /Open Maria's Control Room/", "name: /Open Malika's Control Room/", _RENAMED),
     ],
 }
 _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)

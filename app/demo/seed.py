@@ -1,4 +1,4 @@
-"""The Sam and Maria demo scenario (E2E-02) and per-judge scratch copies (PR-06).
+"""The Diyorbek and Malika demo scenario (E2E-02) and per-judge scratch copies (PR-06).
 
 Every row is built the way production builds it: orders start CREATED and move only through
 app.orders.state; cases run through the real CasePipeline (engine -> policy -> explainer ->
@@ -50,7 +50,7 @@ from app.shipping.service import FAILED_ATTEMPT_CHOICES
 from app.worker.simulated import SIM_PREFIX
 
 DEMO_TAG = "demo"
-DEMO_SKU = "jacket-black-m"  # CK-07: the one item Maria's demo shop sells, priced on the server
+DEMO_SKU = "jacket-black-m"  # CK-07: the one item Malika's demo shop sells, priced on the server
 _DEMO_PRICES = {"GBP": 6000, "USD": 6000}
 
 
@@ -126,7 +126,7 @@ class _Spec:
     delivered_offset_s: int = 0  # seconds after the computed delivered time (batch scans, SA-03)
     seal_scan_after_h: int | None = None  # the buyer scanned the seal this long after delivery
     dispute: bool = False  # the buyer opened a (simulated) PayPal dispute before reporting
-    approved: bool = False  # Maria already approved this refund (AP-01 precedent)
+    approved: bool = False  # Malika already approved this refund (AP-01 precedent)
     arrives_after_report: bool = False  # AD-01: the courier scans it delivered after the report
 
 
@@ -136,7 +136,7 @@ SCENARIO: tuple[_Spec, ...] = (
     # Paid, not yet packed: the packing-photo check scene (PK) starts here.
     _Spec(
         "to-pack",
-        "Leah Okafor",
+        "Nilufar Rakhimova",
         "Black jacket, size L",
         6000,
         "GBP",
@@ -148,10 +148,10 @@ SCENARIO: tuple[_Spec, ...] = (
         2,
     ),
     # Royal Mail says "Delivered", but its own scan came from E8, in the same minute as two of
-    # Maria's other parcels to other districts (simulated carrier data, SA-02/SA-03).
+    # Malika's other parcels to other districts (simulated carrier data, SA-02/SA-03).
     _Spec(
         "sam-jacket",
-        "Sam Carter",
+        "Diyorbek Karimov",
         "Black jacket, size M",
         6000,
         "GBP",
@@ -167,7 +167,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "failed-attempt",
-        "Priya Shah",
+        "Dilnoza Yusupova",
         "Wool scarf, grey",
         3500,
         "GBP",
@@ -182,7 +182,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "locker-pickup",
-        "Tom Hughes",
+        "Jasur Nazarov",
         "Leather boots, size 8",
         4500,
         "GBP",
@@ -196,7 +196,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "empty-box",
-        "Alex Reed",
+        "Aziz Saidov",
         "Bucket hat, black",
         2800,
         "GBP",
@@ -211,7 +211,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "damaged-mug",
-        "Jo Evans",
+        "Kamola Ergasheva",
         "Ceramic mug set",
         4000,
         "GBP",
@@ -226,7 +226,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "in-transit",
-        "Ben Clark",
+        "Bekzod Tursunov",
         "Knit gloves",
         2200,
         "GBP",
@@ -240,7 +240,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "lost-denim",
-        "Chloe Ward",
+        "Madina Aliyeva",
         "Denim jacket, size S",
         7500,
         "GBP",
@@ -256,7 +256,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "signed-coat",
-        "Omar Haddad",
+        "Sardor Usmonov",
         "Wool coat, navy, size L",
         12000,
         "GBP",
@@ -271,7 +271,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "us-sneakers",
-        "Dana Lee",
+        "Shahnoza Mirzaeva",
         "Running sneakers, US 10",
         12000,
         "USD",
@@ -283,10 +283,10 @@ SCENARIO: tuple[_Spec, ...] = (
         40,
         (_PACKED,),
     ),
-    # The two other parcels in Sam's batch scan: same van, same minute, other districts.
+    # The two other parcels in Diyorbek's batch scan: same van, same minute, other districts.
     _Spec(
         "batch-lamp",
-        "Nadia Rahman",
+        "Sevara Hamidova",
         "Brass desk lamp",
         3800,
         "GBP",
@@ -303,7 +303,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "batch-tee",
-        "Ellis Grant",
+        "Otabek Sobirov",
         "Linen shirt, white, size M",
         3200,
         "GBP",
@@ -319,10 +319,10 @@ SCENARIO: tuple[_Spec, ...] = (
         delivered_offset_s=37,
     ),
     # Possession proven: the buyer scanned the seal inside the parcel, then opened a PayPal
-    # dispute. PayPal decides; Maria sends the facts (DE-01..04).
+    # dispute. PayPal decides; Malika sends the facts (DE-01..04).
     _Spec(
         "us-headphones",
-        "Jordan Miles",
+        "Javohir Qodirov",
         "Wireless headphones",
         8900,
         "USD",
@@ -339,11 +339,11 @@ SCENARIO: tuple[_Spec, ...] = (
         seal_scan_after_h=2,
         dispute=True,
     ),
-    # AP-07: delivered, no case yet. After Maria turns autopilot on, Priya's "Not here" is
+    # AP-07: delivered, no case yet. After Malika turns autopilot on, Dilnoza's "Not here" is
     # refunded by her rule without waiting for her (over the £50 limit, within her £60 rule).
     _Spec(
         "priya-beret",
-        "Priya Shah",
+        "Dilnoza Yusupova",
         "Wool beret, burgundy",
         5200,
         "GBP",
@@ -356,12 +356,12 @@ SCENARIO: tuple[_Spec, ...] = (
         (_PACKED,),
         carrier="evri",  # not Royal Mail, so it never joins the filmed batch-scan story (SA-03)
     ),
-    # Maria's week (AP-01): two lost parcels over her £50 limit that she approved herself. Kept no
+    # Malika's week (AP-01): two lost parcels over her £50 limit that she approved herself. Kept no
     # older than the other demo orders, so Insights' simulated history still ends where it did.
-    # After she approves Sam's £60 refund, Doorstep offers to handle these for her.
+    # After she approves Diyorbek's £60 refund, Doorstep offers to handle these for her.
     _Spec(
         "past-scarf",
-        "Owen Hughes",
+        "Sherzod Abdullaev",
         "Silk scarf, green",
         5500,
         "GBP",
@@ -379,7 +379,7 @@ SCENARIO: tuple[_Spec, ...] = (
     ),
     _Spec(
         "past-belt",
-        "Chloe Martin",
+        "Zarina Islomova",
         "Leather belt, brown",
         5800,
         "GBP",
@@ -395,10 +395,10 @@ SCENARIO: tuple[_Spec, ...] = (
         delivered_zip="B12 0XS",
         approved=True,
     ),
-    # AD-01: tracking went quiet, Maria refunded it as lost, then the courier scanned it delivered.
+    # AD-01: tracking went quiet, Malika refunded it as lost, then the courier scanned it delivered.
     _Spec(
         "late-trousers",
-        "Hannah Cole",
+        "Gulnora Rashidova",
         "Cord trousers, olive, W32",
         4600,
         "GBP",
@@ -463,7 +463,7 @@ def seed_scenario(
     signer: ReceiptSigner,
     tag: str = DEMO_TAG,
 ) -> SeedSummary:
-    """Seeds Maria's shop for `tag`. Seeding a tag that already exists returns it unchanged."""
+    """Seeds Malika's shop for `tag`. Seeding a tag that already exists returns it unchanged."""
     seller_id = _id(tag, "seller")
     if session.get(Seller, seller_id) is None:
         _build(session, rulebook, clock, settings, signer, tag, seller_id)
@@ -483,7 +483,7 @@ def _build(
     session.add(
         Seller(
             id=seller_id,
-            name="Maria's Vintage",
+            name="Malika's Vintage",
             region="GB",
             scratch_tag=tag,
             policy_text=(

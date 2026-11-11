@@ -174,8 +174,9 @@ def test_the_seller_can_ask_for_a_fresh_decision_on_a_held_case(api, session_fac
     assert out.json()["state"] == CaseState.HOLD_FOR_REVIEW  # the contradiction still stands
     with session_factory() as s:
         assert s.scalar(select(func.count()).where(Decision.case_id == held)) == 2
-    sam = demo["buyers"]["sam-jacket"]
-    waiting = api.post(f"/api/buyer/{sam}/not-here", json={}).json()["case_id"]  # AWAITING_SELLER
+    diyorbek = demo["buyers"]["sam-jacket"]
+    # AWAITING_SELLER
+    waiting = api.post(f"/api/buyer/{diyorbek}/not-here", json={}).json()["case_id"]
     again = api.post(f"/api/seller/{seller}/cases/{waiting}/re-check")
     assert again.status_code == 409
 

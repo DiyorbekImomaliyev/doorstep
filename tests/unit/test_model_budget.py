@@ -104,8 +104,8 @@ def test_RC_08_the_demo_seed_queues_no_claim_drafts(session_factory, settings, c
     assert packs and set(packs) == {"template"}  # seeded cases still have a full claim pack
     assert _drafts(session_factory) == 0
 
-    sam = api.post(f"/api/buyer/{seed['buyers']['sam-jacket']}/not-here", json=NOT_HERE)
-    assert sam.status_code == 200, sam.text
+    diyorbek = api.post(f"/api/buyer/{seed['buyers']['sam-jacket']}/not-here", json=NOT_HERE)
+    assert diyorbek.status_code == 200, diyorbek.text
     assert _drafts(session_factory) == 1  # a case reported during the demo is drafted ahead
 
 
@@ -204,10 +204,10 @@ def test_RC_08_two_opens_at_once_make_one_call(tmp_path, clock):
 # ---------------------------------------------------------------- AT-07
 
 
-def _sam_case(api):
+def _diyorbek_case(api):
     seed = api.post("/demo/seed?scratch=1").json()
-    sam = api.post(f"/api/buyer/{seed['buyers']['sam-jacket']}/not-here", json=NOT_HERE).json()
-    return seed["seller_token"], sam["case_id"]
+    diyorbek = api.post(f"/api/buyer/{seed['buyers']['sam-jacket']}/not-here", json=NOT_HERE).json()
+    return seed["seller_token"], diyorbek["case_id"]
 
 
 def test_AT_07_the_pre_check_is_planned_by_the_model_once_per_case(
@@ -215,7 +215,7 @@ def test_AT_07_the_pre_check_is_planned_by_the_model_once_per_case(
 ):
     model = EchoModel()
     api = _api(session_factory, settings, clock, llm=model)
-    token, case_id = _sam_case(api)
+    token, case_id = _diyorbek_case(api)
     run = api.post(f"/api/seller/{token}/agent/cases/{case_id}").json()
     assert run["planner"] == "model:echo" and run["outcome"]
     spent = model.calls
@@ -226,7 +226,7 @@ def test_AT_07_the_pre_check_is_planned_by_the_model_once_per_case(
 
 def test_AT_07_without_a_working_model_the_run_says_fixed_plan(session_factory, settings, clock):
     api = _api(session_factory, settings, clock, llm=EchoModel(fail=True))
-    token, case_id = _sam_case(api)
+    token, case_id = _diyorbek_case(api)
     run = api.post(f"/api/seller/{token}/agent/cases/{case_id}").json()
     assert run["planner"] == FIXED_PLANNER and run["outcome"]
 

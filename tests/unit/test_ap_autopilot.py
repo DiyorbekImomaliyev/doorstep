@@ -441,19 +441,21 @@ def _api(session_factory, settings, clock) -> TestClient:
     return TestClient(create_app(deps))
 
 
-def test_AP_06_seeded_demo_suggests_after_maria_approves_sam(session_factory, settings, clock):
+def test_AP_06_seeded_demo_suggests_after_malika_approves_diyorbek(
+    session_factory, settings, clock
+):
     api = _api(session_factory, settings, clock)
     seed = api.post("/demo/seed?scratch=1").json()
     token = seed["seller_token"]
     base = f"/api/seller/{token}/autopilot"
     assert api.get(base).json() == {"rules": [], "suggestions": []}
 
-    sam = api.post(
+    diyorbek = api.post(
         f"/api/buyer/{seed['buyers']['sam-jacket']}/not-here",
         json={"reason": "not_received", "note": ""},
     )
-    assert sam.status_code == 200, sam.text
-    case_id = sam.json()["case_id"]
+    assert diyorbek.status_code == 200, diyorbek.text
+    case_id = diyorbek.json()["case_id"]
     assert api.post(f"/api/seller/{token}/cases/{case_id}/approve").status_code == 200
 
     [s] = api.get(base).json()["suggestions"]

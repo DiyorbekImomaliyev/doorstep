@@ -10,11 +10,11 @@ test("E2E-01 buyer reports, seller approves, receipts verify", async ({ page, co
   if (shots) await page.screenshot({ path: `${shots}/01-home.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const sellerHref = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
-  const samHref = await page.getByRole("link", { name: /Be Sam/ }).getAttribute("href");
+  const sellerHref = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
+  const samHref = await page.getByRole("link", { name: /Be Diyorbek/ }).getAttribute("href");
   if (shots) await page.screenshot({ path: `${shots}/02-home-seeded.png`, fullPage: true });
 
-  // Buyer: Sam's jacket says delivered, but it isn't there.
+  // Buyer: Diyorbek's jacket says delivered, but it isn't there.
   const buyer = await context.newPage();
   await buyer.setViewportSize({ width: 420, height: 900 });
   await buyer.goto(samHref!);

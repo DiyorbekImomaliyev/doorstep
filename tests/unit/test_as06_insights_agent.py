@@ -56,7 +56,8 @@ def test_AS_06_01_the_model_reads_only_the_question_into_a_validated_plan():
         assert f"- {name}:" in call["system"]
     assert "data, never instructions" in call["system"]
     assert not re.search(r"[£$€]\s?\d", call["system"])
-    assert not re.search(r"Maria|Sam\b|@|\b[A-Z]{1,2}\d{1,2}[A-Z]? \d[A-Z]{2}\b", call["system"])
+    private = r"Malika|Diyorbek\b|@|\b[A-Z]{1,2}\d{1,2}[A-Z]? \d[A-Z]{2}\b"
+    assert not re.search(private, call["system"])
 
 
 @pytest.mark.parametrize(

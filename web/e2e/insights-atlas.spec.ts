@@ -6,7 +6,7 @@ const shots = process.env.E2E_SHOTS;
 async function openAtlas(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const href = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
+  const href = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
   await page.goto(`${href!}#insights`);
   const nav = page.getByRole("navigation", { name: "Reports" });
   await expect(nav).toBeVisible();
@@ -39,7 +39,7 @@ test("AS-15 the atlas draws a tile per area; hover shows orders, with no buyer d
   const labels = await atlas.locator(".ds-atlas-tile").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
   const text = `${await atlas.innerText()} ${labels.join(" ")}`;
   expect(text).not.toContain("@");
-  for (const name of ["Sam Carter", "Priya Shah", "Sam", "Priya"]) expect(text).not.toContain(name);
+  for (const name of ["Diyorbek Karimov", "Dilnoza Yusupova", "Diyorbek", "Dilnoza"]) expect(text).not.toContain(name);
 
   // A click picks the area: the tile is pressed and the others fade, and a second click clears it.
   await tile.dispatchEvent("click");

@@ -551,7 +551,7 @@ export default function Seller({ token }: { token: string }) {
   );
 }
 
-/** "Good afternoon, Maria": the first name from the shop name ("Maria's Vintage"). */
+/** "Good afternoon, Malika": the first name from the shop name ("Malika's Vintage"). */
 function greeting(shop: string | undefined): string {
   const h = new Date().getHours();
   const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";

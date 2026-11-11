@@ -104,7 +104,7 @@ dev:
 	(cd web && npm run dev) & \
 	wait
 
-# E2E-02: seed the filmed Sam and Maria scenario and print its private links.
+# E2E-02: seed the filmed Diyorbek and Malika scenario and print its private links.
 demo:
 	PYTHONPATH=. uv run $(if $(wildcard .env),--env-file .env,) python scripts/seed_demo.py
 

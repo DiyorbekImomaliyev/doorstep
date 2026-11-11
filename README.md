@@ -24,9 +24,9 @@ s.29](https://www.legislation.gov.uk/ukpga/2015/15/section/29)), but nobody can 
 Doorstep closes that gap inside PayPal. It runs every order through five stages (prevent, prove, resolve, recover, learn). When something still goes wrong, it
 settles the money through PayPal's own APIs.
 
-**One case, start to finish.** Royal Mail scans Sam's £60 jacket "Delivered", and Sam taps **Not here**. The audit finds the scan was made in E8, but the parcel
-was going to N1. It was made in the same minute as two more of Maria's parcels to two other areas. The parcel was still Maria's risk, so Doorstep recommends a
-refund and Maria approves it in one tap. The refund goes to Sam through PayPal. Maria gets a Royal Mail claim pack, where every sentence cites a checked fact,
+**One case, start to finish.** Royal Mail scans Diyorbek's £60 jacket "Delivered", and Diyorbek taps **Not here**. The audit finds the scan was made in E8, but the parcel
+was going to N1. It was made in the same minute as two more of Malika's parcels to two other areas. The parcel was still Malika's risk, so Doorstep recommends a
+refund and Malika approves it in one tap. The refund goes to Diyorbek through PayPal. Malika gets a Royal Mail claim pack, where every sentence cites a checked fact,
 with the deadline from Royal Mail's own terms.
 
 ## Design at a glance
@@ -49,12 +49,12 @@ One FastAPI web service, one background worker and one Postgres, on Render. Mode
 ## Try it in 60 seconds
 
 1. Open the [live app](https://doorstep-ojmg.onrender.com) and press **Open my demo shop**. You get a private shop with 16 orders that only you can see.
-2. **Be Sam.** The courier says "Delivered", but the jacket never came. Tap **Not here**. Doorstep answers in seconds with the rule it applied and what happens
+2. **Be Diyorbek.** The courier says "Delivered", but the jacket never came. Tap **Not here**. Doorstep answers in seconds with the rule it applied and what happens
    next.
-3. **Open Maria's Control Room**, open the **Black jacket** case and **Approve** the refund. The money row moves to "Simulated" (a demo order), and Sam's page
+3. **Open Malika's Control Room**, open the **Black jacket** case and **Approve** the refund. The money row moves to "Simulated" (a demo order), and Diyorbek's page
    says it was sent and simulated.
 4. Press **verify** next to the signed receipts. A public page re-checks every receipt in the chain.
-5. On Sam's page, open **Signed delivery record**, then press **Change one character and check again**. The same facts, one character different, fail the check.
+5. On Diyorbek's page, open **Signed delivery record**, then press **Change one character and check again**. The same facts, one character different, fail the check.
 6. In the Control Room, type **lost parcels over £50, biggest first** into the search. The grid becomes that view and shows how it read you. Open **Insights**,
    press **Ask Doorstep** and ask **Which carrier cost me most this month?**, then open **Steps** under the answer.
 
@@ -237,7 +237,7 @@ Each row opens a detail panel without leaving the table. The grid also does a se
 - **Timeline:** each step, with links to the signed receipts.
 
 <details>
-<summary>Screenshot: Sam's case, with the contradicted delivered scan</summary>
+<summary>Screenshot: Diyorbek's case, with the contradicted delivered scan</summary>
 <img src="docs/img/screens/case.png" alt="A case: likely cause, rule, delivered-scan audit and carrier recovery" width="520">
 </details>
 

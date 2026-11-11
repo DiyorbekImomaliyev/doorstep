@@ -260,9 +260,9 @@ def _api(session_factory, settings, clock, llm) -> TestClient:
     return TestClient(create_app(deps))
 
 
-def _maria(session_factory):
+def _malika(session_factory):
     with session_factory() as s:
-        return s.scalars(select(Seller).where(Seller.name == "Maria's Vintage")).one().policy_text
+        return s.scalars(select(Seller).where(Seller.name == "Malika's Vintage")).one().policy_text
 
 
 def test_PC_04_checking_over_http_changes_nothing(session_factory, settings, clock):
@@ -271,12 +271,12 @@ def test_PC_04_checking_over_http_changes_nothing(session_factory, settings, clo
     token = api.post("/demo/seed?scratch=1").json()["seller_token"]
     with session_factory() as s:
         audits = s.scalar(select(func.count()).select_from(AuditLog))
-    policy = _maria(session_factory)
+    policy = _malika(session_factory)
     for _ in range(2):
         out = api.get(f"/api/seller/{token}/policy-check")
         assert out.status_code == 200, out.text
     assert len(llm.calls) == 1
-    assert _maria(session_factory) == policy
+    assert _malika(session_factory) == policy
     with session_factory() as s:
         assert s.scalar(select(func.count()).select_from(AuditLog)) == audits
 
@@ -286,13 +286,13 @@ def test_PC_04_checking_over_http_changes_nothing(session_factory, settings, clo
 SEEDED_WRONG = "Once tracking shows your parcel as delivered, it is your responsibility."
 
 
-def test_PC_05_seeded_maria_policy_has_the_sentence_the_uk_rule_contradicts(
+def test_PC_05_seeded_malika_policy_has_the_sentence_the_uk_rule_contradicts(
     session_factory, settings, clock
 ):
     llm = Scripted(draft(issue(quote=SEEDED_WRONG)))
     api = _api(session_factory, settings, clock, llm)
     token = api.post("/demo/seed?scratch=1").json()["seller_token"]
-    assert SEEDED_WRONG in _maria(session_factory)
+    assert SEEDED_WRONG in _malika(session_factory)
     out = api.get(f"/api/seller/{token}/policy-check").json()
     assert out["status"] == "checked" and out["rule_id"] == "uk_possession_v1"
     [i] = out["issues"]

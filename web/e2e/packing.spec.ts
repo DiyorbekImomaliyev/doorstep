@@ -1,4 +1,4 @@
-// PK in a real browser: Maria photographs a paid order before shipping. Without a model key the
+// PK in a real browser: Malika photographs a paid order before shipping. Without a model key the
 // check never auto-passes ("Please check it yourself"); she confirms, then ships.
 import { expect, test } from "@playwright/test";
 
@@ -12,7 +12,7 @@ const PNG = Buffer.from(
 test("PK-02 packing photo, seller confirms, ships", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const sellerHref = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
+  const sellerHref = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
   await page.goto(sellerHref!);
 
   await expect(page.getByText("Pack it")).toBeVisible();

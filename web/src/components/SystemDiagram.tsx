@@ -35,10 +35,10 @@ const COLUMNS: Column[] = [
 
 /* One report followed through the columns above, in step with the lit column. */
 const TRACE = [
-  "Sam taps “Not here” on his £60 order",
+  "Diyorbek taps “Not here” on his £60 order",
   "Signed link checked · courier scans already stored once",
   "Lost by carrier · uk_possession_v1 → the seller's risk",
-  "£60 is over the £50 auto-refund limit → Maria approves → refund job queued",
+  "£60 is over the £50 auto-refund limit → Malika approves → refund job queued",
   "PayPal refund sent with one idempotency key · receipt signed · claim pack ready",
 ];
 

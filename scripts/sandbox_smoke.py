@@ -171,7 +171,7 @@ def main() -> int:
     print(f"1. Sandbox order {created['id']} captured: {capture['id']} ({capture['status']})")
 
     with rt.session_factory() as s:
-        seller = Seller(name="Maria's Vintage (smoke)", region=country)
+        seller = Seller(name="Malika's Vintage (smoke)", region=country)
         s.add(seller)
         s.flush()
         order = Order(
@@ -184,7 +184,7 @@ def main() -> int:
             buyer_country=country,
             payer_id="SMOKE-CARD",
             shipping_address={
-                "name": "Sam Carter",
+                "name": "Diyorbek Karimov",
                 "line1": "Flat 4, 12 Albion Road" if country == "GB" else "500 Howard St Apt 4",
                 "city": city,
                 "postal_code": postcode,

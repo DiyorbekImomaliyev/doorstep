@@ -1,4 +1,4 @@
-"""`make demo`: seed the filmed Sam and Maria scenario (E2E-02) and print its private links.
+"""`make demo`: seed the filmed Diyorbek and Malika scenario (E2E-02) and print its private links.
 
 Idempotent: the same ids every run, so running it twice changes nothing. The links it prints
 are the only way into the filmed demo; the public site offers judges scratch copies instead.

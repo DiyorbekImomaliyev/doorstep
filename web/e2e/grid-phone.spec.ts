@@ -6,7 +6,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 test("GM-02 at 390 px the grid is one card column: no sideways scroll, the order ref shows", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const href = (await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href"))!;
+  const href = (await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href"))!;
   await page.goto(href);
   const card = page.locator(".orders-grid .order-card").first();
   await expect(card).toBeVisible();

@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 test("SL-07 the seller's own browser sees a preview, and the order stays as it was", async ({ page, context }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const seller = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
+  const seller = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
   await page.goto(seller!);
   await page.getByRole("button", { name: /^All/ }).click();
   await page.getByText("Brass desk lamp").click();

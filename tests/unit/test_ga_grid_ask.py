@@ -136,7 +136,7 @@ def test_GA_04_unknown_question_is_unanswerable() -> None:
 
 
 def test_GA_06_menu_rejects_values_outside_it() -> None:
-    outside = GridPlan(answerable=True, journey=["Order 5DCFABB7 for Sam"])
+    outside = GridPlan(answerable=True, journey=["Order 5DCFABB7 for Diyorbek"])
     assert not outside.fits(MENU)
     answer = GridAgent(FakeLLM(outside)).ask("lost parcels", MENU)
     assert answer.mode == "keywords" and answer.plan.journey == ["Lost by carrier"]

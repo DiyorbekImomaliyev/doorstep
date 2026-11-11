@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 async function openShop(page: Page): Promise<string> {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const sellerHref = (await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href"))!;
+  const sellerHref = (await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href"))!;
   await page.goto(sellerHref);
   await expect(page.locator(".ag-row .item-name").first()).toBeVisible();
   return sellerHref;

@@ -6,7 +6,7 @@ const shots = process.env.E2E_SHOTS;
 async function openInsights(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const href = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
+  const href = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
   await page.goto(`${href!}#insights`);
   await expect(page.getByRole("navigation", { name: "Reports" })).toBeVisible();
   await expect(page.locator(".ag-studio-value-widget-content").first()).toHaveText(/\d/);
@@ -31,7 +31,7 @@ test("AS-13 a finished reply has Steps: labelled, in order, with no buyer detail
   await expect(rows.first()).toContainText(/^\s*\S+( \S+){0,2}\s*$/);
   const text = await trace.innerText();
   expect(text).not.toMatch(/@|complete task/i);
-  expect(text).not.toMatch(/Maria|Priya|Ahmed|buyer/i);
+  expect(text).not.toMatch(/Malika|Dilnoza|Ahmed|buyer/i);
   if (shots) await page.screenshot({ path: `${shots}/trace-open.png` });
 });
 

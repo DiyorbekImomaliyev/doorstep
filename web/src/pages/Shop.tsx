@@ -65,7 +65,7 @@ export default function Shop({ sellerId }: { sellerId: string }) {
 
   return (
     <>
-      <Brand right={<span className="faint">Maria's Vintage · Checkout</span>} />
+      <Brand right={<span className="faint">Malika's Vintage · Checkout</span>} />
       <main className="narrow stack-lg">
         <section className="card row" style={{ alignItems: "center", gap: 16 }}>
           <div aria-hidden style={{ width: 64, height: 64, borderRadius: 12, background: "var(--surface-2)", display: "grid", placeItems: "center", color: "var(--text-2)" }}>

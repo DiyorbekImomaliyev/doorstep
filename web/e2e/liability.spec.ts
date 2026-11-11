@@ -4,18 +4,18 @@ import { expect, test, type Page } from "@playwright/test";
 
 const shots = process.env.E2E_SHOTS;
 
-async function demoShop(page: Page): Promise<{ seller: string; sam: string }> {
+async function demoShop(page: Page): Promise<{ seller: string; diyorbek: string }> {
   await page.goto("/");
   await page.getByRole("button", { name: "Open my demo shop" }).click();
-  const seller = await page.getByRole("link", { name: /Open Maria's Control Room/ }).getAttribute("href");
-  const sam = await page.getByRole("link", { name: /Be Sam/ }).getAttribute("href");
-  return { seller: seller!, sam: sam! };
+  const seller = await page.getByRole("link", { name: /Open Malika's Control Room/ }).getAttribute("href");
+  const diyorbek = await page.getByRole("link", { name: /Be Diyorbek/ }).getAttribute("href");
+  return { seller: seller!, diyorbek: diyorbek! };
 }
 
 test("SL-02 the seal in the box: one tap proves the buyer has it", async ({ page, browser }, testInfo) => {
   const { seller } = await demoShop(page);
   await page.goto(seller);
-  await page.getByRole("button", { name: /^All/ }).click();  // delivered, nothing needs Maria
+  await page.getByRole("button", { name: /^All/ }).click();  // delivered, nothing needs Malika
   await page.getByText("Brass desk lamp").click();
   const seal = page.getByLabel("Possession seal");
   await seal.getByRole("button", { name: "Show seal" }).click();
@@ -35,12 +35,12 @@ test("SL-02 the seal in the box: one tap proves the buyer has it", async ({ page
   await expect(phone.getByText(/address/i)).toHaveCount(0);
 });
 
-test("SA-02 RC-05 RT-01 CF-01 Sam's scan is contradicted and Maria claims it back", async ({ page, context }) => {
-  const { seller, sam } = await demoShop(page);
+test("SA-02 RC-05 RT-01 CF-01 Diyorbek's scan is contradicted and Malika claims it back", async ({ page, context }) => {
+  const { seller, diyorbek } = await demoShop(page);
 
   const buyer = await context.newPage();
   await buyer.setViewportSize({ width: 420, height: 900 });
-  await buyer.goto(sam);
+  await buyer.goto(diyorbek);
   await buyer.getByRole("button", { name: "Not here" }).click();
   await buyer.getByRole("radio", { name: "It didn't arrive" }).click();
   await buyer.getByRole("button", { name: "Send report" }).click();
@@ -73,10 +73,10 @@ test("SA-02 RC-05 RT-01 CF-01 Sam's scan is contradicted and Maria claims it bac
   await expect(page.locator(".kpi", { hasText: "Recovered from carriers" })).toContainText("£60");
 });
 
-test("DE-01 possession proven, PayPal dispute open: Maria sends the facts once", async ({ page }) => {
+test("DE-01 possession proven, PayPal dispute open: Malika sends the facts once", async ({ page }) => {
   const { seller } = await demoShop(page);
   await page.goto(seller);
-  await page.getByText("Wireless headphones").click();  // in "Needs you": PayPal waits for Maria
+  await page.getByText("Wireless headphones").click();  // in "Needs you": PayPal waits for Malika
   await expect(page.getByText("The buyer opened a PayPal dispute", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Delivered-scan audit").getByText("Consistent")).toBeVisible();
   await expect(page.getByLabel("What would have changed this")).toContainText("Possession was proven");
