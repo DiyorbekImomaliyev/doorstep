@@ -17,7 +17,7 @@ import {
 } from "ag-grid-enterprise";
 import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
-import type { OrderRow } from "../api";
+import { api as apiClient, type OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
 import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
@@ -481,6 +481,8 @@ const EXPORT_COLUMNS = ["item", "buyer", "status", "next", "risk", "proof", "mon
 const excelStyles: ExcelStyle[] = [
   { id: "header", font: { bold: true, color: "#1F1A18" }, interior: { color: "#F6ECEE", pattern: "Solid" } },
   { id: "laneRow", font: { bold: true, color: "#7B2D3D" } },
+  { id: "coverTitle", font: { bold: true, size: 14, color: "#7B2D3D" } },
+  { id: "coverText", font: { color: "#5A524E" } },
 ];
 
 function exportValue(id: string, r: OrderRow, v: unknown): string {
@@ -505,7 +507,7 @@ function exportParams() {
     // The grand total row exports its money at stake (AG Grid's aggregate) under At stake.
     processCellCallback: (q: { column: { getColId(): string }; node?: IRowNode | null; value: unknown }) =>
       (q.node?.data ? exportValue(q.column.getColId(), q.node.data as OrderRow, q.value)
-        : q.node?.footer && q.column.getColId() === "money" ? String((q.node.aggData?.money as StakeTotal | undefined) ?? "") : ""),
+        : q.node?.footer && q.column.getColId() === "money" ? String((q.node.aggData?.money as StakeTotal | undefined) ?? "").replaceAll(" + ", " · ") : ""),
     processRowGroupCallback: (q: { node: IRowNode }) => groupLabel(q.node),
     skipPinnedTop: true,
   };
@@ -561,9 +563,59 @@ export function exportHandoffPdf(api: GridApi, o: { shop: string; region: string
   });
 }
 
-export function exportExcel(api: GridApi) {
+/** Money per currency, never summed across them: "£340.00 · $120.00". */
+function perCurrency(rows: OrderRow[]): string {
+  const by: Record<string, number> = {};
+  rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
+  const parts = Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => money(v, c));
+  return parts.length ? parts.join(" · ") : money(0, Object.keys(by)[0] ?? "GBP");
+}
+
+async function shopNameNow(): Promise<string> {
+  const token = /\/seller\/([^/?#]+)/.exec(window.location.pathname)?.[1];
+  try { return token ? (await apiClient.me(token)).name : "Doorstep"; } catch { return "Doorstep"; }
+}
+
+/**
+ * GX-01: one workbook. "Orders" is what the grid shows (with a small cover header); "By delivery"
+ * is the same orders grouped per delivery method, each group titled with its count and money per
+ * currency. The grouping is switched on only while the sheet is read, then put back.
+ */
+export async function exportExcel(api: GridApi) {
   const p = exportParams();
-  api.exportDataAsExcel({ ...p, fileName: `${p.fileName}.xlsx`, sheetName: "Orders", author: "Doorstep" });
+  const shop = await shopNameNow();
+  if (api.isDestroyed()) return;
+  const stamp = new Date();
+  const cover = (title: string) => [
+    { cells: [{ styleId: "coverTitle", mergeAcross: 3, data: { value: `${shop} · ${title}`, type: "String" as const } }] },
+    { cells: [{ styleId: "coverText", mergeAcross: 3, data: { value: `Exported ${stamp.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`, type: "String" as const } }] },
+    { cells: [] },
+  ];
+  const orders = api.getSheetDataForExcel({ ...p, sheetName: "Orders", author: "Doorstep", prependContent: cover("Orders") });
+
+  const saved = api.getColumnState();
+  const grouped = saved.filter((c) => c.rowGroup).sort((a, b) => (a.rowGroupIndex ?? 0) - (b.rowGroupIndex ?? 0));
+  const hidden = new Map(saved.filter((c) => ["lane", "urgency", "method"].includes(c.colId)).map((c) => [c.colId, !!c.hide]));
+  let delivery: ReturnType<GridApi["getSheetDataForExcel"]>;
+  try {
+    api.applyColumnState({ state: [{ colId: "method", rowGroup: true, rowGroupIndex: 0 }], defaultState: { rowGroup: false } });
+    delivery = api.getSheetDataForExcel({
+      ...p, sheetName: "By delivery", prependContent: cover("By delivery"),
+      processRowGroupCallback: (q) => {
+        if (q.node.footer) return "Total";
+        const rows = leavesOf(q.node);
+        return `${groupLabel(q.node)} · ${rows.length} order${rows.length === 1 ? "" : "s"} · ${perCurrency(rows)}`;
+      },
+    });
+  } finally {
+    api.applyColumnState({ state: grouped.map((c, i) => ({ colId: c.colId, rowGroup: true, rowGroupIndex: i })), defaultState: { rowGroup: false } });
+    hidden.forEach((h, colId) => api.setColumnsVisible([colId], !h));
+  }
+  api.exportMultipleSheetsAsExcel({
+    data: [orders, delivery].filter((d): d is string => !!d),
+    fileName: `${p.fileName}.xlsx`,
+    author: "Doorstep",
+  });
 }
 function exportCsv(api: GridApi) {
   const p = exportParams();
