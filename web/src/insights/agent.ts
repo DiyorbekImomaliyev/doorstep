@@ -25,7 +25,7 @@ import type { DoorstepRegistry } from "./widgets";
 // ---------------------------------------------------------------- the adapter
 
 type Item = { kind: "user" | "assistant" | "call" | "result" | "context"; text: string; name?: string; call_id?: string };
-export type TurnOut = { message: string; calls: { call_id: string; name: string; arguments: Record<string, unknown> }[]; mode: "model" | "fallback" };
+export type TurnOut = { message: string; calls: { call_id: string; name: string; arguments: Record<string, unknown> }[]; mode: "model" | "fallback"; provider?: string | null };
 
 const MAX_ITEMS = 60;
 const textOf = (parts: { type: string; text?: string }[]) => parts.map((p) => (p.type === "text" ? p.text ?? "" : "")).join("\n").trim();
@@ -75,6 +75,8 @@ const SCAN_ASK = /what changed|unusual|wrong|anything/i;
 const CHASE_ASK = /\bchase\b|\bbuild\b.*\bpage\b/i;
 /** S6: the toolbar's "Explain this chart" sends `Explain “<name>”`. */
 const EXPLAIN_ASK = /^explain\b/i;
+/** AS-21: "Show me Evri's claims" opens that carrier's report. */
+const SHOW_ASK = /^show me\b/i;
 
 /** What the offline lead needs from the board to route a chase or an explain. */
 export type LocalRoutes = { chase: (words: string) => string | undefined; charts: () => string[] };
@@ -125,6 +127,11 @@ export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnO
             if (routes && EXPLAIN_ASK.test(last.text) && offers("explain_chart")) {
               const name = quoted(last.text, routes.charts());
               if (name) return { message: "", calls: [call("offline", "explain_chart", { name })], mode: "fallback" };
+            }
+            // AS-21: "Show me Evri's claims" (a starter) opens that carrier's report without a model.
+            if (routes && SHOW_ASK.test(last.text) && offers("open_carrier_report")) {
+              const carrier = routes.chase(last.text);
+              if (carrier) return { message: "", calls: [call("offline", "open_carrier_report", { carrier })], mode: "fallback" };
             }
             if (routes && CHASE_ASK.test(last.text) && offers("build_report_template")) {
               const carrier = routes.chase(last.text);
@@ -338,6 +345,8 @@ export function chaseCarrier(p: Prepared, words = ""): string | undefined {
 
 type Page = AgPageState<DoorstepRegistry>;
 let pageSeq = 0;
+/** After a reload: the saved reports keep their ids, so new ones count on from the highest. */
+export const resumePageIds = (after: number) => { pageSeq = Math.max(pageSeq, after); };
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "report";
 const carrierFilter = (carrier: string | null | undefined): Page["filter"] =>
   carrier ? { page: [{ field: { id: "orders.carrier" }, model: { operator: "equals", value: carrier } }] } : {};

@@ -21,15 +21,18 @@ import type {
 } from "ag-studio";
 import { AgStudioAiModule, AgStudioLicenseManager, enableStudioDevValidations } from "ag-studio";
 import { AgStudio, createWidgets } from "ag-studio-react";
-import { BarChart3, Eye, FilePlus2, MousePointer2, MousePointerClick, Pause, Pencil, Play, Sparkles, X } from "lucide-react";
-import { chaseCarrier, chaseQuestion, doorstepHarness, type AgentActions } from "./agent";
+import { BarChart3, Eye, FilePlus2, MousePointer2, MousePointerClick, Pause, Pencil, Play, Printer, RotateCcw, Sparkles, X } from "lucide-react";
+import { chaseQuestion, doorstepHarness, resumePageIds, tableRows, type AgentActions } from "./agent";
 import { OPEN_EVENT, doorstepToolDisplay, type AnswerActions, type OpenDetail } from "./agentDisplay";
 import { ANSWERS_PAGE, withAnswer, withoutAnswer, type Asked } from "./ask";
 import { AskPanel, type BuildActions } from "./AskPanel";
+import { noteTurn } from "./answeredBy";
+import { dataStarters } from "./starters";
 import { buildSources, diffTables, fetchInsights, type Prepared } from "./data";
 import { widgetNameById } from "./explain";
 import { LedgerBar, useLedger } from "./Ledger";
-import { KPI_H, REPORTS, carrierDrillPage, reportState } from "./reports";
+import { KPI_H, REPORTS, carrierDrillPage, regauge, reportStateFor } from "./reports";
+import { SAVE_DELAY_MS, clearSaved, fieldsOf, highestId, loadSaved, writeSaved, type RailEntry } from "./saved";
 import { paperTheme } from "./theme";
 import { doorstepWidgetTypes, withDoorstepDefaults, type BriefContext, type DoorstepRegistry } from "./widgets";
 import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
@@ -91,6 +94,7 @@ const LOCALE = {
   dsHistoryAnswer: "Answer chart",
   dsHistoryRemoveAnswer: "Removed an answer",
   dsHistoryMapped: "Set up ‘${name}’",
+  dsHistoryReset: "Reset reports",
 };
 /** AS-07: Studio's Agent Framework, on the main board only (the carrier pop-up has no agent). */
 const AI_MODULES = [AgStudioAiModule];
@@ -167,13 +171,47 @@ function carrierCondition(filter: AgFilterDefinition | undefined): AgConditionDe
   return undefined;
 }
 
+/** The carriers the shop has claims with, most claims first: one claim gauge each on the Carriers report. */
+function carriersOf(p: Prepared): string[] {
+  const n = new Map<string, number>();
+  for (const r of tableRows(p, "recoveries")) {
+    const c = String(r.carrier);
+    n.set(c, (n.get(c) ?? 0) + 1);
+  }
+  return [...n.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+}
+
+/**
+ * AS-17: what the board opens with: the seller's saved reports (when they were built for these
+ * fields), else the defaults. Always opens on the Overview. Resumes the id counters so a new
+ * report or answer never takes a saved one's id.
+ */
+function boot(prepared: Prepared, token: string) {
+  const carriers = carriersOf(prepared);
+  const defaults = reportStateFor(carriers);
+  const fields = fieldsOf(prepared.sources);
+  const saved = loadSaved(token, fields);
+  const names = new Map<string, RailName>(REPORTS.map((r) => [r.id, { name: r.name, hint: r.hint }]));
+  if (!saved) return { state: defaults, names, carriers, fields, mine: 0, answers: 0 };
+  const same = saved.carriers.length === carriers.length && saved.carriers.every((c, i) => c === carriers[i]);
+  const pages = (saved.state.pages as AgReportState<DoorstepRegistry>["pages"]).map((p) => (p.id === "carriers" && !same ? regauge(p, carriers) : p));
+  for (const [id, e] of saved.names) if (typeof e?.name === "string") names.set(id, e);
+  const ids = pages.map((p) => p.id);
+  resumePageIds(Math.max(0, ...ids.map((id) => Number(/^ai-.*-(\d+)$/.exec(id)?.[1] ?? 0))));
+  return {
+    state: { ...defaults, pages, selectedPageId: ids.includes("overview") ? "overview" : ids[0] }, names, carriers, fields,
+    mine: highestId(ids, "mine-"), answers: highestId(pages.flatMap((p) => Object.keys(p.widgets ?? {})), "answer-"),
+  };
+}
+
 function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const [api, setApi] = useState<AgStudioApi<DoorstepRegistry>>();
+  const [start] = useState(() => boot(prepared, token));
   // S4: the rail is Studio's pages, named here, so an agent's report (and its undo) shows at once.
-  const names = useRef(new Map<string, RailName>(REPORTS.map((r) => [r.id, { name: r.name, hint: r.hint }])));
-  const [pageIds, setPageIds] = useState<string[]>(() => REPORTS.map((r) => r.id));
+  const names = useRef(start.names);
+  const [pageIds, setPageIds] = useState<string[]>(() => start.state.pages.map((p) => p.id));
   const [stamp, setStamp] = useState(0);
-  const [selected, setSelected] = useState(REPORTS[0].id);
+  const [selected, setSelected] = useState(start.state.selectedPageId ?? REPORTS[0].id);
   const [mode, setMode] = useState<Mode>("view");
   const editing = mode === "edit";
   const [asking, setAsking] = useState(false);
@@ -182,22 +220,46 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const [moved, setMoved] = useState(0);
   const [drill, setDrill] = useState<AgConditionDefinition | null>(null);
   const current = useRef(prepared);
-  const seq = useRef(0);
+  const seq = useRef(start.mine);
   const canvas = useRef<HTMLDivElement>(null);
   const actions = useRef<AgentActions>(null as unknown as AgentActions);
   // S2: Studio builds the harness once; the console renders its sessions.
   const [harness, setHarness] = useState<AgAiHarness | null>(null);
   const [session, setSession] = useState<AgAiChatSession | null>(null);
+  const sessionRef = useRef<AgAiChatSession | null>(null);
+  sessionRef.current = session;
   const [pending, setPending] = useState<string | null>(null);
   const [leadMode, setLeadMode] = useState<"model" | "fallback" | null>(null);
   const built = useRef<AgAiHarness | null>(null);
   const harnessFor = (a: AgStudioApi) =>
-    (built.current ??= doorstepHarness(a, actions, (agent, t) => { if (agent === "doorstep") setLeadMode(t.mode); }));
+    (built.current ??= doorstepHarness(a, actions, (agent, t) => {
+      if (agent !== "doorstep") return;
+      setLeadMode(t.mode);
+      // AS-22: which provider answered, for the line under the reply to the seller's latest question.
+      const asked = [...(sessionRef.current?.messages ?? [])].reverse().find((m) => m.role === "user");
+      if (asked) noteTurn(asked.id, t);
+    }));
 
   // Every state update (a change, an undo, a redo, a page switch): re-read the pages for the rail,
   // follow the page Studio shows (an agent opens the report it made), and move the ledger.
   const stateSeen = useRef((_state: AgReportState) => {});
+  const timer = useRef<number | undefined>(undefined);
+  const unsaved = useRef<AgReportState | null>(null);
+  /** AS-17: the seller's reports, saved a moment after the last change (and when the tab closes). */
+  const flush = useCallback(() => {
+    window.clearTimeout(timer.current);
+    const state = unsaved.current;
+    unsaved.current = null;
+    if (state) writeSaved(token, { fields: start.fields, carriers: start.carriers, state, names: [...names.current.entries()] as [string, RailEntry][] });
+  }, [token, start]);
+  useEffect(() => {
+    window.addEventListener("pagehide", flush);
+    return () => { window.removeEventListener("pagehide", flush); flush(); };
+  }, [flush]);
   stateSeen.current = (state) => {
+    unsaved.current = state;
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(flush, SAVE_DELAY_MS);
     setStamp((n) => n + 1);
     const ids = state.pages.map((p) => p.id);
     setPageIds((prev) => (prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids));
@@ -221,7 +283,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     // the stacked breakpoint below take over on a phone, instead of drawing it off-screen.
     layout: { widgetBorderEnabled: true, minWidth: PHONE ? 300 : 600 },
     responsiveLayoutBreakpoints: STACKED,
-    initialState: reportState,
+    initialState: start.state,
     widgets,
     localeText: LOCALE,
     // On a phone the filter rail would cover the report; the report's own filters stay on it.
@@ -305,8 +367,45 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     setMode("edit");
   };
 
+  // AS-17: back to the reports Doorstep ships. One undo step brings the seller's version back.
+  const [sure, setSure] = useState(false);
+  useEffect(() => {
+    if (!sure) return;
+    const t = window.setTimeout(() => setSure(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [sure]);
+  const resetReports = () => {
+    if (!api) return;
+    if (!sure) { setSure(true); return; }
+    setSure(false);
+    clearSaved(token);
+    for (const r of REPORTS) names.current.set(r.id, { name: r.name, hint: r.hint });
+    const fresh = reportStateFor(start.carriers);
+    api.setState({ ...api.getState(), pages: fresh.pages, selectedPageId: "overview" },
+      { historyLabel: "dsHistoryReset", source: BY_SELLER });
+    refresh();
+    setSelected("overview");
+    setMode("view");
+  };
+
+  // AS-20: the browser's print, with the page marked so insights.css shows only the report. Studio
+  // scrolls inside a box; for paper the box takes the whole report's height, so every page prints.
+  const printReport = () => {
+    const box = canvas.current;
+    const full = box?.querySelector<HTMLElement>(".ag-studio-layout")?.scrollHeight;
+    if (box && full) box.style.setProperty("--print-h", `${full}px`);
+    document.body.dataset.printing = "insights";
+    const done = () => {
+      delete document.body.dataset.printing;
+      box?.style.removeProperty("--print-h");
+      window.removeEventListener("afterprint", done);
+    };
+    window.addEventListener("afterprint", done);
+    window.print();
+  };
+
   // AS-06: each answer is a widget at the top of the Answers report, which appears on the first.
-  const answers = useRef(0);
+  const answers = useRef(start.answers);
   const addAnswer = useCallback((asked: Asked) => {
     const id = `answer-${++answers.current}`;
     if (!api) return id;
@@ -328,7 +427,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
   const reports = pageIds.map((id) => ({ id, ...(names.current.get(id) ?? { name: "Report" }) }));
   const ledger = useLedger(api as AgStudioApi | undefined, stamp);
   const build: BuildActions = { has: ledger.has, undo: ledger.undoBuild, redo: ledger.redo, canRedo: ledger.canRedoAll };
-  const chase = useCallback(() => chaseCarrier(current.current), []);
+  const starters = useMemo(() => dataStarters(current.current), [asking]); // eslint-disable-line react-hooks/exhaustive-deps
   const showAnswers = useCallback(() => setSelected(ANSWERS_PAGE), []);
   const latest = useCallback(() => current.current, []);
   const [removed, setRemoved] = useState<ReadonlySet<string>>(() => new Set());
@@ -386,6 +485,7 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
             {live ? <Pause size={15} aria-hidden /> : <Play size={15} aria-hidden />}
           </button>
           <LedgerBar api={api as AgStudioApi | undefined} ledger={ledger} />
+          <button className="btn" onClick={printReport} title="Print or save as PDF"><Printer size={15} aria-hidden />Print</button>
           {/* One front door: questions, findings and chart edits. The badge says it is an agent. */}
           <button className={`btn ask-toggle ${asking ? "on" : ""}`} onClick={() => setAsking((a) => !a)} aria-pressed={asking}
             title="Doorstep's agent answers with charts, finds what changed, and edits charts with AG Studio's own agents">
@@ -411,6 +511,10 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
               </button>
             ))}
             <button className="rb-new" onClick={addReport}><FilePlus2 size={15} aria-hidden />New report</button>
+            <button className="rb-new rb-reset" onClick={resetReports} data-sure={sure || undefined}
+              title="Go back to Doorstep's reports. Undo brings yours back.">
+              <RotateCcw size={15} aria-hidden />{sure ? "Confirm reset" : "Reset report"}
+            </button>
             <div className="rb-foot">
               <ul className="rb-tips">
                 <li title="Click a chart to filter the page"><MousePointerClick size={13} aria-hidden />Click: filter</li>
@@ -419,10 +523,14 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
               </ul>
             </div>
           </nav>
+          <div className="ins-print-head" aria-hidden>
+            <strong>Insights · {reports.find((r) => r.id === selected)?.name ?? "Report"}</strong>
+            <span>{new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} · {prepared.home}</span>
+          </div>
           <div className="rb-canvas" ref={canvas}><AgStudio<DoorstepRegistry> studioProperties={props} modules={AI_MODULES} className="studio-fill" /></div>
           {asking && (
             <AskPanel harness={harness} session={session} onSession={setSession} pending={pending} onPendingSent={pendingSent}
-              actions={answerActions} names={widgetName} mode={leadMode} onClose={() => setAsking(false)} build={build} chase={chase} />
+              actions={answerActions} names={widgetName} mode={leadMode} onClose={() => setAsking(false)} build={build} starters={starters} />
           )}
         </div>
         <p className="ins-note" title={`Money is in ${prepared.home}. An order in another currency counts as an order but never adds to a money total.${prepared.history ? " Use the Data filter to see only your orders." : ""}`}>

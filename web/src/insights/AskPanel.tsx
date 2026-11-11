@@ -14,7 +14,9 @@ import type {
 } from "ag-studio";
 import { AlertTriangle, ArrowUp, Check, CheckCircle2, ChevronDown, Redo2, Square, Undo2, X } from "lucide-react";
 import { ReadBy } from "../components/ai";
-import { BUILD_PLAN, STARTERS, chaseQuestion } from "./agent";
+import type { AgAiPromptStarter } from "ag-studio";
+import { BUILD_PLAN } from "./agent";
+import { answeredBy, seconds, startClock, stopClock, tookMs } from "./answeredBy";
 import { AnswerActionsContext, doorstepToolDisplay, traceLabel, type AnswerActions } from "./agentDisplay";
 
 const NO_MESSAGES: ReadonlyArray<AgAiChatMessage> = [];
@@ -128,12 +130,27 @@ function Trace({ calls, took }: { calls: AgAiToolCallView[]; took: (id: string) 
   );
 }
 
+/** AS-22: "3 steps · 2.4 s · Claude" (or Gemini, or Rules when no model answered), under a finished reply. */
+function AnsweredBy({ id, steps }: { id: string; steps: number }) {
+  const who = answeredBy(id);
+  const ms = tookMs(id);
+  const bits = [steps > 0 ? `${steps} ${steps === 1 ? "step" : "steps"}` : "", ms !== undefined ? seconds(ms) : "", who ?? ""].filter(Boolean);
+  if (!who) return null;
+  return (
+    <p className="ask-by" data-testid="ask-by" data-who={who} title={who === "Rules" ? "No model answered: Doorstep's keyword reader did" : `Answered by ${who}`}>
+      {bits.join(" · ")}
+    </p>
+  );
+}
+
 /** A turn: the question, the plan card if it builds a page, each step, and Undo this build. */
-function Turn({ question, parts, harness, names, busy, build }: {
-  question: string; parts: ReadonlyArray<AgAiChatMessagePart>; harness: AgAiHarness; names: Names; busy: boolean; build?: BuildActions;
+function Turn({ id, question, parts, harness, names, busy, build }: {
+  id: string; question: string; parts: ReadonlyArray<AgAiChatMessagePart>; harness: AgAiHarness; names: Names; busy: boolean; build?: BuildActions;
 }) {
   const calls = useTurnCalls(harness, parts);
   const took = useCallClock(calls);
+  // AS-22: the reply's own clock, from the question to the end of the run.
+  useEffect(() => { if (busy) startClock(id); else stopClock(id); }, [busy, id]);
   const made = calls.find((c) => BUILDS.has(c.name));
   const pageId = made && complete(made) ? (made.result as { data?: { pageId?: string } }).data?.pageId : undefined;
   return (
@@ -142,6 +159,7 @@ function Turn({ question, parts, harness, names, busy, build }: {
       {made && <PlanCard calls={calls} running={busy} />}
       <Parts parts={parts} harness={harness} names={names} />
       {!busy && calls.length > 0 && <Trace calls={calls} took={took} />}
+      {!busy && <AnsweredBy id={id} steps={calls.filter((c) => traceLabel(c.name) !== null).length} />}
       {busy && !parts.length && <p className="ask-thinking"><span className="ins-spinner" aria-hidden />Reading your question…</p>}
       {pageId && build && !busy && (
         build.has(pageId)
@@ -245,7 +263,7 @@ function turnsOf(messages: ReadonlyArray<AgAiChatMessage>) {
   return turns;
 }
 
-export function AskPanel({ harness, session, onSession, pending, onPendingSent, actions, names, mode, onClose, build, chase }: {
+export function AskPanel({ harness, session, onSession, pending, onPendingSent, actions, names, mode, onClose, build, starters }: {
   harness: AgAiHarness | null;
   /** The live conversation, kept by the board so closing the panel keeps it. */
   session: AgAiChatSession | null;
@@ -260,8 +278,8 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
   onClose: () => void;
   /** Undo or redo a page the console built (S4, S5). */
   build?: BuildActions;
-  /** The carrier the chase starter names (the one the scan flags). */
-  chase?: () => string | undefined;
+  /** Three starters chosen from the seller's own rows (starters.ts). */
+  starters: AgAiPromptStarter[];
 }) {
   const { messages, status } = useSession(session);
   const running = status === "running";
@@ -320,16 +338,13 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
           {turns.length === 0 && (
             <div className="ask-start">
               <p className="ask-start-title">Try one of these</p>
-              {STARTERS.map((s) => {
-                // The chase starter names the carrier the scan flags, so one click builds its page.
-                const carrier = s.prompt.includes("chase") ? chase?.() : undefined;
-                const label = carrier ? `Build a page to chase ${carrier}` : s.label;
-                return <button key={s.label} className="ask-starter" onClick={() => send(carrier ? chaseQuestion(carrier) : s.prompt)} disabled={busy || !harness}>{label}</button>;
-              })}
+              {starters.map((s) => (
+                <button key={s.label} className="ask-starter" onClick={() => send(s.prompt)} disabled={busy || !harness}>{s.label}</button>
+              ))}
             </div>
           )}
           {harness && turns.map((t) => (
-            <Turn key={t.id} question={t.question} parts={t.parts} harness={harness} names={names} busy={busy && t === last} build={build} />
+            <Turn key={t.id} id={t.id} question={t.question} parts={t.parts} harness={harness} names={names} busy={busy && t === last} build={build} />
           ))}
         </div>
       </AnswerActionsContext.Provider>

@@ -8,6 +8,9 @@ import { scanAnomalies, tableRows, type Facts, type Finding } from "./agent";
 import type { Prepared } from "./data";
 
 const DAY = 864e5;
+/** The brief lists up to three claims, and four things to do in all. */
+const MAX_CLAIMS = 3;
+const MAX_NEXT = 4;
 const count = (n: number) => Math.round(n).toLocaleString("en-GB");
 const pct1 = (v: number) => `${(v * 100).toFixed(1)}%`;
 /** The same rounding as the Parcel journey's shares, so the two never disagree. */
@@ -90,16 +93,18 @@ export function brief(p: Prepared, now = new Date()): Brief {
     line.push(` Next claim: ${soon.carrier}, `, { b: money(soon.amount, p.home) }, `, in ${days} day${days === 1 ? "" : "s"}.`);
   }
 
+  // AS-19: up to three open claims, the nearest deadline first, each with its own way in.
   const next: DoNext[] = [];
-  if (soon) {
+  for (const c of claims.slice(0, MAX_CLAIMS)) {
+    const left = Math.max(0, Math.ceil((c.due - now.getTime()) / DAY));
     next.push({
-      key: "claim",
-      what: soon.step === "File it with the carrier" ? `File ${soon.carrier} claim` : `${soon.carrier} claim · waiting`,
-      sub: `${money(soon.amount, p.home)} · due ${day(soon.due)}`, days,
-      money: money(soon.amount, p.home), when: `due ${day(soon.due)}`,
-      action: soon.example || !soon.orderId
-        ? { kind: "carrier", label: `Open ${soon.carrier} report`, carrier: soon.carrier }
-        : { kind: "case", label: "Open case", orderId: soon.orderId },
+      key: `claim-${c.orderId ?? c.carrier}-${c.due}`,
+      what: c.step === "File it with the carrier" ? `File ${c.carrier} claim` : `${c.carrier} claim · waiting`,
+      sub: `${money(c.amount, p.home)} · due ${day(c.due)}`, days: left,
+      money: money(c.amount, p.home), when: `due ${day(c.due)}`,
+      action: c.example || !c.orderId
+        ? { kind: "carrier", label: `Open ${c.carrier} report`, carrier: c.carrier }
+        : { kind: "case", label: "Open case", orderId: c.orderId },
     });
   }
   if (carrier) {
@@ -116,5 +121,5 @@ export function brief(p: Prepared, now = new Date()): Brief {
       action: { kind: "method", label: "Show these orders", method: f.key },
     });
   }
-  return { line, signals, next: next.slice(0, 3), findings: scan.findings };
+  return { line, signals, next: next.slice(0, MAX_NEXT), findings: scan.findings };
 }

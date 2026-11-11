@@ -242,9 +242,9 @@ const bare = <T extends NonNullable<Widget>>(w: T): T => ({ ...w, format: { ...w
 
 type Layout = NonNullable<Page["widgetLayout"]>;
 /** The same layout, moved down `n` tracks (room for something new on top). */
-const below = (layout: Layout, n: number): Layout =>
-  Object.fromEntries(Object.entries(layout).map(([k, l]) => [k, l && { ...l, yTrack: l.yTrack + n }])) as Layout;
-const BRIEF_H = 20;
+const below = (layout: Layout, n: number, from = 0): Layout =>
+  Object.fromEntries(Object.entries(layout).map(([k, l]) => [k, l && (l.yTrack >= from ? { ...l, yTrack: l.yTrack + n } : l)])) as Layout;
+const BRIEF_H = 25;
 
 export const overviewPage: Page = {
   id: "overview",
@@ -278,6 +278,70 @@ export const overviewPage: Page = {
     widget: { trend: [{ field: { id: "orders.created_at" }, model: { operator: "lessThan", value: weekStart } }] },
   },
 };
+
+/** AS-18: one linear gauge per carrier, "won ÷ claimed" on a fixed 0 to 100% scale. */
+const GAUGE_PREFIX = "g-";
+const GAUGE_Y = 15;
+const GAUGE_H = 8;
+const gaugeKey = (carrier: string) => GAUGE_PREFIX + carrier.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+function claimGauge(carrier: string | null): Widget {
+  return {
+    type: "linear-gauge",
+    dataMapping: { value: [{ id: "won_share" }] },
+    format: {
+      ...head(carrier ?? "All carriers", "Won ÷ claimed"),
+      // A ratio, so the scale is the same for every carrier and never mixes currencies.
+      style: { direction: "horizontal", thickness: 18, scaleLabel: { enabled: true, min: 0, max: 1 } },
+    },
+  } as Widget;
+}
+
+/** The gauge widgets and their one row of layout, for the carriers the shop ships with. */
+export function claimGauges(carriers: string[]): { widgets: Record<string, Widget>; layout: Layout; filter: Record<string, unknown[]> } {
+  const names: (string | null)[] = carriers.length ? carriers.slice(0, 6) : [null];
+  const span = Math.floor(24 / names.length);
+  const widgets: Record<string, Widget> = {};
+  const layout: Layout = {};
+  const filter: Record<string, unknown[]> = {};
+  names.forEach((c, i) => {
+    const key = c ? gaugeKey(c) : `${GAUGE_PREFIX}all`;
+    widgets[key] = claimGauge(c);
+    layout[key] = { xTrack: i * span, yTrack: GAUGE_Y, xSpan: i === names.length - 1 ? 24 - i * span : span, ySpan: GAUGE_H };
+    if (c) filter[key] = [{ field: { id: "orders.carrier" }, model: { operator: "equals", value: c } }];
+  });
+  return { widgets, layout, filter };
+}
+
+/**
+ * The Carriers page with its gauges. Without carriers there is still one gauge for all of them, so
+ * the row (which every other widget has made room for) is never empty.
+ */
+export function carriersPageFor(carriers: string[]): Page {
+  const g = claimGauges(carriers);
+  return {
+    ...carriersPage,
+    widgets: { ...carriersPage.widgets, ...g.widgets },
+    widgetLayout: { ...below(carriersPage.widgetLayout as Layout, GAUGE_H, GAUGE_Y), ...g.layout },
+    filter: { widget: g.filter } as Page["filter"],
+  };
+}
+
+/** A saved Carriers page for another set of carriers: its gauges replaced, nothing else touched. */
+export function regauge(page: Page, carriers: string[]): Page {
+  const keep = (o: Record<string, unknown> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !k.startsWith(GAUGE_PREFIX)));
+  const g = claimGauges(carriers);
+  const layout = keep(page.widgetLayout as Record<string, unknown>) as Layout;
+  // A seller who has put something in the gauge row keeps it: the gauges are not forced over it.
+  const taken = Object.values(layout).some((l) => l && l.yTrack < GAUGE_Y + GAUGE_H && l.yTrack + l.ySpan > GAUGE_Y);
+  const widgetFilter = keep((page.filter as { widget?: Record<string, unknown> } | undefined)?.widget);
+  return {
+    ...page,
+    widgets: { ...keep(page.widgets as Record<string, unknown>), ...(taken ? {} : g.widgets) } as Page["widgets"],
+    widgetLayout: { ...layout, ...(taken ? {} : g.layout) },
+    filter: { ...page.filter, widget: { ...widgetFilter, ...(taken ? {} : g.filter) } } as Page["filter"],
+  };
+}
 
 export const carriersPage: Page = {
   id: "carriers",
@@ -363,8 +427,11 @@ export const REPORTS = [
   { id: "areas", name: "Areas", hint: "Where deliveries fail" },
 ];
 
-export const reportState: AgReportState<DoorstepRegistry> = {
-  pages: [overviewPage, carriersPage, casesPage, areasPage],
+const PANELS = { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true }, ai: { collapsed: true } };
+
+/** The reports a shop opens with, the Carriers page including a claim gauge for each of its carriers. */
+export const reportStateFor = (carriers: string[]): AgReportState<DoorstepRegistry> => ({
+  pages: [overviewPage, carriersPageFor(carriers), casesPage, areasPage],
   selectedPageId: "overview",
-  panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true }, ai: { collapsed: true } },
-};
+  panels: PANELS,
+});
