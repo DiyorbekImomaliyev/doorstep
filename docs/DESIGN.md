@@ -84,6 +84,7 @@ transaction.
 | A dispute opens while a refund waits | The live re-check blocks the refund and moves the case to dispute evidence |
 | Evidence changes after the decision | The fingerprint differs; the refund is blocked for a person |
 | A refund fails for good | Marked failed, never retried with a new key; the case goes to a person |
+| A refund marked failed, that PayPal made after all | PayPal's REFUNDED webhook finds it by its custom id: the record becomes completed with PayPal's refund id and a held case settles; a case a person closed stays closed |
 | PayPal answers a refund as PENDING | Counted as on its way, so it is never sent twice; the case settles when PayPal confirms it (webhook, or the worker's 5-minute sweep reads PayPal) |
 | PayPal resolves a dispute | The case that waited on it closes; PayPal's decision stands |
 | A forged PayPal webhook | Signature check fails; nothing is stored |

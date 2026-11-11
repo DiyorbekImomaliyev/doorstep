@@ -184,7 +184,8 @@ Each screenshot opens with a click.
 ### Control Room
 
 The seller's home. KPI cards count the orders that need the seller, parcels in transit, money at stake and money recovered from carriers. A click filters the
-grid. A prevention tip comes from the seller's own cases, and the greeting names the next thing to do.
+grid. A prevention tip comes from the seller's own cases, and the guide row names the next thing to do. The sidebar holds the rest: **Resolve** (Claims,
+Disputes, Money), **Automate** (Autopilot, Policy) and **Analytics** (Insights). Each page has its own link, such as `#claims`.
 
 <details>
 <summary>Screenshot: the Delivery Control Room</summary>
@@ -215,7 +216,8 @@ Each row opens a detail panel without leaving the table. The grid also does a se
   grid's filters, a pivot of delivery by journey, a packing-list PDF and a hand-off PDF.
 - **Money done right.** Group by delivery or journey and the totals stay per currency, with a share of money at stake. Select cells and the status bar sums
   them.
-- **Every hand.** Keyboard, Find that marks matches in place, Excel export, and on a phone each order becomes one card in the same grid.
+- **Every hand.** Keyboard, Find that marks matches in place, an Excel workbook (Orders, then By delivery with money per currency), column widths and order
+  remembered in the browser, and on a phone each order becomes one card in the same grid.
 
 <details>
 <summary>Screenshot: an order with its detail panel open</summary>
@@ -239,6 +241,28 @@ Each row opens a detail panel without leaving the table. The grid also does a se
 <details>
 <summary>Screenshot: Diyorbek's case, with the contradicted delivered scan</summary>
 <img src="docs/img/screens/case.png" alt="A case: likely cause, rule, delivered-scan audit and carrier recovery" width="520">
+</details>
+
+### Claims, Disputes and Money
+
+Three ledgers read from Doorstep's own records, each with KPIs on top and an AG Grid table with one total per currency. A row opens its case.
+
+- **Claims:** every carrier claim, its status, the days left and what the carrier paid. Group by carrier.
+- **Disputes:** each PayPal dispute, the route Doorstep took, the Seller Protection verdict and the outcome.
+- **Money:** every refund, offer and evidence send, with PayPal's refund id, the `PayPal-Request-Id` and a link to the signed receipt. It updates live
+  while a refund is on its way.
+
+The pages read; none of them can move money. **Autopilot** and **Policy** have pages of their own too: the seller's rules with what they spent, and the
+shop's written policy checked against the law.
+
+<details>
+<summary>Screenshot: Claims, with what the carriers paid back</summary>
+<img src="docs/img/screens/claims.png" alt="The Claims page: open claims, money recovered, days left, and a ledger grid with a total per currency" width="100%">
+</details>
+
+<details>
+<summary>Screenshot: Money, every PayPal write with its idempotency key</summary>
+<img src="docs/img/screens/money.png" alt="The Money page: refunds with status, PayPal refund id, request key and receipt link" width="100%">
 </details>
 
 ### Buyer's page
@@ -274,7 +298,10 @@ Reports on AG Studio, with an agent that reads them and builds them.
   an **Areas** report with a 3D atlas of postcode areas (height is orders, colour is failures; a click filters the page).
 - **Ask Doorstep.** Studio's agent, in view mode. A question gets a figure, a chart or a page. "Which carrier cost me most this month?" answers in words with
   the chart beside it. "Chase Evri" plans a page and lets Studio's own page and widget agents build it. Every change the agent makes is listed, attributed and
-  one click from undone. **Steps** under each reply shows how it worked it out. It sees no buyer details and cannot move money.
+  one click from undone. **Steps** under each reply shows how it worked it out, and a line says who answered: Claude, Gemini or Doorstep's rules. Its
+  starters come from the shop's own rows. It sees no buyer details and cannot move money.
+- **Kept and printed.** Reports stay as the seller left them in this browser (Reset report puts them back) and print on A4. The brief lists the claims due
+  next, and Carriers has a won ÷ claimed gauge for each carrier.
 - **Doorstep's widgets** (the brief, the parcel journey, money flow, the claim clock, the evidence meter, failure points, the atlas) are Studio widgets with AI
   descriptions, so the agent can add them to a page like any chart.
 
@@ -308,6 +335,9 @@ The Control Room is AG Grid 36 Enterprise and Insights is AG Studio 3.1. Each fe
 | Find, cell selection, side bar | Find module, cell selection with the status bar, New Filters tool panel | The Doorstep panel counts lanes and clears them |
 | Detail panel | Master detail with a nested grid | The case timeline, six rows then "Show all" |
 | Phone cards | One custom column below 600 px, row height per node | The same grid, the same data, a thumb's layout |
+| Claims, Disputes, Money | Pinned total rows, row grouping, status bar, grid state | Read-only; one total per currency, never £ plus $ |
+| Excel workbook, remembered layout | Multiple-sheet Excel export, grid state API | Per-currency group titles; filters are never restored |
+| Saved reports, claim gauges | Studio state, linear gauge widget | Kept in this browser only; a ratio, so currencies never mix |
 | The brief and the atlas | Studio custom widgets with `ai` metadata, `defaultState` and the widget menu | The agent can add them; they read the postcode area only |
 | Ask Doorstep | Studio Agent Framework: lead agent, Studio's page and widget agents, tool overrides | A read-only toolset; the browser computes every number |
 | Chase a carrier | `create_report`, `check_page`, `build_report_template` | A plan card first; a template fallback with no model |
