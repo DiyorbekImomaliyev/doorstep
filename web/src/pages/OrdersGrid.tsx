@@ -762,7 +762,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     {
       colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned", hide: !scored || phone,
-      filter: "agNumberColumnFilter", tooltipField: "delivery_risk", tooltipComponent: RiskTip,
+      filter: "agNumberColumnFilter", tooltip: ({ data }) => data?.delivery_risk, tooltipComponent: RiskTip,
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <RiskCell r={p.data} /> : null),
     },
     {
@@ -770,7 +770,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       valueGetter: (p) => p.data?.evidence.score ?? 0,
       // Filtered by how many of the five proofs are on file (0 to 5), as the cell shows them.
       filter: "agNumberColumnFilter", filterValueGetter: (p) => (p.data ? proofList(p.data).filter((x) => x.ok).length : 0),
-      tooltipValueGetter: () => "proof", tooltipComponent: EvidenceTip,
+      tooltip: () => "proof", tooltipComponent: EvidenceTip,
       cellRenderer: ProofCell,
     },
     {
