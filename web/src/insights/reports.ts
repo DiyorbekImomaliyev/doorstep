@@ -244,7 +244,7 @@ type Layout = NonNullable<Page["widgetLayout"]>;
 /** The same layout, moved down `n` tracks (room for something new on top). */
 const below = (layout: Layout, n: number, from = 0): Layout =>
   Object.fromEntries(Object.entries(layout).map(([k, l]) => [k, l && (l.yTrack >= from ? { ...l, yTrack: l.yTrack + n } : l)])) as Layout;
-const BRIEF_H = 25;
+const BRIEF_H = 23; // the brief: headline, signals and four Do next rows
 
 export const overviewPage: Page = {
   id: "overview",
@@ -291,8 +291,14 @@ function claimGauge(carrier: string | null): Widget {
     dataMapping: { value: [{ id: "won_share" }] },
     format: {
       ...head(carrier ?? "All carriers", "Won ÷ claimed"),
-      // A ratio, so the scale is the same for every carrier and never mixes currencies.
-      style: { direction: "horizontal", thickness: 18, scaleLabel: { enabled: true, min: 0, max: 1 } },
+      // A ratio, so the scale is the same for every carrier and never mixes currencies. The value
+      // sits at the track's end, where a short bar still shows it; the fixed 0-100% scale needs no ticks.
+      style: {
+        direction: "horizontal",
+        thickness: 18,
+        label: { enabled: true, placement: "outside-end" },
+        scaleLabel: { enabled: false, min: 0, max: 1 },
+      },
     },
   } as Widget;
 }
