@@ -11,19 +11,22 @@ test("GS-01 a resized column keeps its width after a reload", async ({ page }) =
   await page.goto(href);
   const all = page.getByRole("group", { name: "Filter orders" }).getByRole("button", { name: /^All orders/ });
   await all.click();
-  const head = page.locator('.orders-grid .ag-header-cell[col-id="buyer"]').first();
+  const head = page.locator('.orders-grid .ag-header-cell[col-id="method"]').first();
   await expect(head).toBeVisible();
-  const before = await width(page, "buyer");
-  const box = (await head.boundingBox())!;
-  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2);
+  const before = await width(page, "method");
+  // Drag AG Grid's own resize handle on the header's right edge.
+  await head.hover();
+  const grip = (await head.locator(".ag-header-cell-resize").boundingBox())!;
+  const [x, y] = [grip.x + grip.width / 2, grip.y + grip.height / 2];
+  await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width + 58, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.move(x + 60, y, { steps: 8 });
   await page.mouse.up();
-  await expect.poll(() => width(page, "buyer")).toBeGreaterThan(before + 30);
-  const after = await width(page, "buyer");
+  await expect.poll(() => width(page, "method")).toBeGreaterThan(before + 30);
+  const after = await width(page, "method");
 
   await page.reload();
   await all.click();
   await expect(head).toBeVisible();
-  expect(Math.abs((await width(page, "buyer")) - after)).toBeLessThan(4);
+  expect(Math.abs((await width(page, "method")) - after)).toBeLessThan(4);
 });

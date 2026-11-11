@@ -82,7 +82,7 @@ export function useDueColumns(rows: OrderRow[], phone: boolean, api: RefObject<G
   }, [claims, api]);
   return useMemo((): ColDef<OrderRow>[] => [
     {
-      colId: "due", headerName: "Due", width: 84, hide: phone, filter: false, chartDataType: "excluded",
+      colId: "due", headerName: "Due", initialWidth: 84, hide: phone, filter: false, chartDataType: "excluded",
       valueGetter: (p) => (p.data?.case_id ? ref.current.get(p.data.case_id)?.at ?? null : null),
       // Soonest first; rows without a deadline stay last in both directions.
       comparator: (a: number | null, b: number | null, _x, _y, desc) => (a == null ? (b == null ? 0 : desc ? -1 : 1) : b == null ? (desc ? 1 : -1) : a - b),

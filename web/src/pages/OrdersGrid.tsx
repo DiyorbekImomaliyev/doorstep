@@ -842,7 +842,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     {
       // The value is what the cell says ("Lost by carrier"), so grouping by Journey reads like the column.
-      colId: "status", headerName: "Journey", width: 166, hide: phone, enableCellChangeFlash: true,
+      colId: "status", headerName: "Journey", initialWidth: 166, hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => (p.data ? journeyLabel(p.data) : null), enableRowGroup: true, suppressHeaderMenuButton: false,
       // Filtered (and asked) by what the cell says: "Lost by carrier", not "Case open". Values a
       // reading picked survive the 10 s poll even when the last matching row leaves.
@@ -854,12 +854,12 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <JourneyCell r={p.data} quiet={hasNote(latestNotes.current, p.data.order_id, "status")} /> : null),
     },
     {
-      colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned", hide: !scored || phone,
+      colId: "risk", headerName: "Risk", field: "delivery_risk", initialWidth: 86, type: "rightAligned", hide: !scored || phone,
       filter: "agNumberColumnFilter", tooltip: ({ data }) => data?.delivery_risk, tooltipComponent: RiskTip,
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <RiskCell r={p.data} /> : null),
     },
     {
-      colId: "proof", headerName: "Proof", width: 112, hide: phone, enableCellChangeFlash: true,
+      colId: "proof", headerName: "Proof", initialWidth: 112, hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.evidence.score ?? 0,
       // Filtered by how many of the five proofs are on file (0 to 5), as the cell shows them.
       filter: "agNumberColumnFilter", filterValueGetter: (p) => (p.data ? proofList(p.data).filter((x) => x.ok).length : 0),
@@ -867,7 +867,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: ProofCell,
     },
     {
-      colId: "money", headerName: "At stake", chartDataType: "excluded", width: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
+      colId: "money", headerName: "At stake", chartDataType: "excluded", initialWidth: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
       filter: "agNumberColumnFilter", suppressHeaderMenuButton: false,
       // AG Grid aggregates it for group rows (per currency) and offers "% of total" in the column menu.
@@ -878,7 +878,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     ...dueColumns,
     {
-      colId: "method", headerName: "Delivery", field: "method", chartDataType: "excluded", width: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
+      colId: "method", headerName: "Delivery", field: "method", chartDataType: "excluded", initialWidth: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
       filter: "agSetColumnFilter", filterParams: { preservePreviousValues: true, valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
       valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <DeliveryCell r={p.data} /> : null),
@@ -887,15 +887,15 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     ...currencyColumns(),
     ...pivotColumns(),
     {
-      colId: "next", headerName: "Next step", hide: true, width: 160,
+      colId: "next", headerName: "Next step", hide: true, initialWidth: 160,
       valueGetter: (p) => (p.data ? routeLabel(p.data) || nextAction(p.data).label : ""), filter: "agSetColumnFilter", enableRowGroup: true,
       filterParams: { preservePreviousValues: true },
     },
     {
-      colId: "buyer", headerName: "Buyer area", field: "buyer_area", hide: true, width: 120, filter: "agSetColumnFilter", enableRowGroup: true,
+      colId: "buyer", headerName: "Buyer area", field: "buyer_area", hide: true, initialWidth: 120, filter: "agSetColumnFilter", enableRowGroup: true,
     },
     {
-      colId: "updated", headerName: "Updated", field: "last_update", hide: true, width: 110, initialSort: "desc", initialSortIndex: 1, type: "rightAligned",
+      colId: "updated", headerName: "Updated", field: "last_update", hide: true, initialWidth: 110, initialSort: "desc", initialSortIndex: 1, type: "rightAligned",
       valueFormatter: (p) => (p.value ? ago(String(p.value)) : ""), cellClass: "faint-cell", filter: false,
     },
     {
@@ -1010,6 +1010,9 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         rowData={rows}
         columnDefs={cardColumns}
         getRowId={getRowId}
+        // Columns are rebuilt when the list changes (lanes, risk scores); the seller's widths
+        // (initialWidth above) and column order stay as they set them.
+        maintainColumnOrder
         defaultColDef={defaultColDef}
         quickFilterText={search}
         onGridReady={(e) => { api.current = e.api; if (!card && !phone) restoreLayout(e.api); views.bind(e.api); bindSeen(e.api); syncSeen(rows); onReady(e.api); }}
