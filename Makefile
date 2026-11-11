@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-explore mutmut mutmut-gate test-integration test-pg cov locked-untouched gate evals redteam web-build dev demo e2e fuzz smoke risk-model
+.PHONY: assistant-demo setuplint test test-explore mutmut mutmut-gate test-integration test-pg cov locked-untouched gate evals redteam web-build dev demo e2e fuzz smoke risk-model
 
 setup:
 	uv sync
@@ -126,3 +126,8 @@ fuzz:
 # the sandbox buyer, then finishes on its own.
 smoke:
 	uv run $(if $(wildcard .env),--env-file .env,) python scripts/sandbox_smoke.py
+
+# MC-04: a buyer's AI assistant uses Doorstep over MCP (default http://127.0.0.1:8000).
+ASSISTANT_BASE ?= http://127.0.0.1:8000
+assistant-demo:
+	uv run python scripts/assistant_demo.py --base $(ASSISTANT_BASE)
