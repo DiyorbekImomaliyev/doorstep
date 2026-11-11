@@ -21,9 +21,12 @@ test("AP-06 Malika approves Diyorbek, turns autopilot on, then off", async ({ pa
   await page.keyboard.press("Escape");
   await offer.getByRole("button", { name: "Turn on" }).click();
 
+  await expect(page.getByLabel("Autopilot suggestion")).toHaveCount(0); // turned on: the offer is gone from the Control Room
+  await page.locator("aside.sidebar").getByRole("button", { name: "Autopilot" }).click(); // NV-02: the rules live on their page
   const rules = page.getByLabel("Autopilot rules");
   await expect(rules).toContainText("Autopilot on: lost parcels up to £60");
   await rules.getByRole("button", { name: "Turn off" }).click();
-  await expect(rules).toHaveCount(0);
+  await expect(rules).toContainText("Autopilot is off");
+  await page.locator("aside.sidebar").getByRole("button", { name: "All orders" }).click();
   await expect(page.getByLabel("Autopilot suggestion")).toHaveCount(0); // turned off: never offered again
 });

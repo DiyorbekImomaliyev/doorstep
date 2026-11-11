@@ -109,6 +109,29 @@ export type RecoverySummary = {
   open_claim_minor: Record<string, number>;
 };
 
+/** NV-01: one carrier claim per row. */
+export type ClaimRow = {
+  recovery_id: string; case_id: string; order_id: string; order_ref: string; item: string;
+  carrier: string; carrier_name: string; claim_minor: number; cover_minor: number | null; currency: string;
+  status: "PREPARED" | "SUBMITTED" | "PAID" | "DENIED" | "WITHDRAWN" | "EXPIRED" | string;
+  deadline_at: string; recovered_minor: number | null; submitted_at: string | null; window_days: number;
+};
+
+/** MN-01: one money action per row; a demo refund reads "simulated". */
+export type MoneyRow = {
+  action_id: string; case_id: string | null; order_id: string; order_ref: string; item: string;
+  kind: string; amount_minor: number; currency: string; status: string;
+  paypal_refund_id: string | null; request_id: string | null; created_at: string; external: boolean;
+};
+
+/** DS-01: a PayPal dispute on one of the seller's orders, from stored rows. */
+export type DisputeRow = {
+  dispute_id: string; paypal_dispute_id: string; order_id: string; case_id: string | null; order_ref: string;
+  item: string; reason: string | null; amount_minor: number; currency: string; status: "open" | "resolved" | string;
+  route: "evidence" | "offer" | "waiting" | string; protection: string | null; outcome: string | null;
+  opened_at: string; simulated: boolean;
+};
+
 export type Counterfactual = {
   rule_id: string | null;
   possession_proven: boolean;
@@ -441,6 +464,9 @@ export const api = {
       amountMinor === undefined ? undefined : { amount_minor: amountMinor },
     ),
   recoveries: (t: string) => call<RecoverySummary>("GET", `/api/seller/${t}/recoveries`),
+  claims: (t: string) => call<ClaimRow[]>("GET", `/api/seller/${t}/claims`),
+  money: (t: string) => call<MoneyRow[]>("GET", `/api/seller/${t}/money`),
+  disputes: (t: string) => call<DisputeRow[]>("GET", `/api/seller/${t}/disputes`),
   economics: (t: string) => call<Economics>("GET", `/api/seller/${t}/economics`),
   prevention: (t: string) => call<PreventionTip[]>("GET", `/api/seller/${t}/prevention`),
 };

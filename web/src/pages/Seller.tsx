@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { BarChart3, BookOpen, Check, ReceiptText, Columns3, Copy, Download, FileText, FileWarning, FolderOpen, Info, Inbox, Landmark, Lightbulb, List, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
-import { api, type Autopilot, type AutopilotStatement, type Economics, type GridAnswer, type GridPlan, type OrderRow, type PolicyCheck, type PreventionTip, type RecoverySummary } from "../api";
+import { BarChart3, BookOpen, ReceiptText, Columns3, Download, FileText, FileWarning, FolderOpen, Gavel, HandCoins, Info, Inbox, Landmark, Lightbulb, List, PackageX, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
+import { api, type Economics, type GridAnswer, type GridPlan, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
 import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync } from "../components/ui";
 import CommandBar, { type Command } from "../components/CommandBar";
@@ -10,10 +10,35 @@ import { money } from "../format";
 import CaseDrawer from "./CaseDrawer";
 import OrdersGrid, { exportExcel, exportHandoffPdf, revealRows, sumStake, toggleColumnsPanel } from "./OrdersGrid";
 import Reading from "../grid/Reading";
+import AutopilotPage, { AutopilotSuggestion } from "../seller/AutopilotPage";
+import ClaimsPage from "../seller/ClaimsPage";
+import DisputesPage from "../seller/DisputesPage";
+import MoneyPage from "../seller/MoneyPage";
+import PolicyPage from "../seller/PolicyPage";
 import { applyPlan, menuFromGrid, menuSource, restore, snapshot, type Snapshot } from "../grid/ask";
 
 // AG Studio is large: it loads only when the seller opens Insights.
 const Insights = lazy(() => import("../insights/Insights"));
+
+type Page = "orders" | "insights" | "claims" | "money" | "disputes" | "autopilot" | "policy";
+const PAGE: Record<Exclude<Page, "orders">, { label: string; hint: string; icon: React.ReactNode; keywords: string }> = {
+  claims: { label: "Claims", hint: "Carrier claims", icon: <PackageX />, keywords: "carrier recovery lost damaged royal mail" },
+  disputes: { label: "Disputes", hint: "PayPal disputes", icon: <Gavel />, keywords: "paypal dispute chargeback inquiry evidence" },
+  money: { label: "Money", hint: "Refunds and offers", icon: <HandCoins />, keywords: "refund ledger paypal receipt payment" },
+  autopilot: { label: "Autopilot", hint: "Automatic refunds", icon: <Zap />, keywords: "rules automatic refund statement" },
+  policy: { label: "Policy", hint: "Policy against the law", icon: <FileWarning />, keywords: "shop policy law check terms" },
+  insights: { label: "Insights", hint: "AG Studio reports", icon: <BarChart3 />, keywords: "analytics dashboard reports charts" },
+};
+const PAGES = (["claims", "disputes", "money", "autopilot", "policy", "insights"] as const).map((page) => ({ page, ...PAGE[page] }));
+const NAV: { label: string; pages: Exclude<Page, "orders">[] }[] = [
+  { label: "Resolve", pages: ["claims", "disputes", "money"] },
+  { label: "Automate", pages: ["autopilot", "policy"] },
+  { label: "Analytics", pages: ["insights"] },
+];
+const pageOfHash = (h: string): Page => {
+  const k = h.replace(/^#/, "");
+  return k in PAGE ? (k as Page) : "orders";
+};
 
 type Filter = "action" | "flight" | "cases" | "all";
 const VIEW_OF: Record<GridPlan["view"], Filter> = { needs_you: "action", in_transit: "flight", cases: "cases", all: "all" };
@@ -79,146 +104,15 @@ function PlanStrip({ e }: { e: Economics }) {
   );
 }
 
+/** Prevention suggestion: one slim line; the detail rides in the tooltip. */
 function Tip({ t }: { t: PreventionTip }) {
+  const detail = `${t.cases} of ${t.orders} ${METHOD_TEXT[t.method] ?? t.method} orders became cases (${money(t.money_minor, t.currency)}). ${t.suggested_method === "locker" ? "A locker pickup code proves the buyer has it." : "A signature proves who received it."}`;
   return (
-    <div className="tip">
-      <span className="tip-icon" aria-hidden><Lightbulb size={16} /></span>
-      <div className="col grow" style={{ gap: 2 }}>
-        <span style={{ fontWeight: 600 }}>Offer {METHOD_TEXT[t.suggested_method] ?? t.suggested_method} on {t.band} orders</span>
-        <span className="muted" style={{ fontSize: 13 }} title={t.suggested_method === "locker" ? "A locker pickup code proves the buyer has it." : "A signature proves who received it."}>
-          {t.cases} of {t.orders} {METHOD_TEXT[t.method] ?? t.method} orders became cases ({money(t.money_minor, t.currency)}).
-        </span>
-      </div>
+    <div className="tip tip-slim" title={detail} aria-label="Prevention suggestion">
+      <span className="tip-icon" aria-hidden><Lightbulb size={14} /></span>
+      <span className="tip-title">Offer {METHOD_TEXT[t.suggested_method] ?? t.suggested_method} on {t.band} orders</span>
       <Badge>Suggestion</Badge>
     </div>
-  );
-}
-
-const KIND: Record<string, string> = { CARRIER_LOST: "lost parcels", DAMAGED_IN_TRANSIT: "parcels damaged in transit" };
-const kindText = (fp: string) => KIND[fp] ?? fp.toLowerCase().replaceAll("_", " ");
-
-/** AP-06: the seller's own pattern, offered as a rule they turn on; active rules with an off switch.
- *  Suggestions are computed in code from the seller's approvals; money still moves only through the policy. */
-function AutopilotCard({ token, data, statement, onChange, onOpen }: {
-  token: string; data: Autopilot; statement: AutopilotStatement | null; onChange: (m: string) => void; onOpen: (orderId: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  async function act(fn: () => Promise<unknown>, done: string) {
-    setBusy(true); setErr(null);
-    try { await fn(); onChange(done); } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
-  }
-  const s = data.suggestions[0];
-  if (s) {
-    const kind = kindText(s.failure_point);
-    const max = money(s.max_amount_minor, s.currency);
-    return (
-      <section className="autopilot" aria-label="Autopilot suggestion">
-        <span className="ap-icon" aria-hidden><Zap /></span>
-        <div className="col grow" style={{ gap: 3, minWidth: 0 }}>
-          <span className="ap-title">Auto-refund {kind} up to {max}?</span>
-          <span className="ap-text">
-            You approved {s.approved} of {s.approved} in {s.window_days} days. Disputes, held cases and anything over {max} still come to you.
-          </span>
-          {err && <ErrorBox message={err} />}
-        </div>
-        <div className="ap-actions">
-          <button className="btn ghost" disabled={busy} onClick={() => act(() => api.autopilotDismiss(token, s.failure_point, s.currency), "Okay. Still yours to approve.")}>Not now</button>
-          <button className="btn primary" disabled={busy} onClick={() => act(() => api.autopilotOn(token, s.failure_point, s.currency), `Autopilot on: ${kind} up to ${max}.`)}>Turn on</button>
-        </div>
-      </section>
-    );
-  }
-  if (!data.rules.length && !statement?.cases.length) return null;
-  return (
-    <section className="autopilot on" aria-label="Autopilot rules">
-      <span className="ap-icon" aria-hidden><Zap /></span>
-      <div className="col grow" style={{ gap: 6, minWidth: 0 }}>
-        {data.rules.map((r) => {
-          const kind = kindText(r.failure_point);
-          const max = money(r.max_amount_minor, r.currency);
-          return (
-            <div key={r.id} className="ap-rule">
-              <span className="col" style={{ gap: 2, minWidth: 0 }}>
-                <span className="ap-title">Autopilot on: {kind} up to {max}</span>
-                <span className="ap-text">Within your daily cap · learned from {r.precedents} approvals</span>
-              </span>
-              <button className="btn ghost" disabled={busy} onClick={() => act(() => api.autopilotOff(token, r.id), `Autopilot off: ${kind} come to you again.`)}>Turn off</button>
-            </div>
-          );
-        })}
-        {!data.rules.length && <span className="ap-title">Autopilot is off</span>}
-        {statement && <StatementLine s={statement} onOpen={onOpen} />}
-        {err && <ErrorBox message={err} />}
-      </div>
-    </section>
-  );
-}
-
-/** AP-07: automatic spending, accounted for. Figures come from stored records, never a model. */
-function StatementLine({ s, onOpen }: { s: AutopilotStatement; onOpen: (orderId: string) => void }) {
-  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-  if (!s.cases.length) return <span className="ap-statement muted">No automatic refunds in {s.days} days.</span>;
-  return (
-    <div className="ap-statement" aria-label="Autopilot statement">
-      {s.totals.map((t) => (
-        <span key={t.currency}>
-          <strong>Last {s.days} days: {plural(t.refunds, "automatic refund")}, {money(t.refunded_minor, t.currency)}</strong>
-          {t.claimable_minor > 0 && <> · {money(t.claimable_minor, t.currency)} to claim back{t.ready_to_send > 0 && ` (${plural(t.ready_to_send, "claim")} ready to send)`}</>}
-          {t.recovered_minor > 0 && <> · {money(t.recovered_minor, t.currency)} recovered</>}
-        </span>
-      ))}
-      <span className="ap-cases">
-        {s.cases.map((c) => (
-          <button key={c.case_id} className="chip" onClick={() => onOpen(c.order_id)} title={`Open ${c.order_ref}`}>
-            {c.item} · {money(c.amount_minor, c.currency)}
-          </button>
-        ))}
-      </span>
-    </div>
-  );
-}
-
-/** PC-05: sentences in the seller's own policy that the rules contradict. The model reads; code
- *  checked every quote word for word against the policy before it reached this card. */
-function PolicyCard({ check }: { check: PolicyCheck }) {
-  const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState<number | null>(null);
-  const n = check.issues.length;
-  const law = check.source.split(" — ")[0];
-  async function copy(i: number, text: string) {
-    try { await navigator.clipboard.writeText(text); setCopied(i); window.setTimeout(() => setCopied(null), 1600); } catch { /* clipboard blocked: the text stays selectable */ }
-  }
-  return (
-    <section className="autopilot policy" aria-label="Policy check">
-      <span className="ap-icon" aria-hidden><FileWarning /></span>
-      <div className="col grow" style={{ gap: 6, minWidth: 0 }}>
-        <div className="ap-rule">
-          <span className="col" style={{ gap: 2, minWidth: 0 }}>
-            <span className="ap-title">{n === 1 ? "One sentence" : `${n} sentences`} in your delivery policy {n === 1 ? "conflicts" : "conflict"} with {law}</span>
-            {!open && <span className="ap-text">{check.issues[0].problem}</span>}
-          </span>
-          <button className="btn ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide" : "Review"}</button>
-        </div>
-        {open && (
-          <ol className="pc-issues">
-            {check.issues.map((it, i) => (
-              <li key={i}>
-                <blockquote>“{it.quote}”</blockquote>
-                <p>{it.problem}</p>
-                <div className="pc-fix">
-                  <span className="faint">Suggested wording</span>
-                  <p>{it.suggestion}</p>
-                  <button className="btn ghost" onClick={() => copy(i, it.suggestion)}>{copied === i ? <><Check aria-hidden />Copied</> : <><Copy aria-hidden />Copy</>}</button>
-                </div>
-                <span className="faint">Based on: {it.facts.map((f) => (f.source === "doorstep_settings" ? "your Doorstep settings" : `${f.source} (${check.rule_version})`)).filter((v, j, a) => a.indexOf(v) === j).join(", ")}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-        {open && <span className="faint">Read by AI; every quote was matched word for word to your policy before it was shown. Nothing changes until you edit your policy. {check.disclaimer}</span>}
-      </div>
-    </section>
   );
 }
 
@@ -231,7 +125,10 @@ export default function Seller({ token }: { token: string }) {
   const auto = useAsync(() => api.autopilot(token), [token]);
   const spent = useAsync(() => api.autopilotStatement(token), [token]);
   const policy = useAsync(() => api.policyCheck(token), [token]);
-  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); auto.reload(); spent.reload(); policy.reload(); costs.reload(); };
+  const claims = useAsync(() => api.claims(token), [token]);
+  const moneyRows = useAsync(() => api.money(token), [token]);
+  const disputes = useAsync(() => api.disputes(token), [token]);
+  const reload = () => { reloadOrders(); recovered.reload(); tips.reload(); auto.reload(); spent.reload(); policy.reload(); costs.reload(); claims.reload(); moneyRows.reload(); disputes.reload(); };
   const [filter, setFilter] = useState<Filter | null>(null);
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -262,8 +159,14 @@ export default function Seller({ token }: { token: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const gridApi = useRef<GridApi | null>(null);
-  const [page, setPage] = useState<"orders" | "insights">(() => (location.hash === "#insights" ? "insights" : "orders"));
-  const go = (p: "orders" | "insights") => { setPage(p); history.replaceState(null, "", p === "insights" ? "#insights" : location.pathname + location.search); };
+  const [page, setPage] = useState<Page>(() => pageOfHash(location.hash));
+  const go = (p: Page) => { setPage(p); history.replaceState(null, "", p === "orders" ? location.pathname + location.search : `#${p}`); };
+  // A plain <a href="#claims"> anywhere opens that page.
+  useEffect(() => {
+    const on = () => setPage(pageOfHash(location.hash));
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
 
   // Live: the worker moves orders on (tracking, refunds); pull the table quietly while the tab is open.
   useEffect(() => {
@@ -273,6 +176,8 @@ export default function Seller({ token }: { token: string }) {
   }, [token]);
 
   const onOpen = useCallback((r: OrderRow) => setOpen(r), []);
+  // Waits for the orders to load when the page was opened by a link.
+  const openOrder = useCallback((orderId: string) => setWanted({ id: orderId }), []);
   // S1: Insights' brief opens a case here, over whichever page is showing. An order the list has not
   // loaded yet is fetched once; if it is still missing, nothing opens.
   const [wanted, setWanted] = useState<{ id: string; before?: OrderRow[] } | null>(null);
@@ -379,7 +284,7 @@ export default function Seller({ token }: { token: string }) {
       id: `view-${f.key}`, group: "Go to", label: f.label, hint: rows ? `${counts[f.key]}` : undefined, icon: f.icon,
       keywords: "view list filter", run: () => choose(f.key),
     }));
-    views.push({ id: "view-insights", group: "Go to", label: "Insights", hint: "AG Studio reports", icon: <BarChart3 />, keywords: "analytics dashboard reports charts", run: () => go("insights") });
+    for (const p of PAGES) views.push({ id: `view-${p.page}`, group: "Go to", label: p.label, hint: p.hint, icon: p.icon, keywords: p.keywords, run: () => go(p.page) });
     const actions: Command[] = [
       { id: "act-excel", group: "Actions", label: "Export to Excel", hint: "What you see", icon: <Download />, keywords: "xlsx download", run: () => { go("orders"); window.setTimeout(() => gridApi.current && exportExcel(gridApi.current), 50); } },
       { id: "act-handoff", group: "Actions", label: "Download hand-off report", hint: "PDF", icon: <FileText />, keywords: "pdf print report share helper", run: () => { go("orders"); window.setTimeout(() => handoffNow.current(), 50); } },
@@ -397,6 +302,11 @@ export default function Seller({ token }: { token: string }) {
   }, [rows, counts]);
   const changedHere = useMemo(() => (changed ? shown.filter((r) => changed.ids.has(r.order_id)) : []), [changed, shown]);
   const activeMeta = FILTERS.find((f) => f.key === active)!;
+  const badge: Record<Page, number> = {
+    orders: 0, insights: 0, money: 0, autopilot: 0, policy: 0,
+    claims: recovered.data?.open_claims ?? 0,
+    disputes: (disputes.data ?? []).filter((d) => d.status === "open").length,
+  };
 
   return (
     <div className="shell">
@@ -419,12 +329,21 @@ export default function Seller({ token }: { token: string }) {
             ))}
           </div>
         </div>
-        <div>
-          <div className="nav-label">Analytics</div>
-          <div className="nav">
-            <button aria-pressed={page === "insights"} onClick={() => go("insights")}><BarChart3 />Insights</button>
+        {NAV.map((g) => (
+          <div key={g.label}>
+            <div className="nav-label">{g.label}</div>
+            <div className="nav" role="group" aria-label={g.label}>
+              {g.pages.map((p) => {
+                const n = badge[p];
+                return (
+                  <button key={p} aria-pressed={page === p} onClick={() => go(p)}>
+                    {PAGE[p].icon}{PAGE[p].label}{n > 0 && <span className="count alert">{n}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ))}
         <div className="bottom">
           <div className="nav">
             <a href="/#how"><BookOpen />How Doorstep works</a>
@@ -438,12 +357,21 @@ export default function Seller({ token }: { token: string }) {
             <Suspense fallback={<Loading height={480} />}>
               <Insights token={token} />
             </Suspense>
+          ) : page === "claims" ? (
+            <ClaimsPage rows={claims.data} error={claims.error} onOpenOrder={openOrder} />
+          ) : page === "money" ? (
+            <MoneyPage rows={moneyRows.data} error={moneyRows.error} onOpenOrder={openOrder} />
+          ) : page === "disputes" ? (
+            <DisputesPage rows={disputes.data} error={disputes.error} onOpenOrder={openOrder} />
+          ) : page === "autopilot" ? (
+            <AutopilotPage token={token} data={auto.data} statement={spent.data} onChange={(m) => { setToast(m); reload(); }} onOpen={openOrder} />
+          ) : page === "policy" ? (
+            <PolicyPage check={policy.data} failed={!!policy.error} />
           ) : (<>
           <div className="page-head">
             <div>
               <p className="greet">
                 {greeting(me.data?.name)}
-                {rows ? <> · <b>{counts.action ? `${counts.action} need${counts.action === 1 ? "s" : ""} you` : "nothing needs you"}</b></> : null}
               </p>
               <h1>Delivery Control Room</h1>
             </div>
@@ -480,21 +408,11 @@ export default function Seller({ token }: { token: string }) {
                   <span className="value" style={{ fontSize: 22 }}>{sumStake(rows)}</span>
                   <span className="sub">cases and parcels</span>
                 </button>
-                <RecoveredKpi s={recovered.data ?? null} onClick={() => go("insights")} />
+                <RecoveredKpi s={recovered.data ?? null} onClick={() => go("claims")} />
               </section>}
 
-              {rows && auto.data && (
-                <AutopilotCard
-                  token={token} data={auto.data} statement={spent.data ?? null}
-                  onChange={(m) => { setToast(m); reload(); }}
-                  onOpen={(orderId) => { const r = rows?.find((x) => x.order_id === orderId); if (r) setOpen(r); }}
-                />
-              )}
-              {rows && (policy.data && policy.data.issues.length > 0 ? (
-                <PolicyCard check={policy.data} />
-              ) : (
-                !auto.data?.suggestions.length && tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />
-              ))}
+              {rows && auto.data && <AutopilotSuggestion token={token} data={auto.data} onChange={(m) => { setToast(m); reload(); }} />}
+              {rows && !auto.data?.suggestions.length && tips.data && tips.data.length > 0 && <Tip t={tips.data[0]} />}
 
               <div className="table-card">
                 <div className="head">
@@ -568,7 +486,7 @@ function Hint({ text }: { text: string }) {
 function RecoveredKpi({ s, onClick }: { s: RecoverySummary | null; onClick: () => void }) {
   const open = s ? sumBy(s.open_claim_minor) : "";
   return (
-    <button className="kpi" onClick={onClick} title="Open Insights">
+    <button className="kpi" onClick={onClick} title="Open claims">
       <span className="label"><Landmark aria-hidden />Recovered from carriers<Hint text="Paid back by carriers on claims you filed, this shop only. Insights adds 26 weeks of simulated history in the demo." /></span>
       <span className="value" style={{ fontSize: 22 }}>{s ? sumBy(s.recovered_minor) : "—"}</span>
       <span className="sub">{s && s.open_claims ? `${s.open_claims} open claim${s.open_claims === 1 ? "" : "s"} · ${open}` : "claims you filed"}</span>
