@@ -121,6 +121,9 @@ class StudioTurnOut(BaseModel):
     message: str
     calls: list[StudioCall]
     mode: Literal["model", "fallback"]
+    # AS-22: which provider answered ("anthropic", "gemini"); None when no model did. Optional, so
+    # a client that predates it keeps working.
+    provider: str | None = None
 
 
 # ---------------------------------------------------------------- prompt
@@ -224,7 +227,13 @@ class StudioAgent:
         message = out.message.strip()
         if not message and not calls:
             message = EMPTY
-        return StudioTurnOut(message=message, calls=calls, mode="model")
+        provider = getattr(self.llm, "last_provider", None)
+        return StudioTurnOut(
+            message=message,
+            calls=calls,
+            mode="model",
+            provider=provider if isinstance(provider, str) else None,
+        )
 
     def _from_model(self, turn: StudioTurnIn) -> StudioTurn | None:
         if self.llm is None or not self.budget.take():
