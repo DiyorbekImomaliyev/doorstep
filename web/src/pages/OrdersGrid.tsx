@@ -466,6 +466,15 @@ const emptySelector = (p: { overlayType: string }) =>
  */
 function EmptyOverlay({ text, searching, overlayType }: { text?: string; searching?: boolean; overlayType?: string }) {
   const calm = !searching && overlayType !== "noMatchingRows";
+  if (calm && text?.startsWith("All caught up")) {
+    return (
+      <div className="grid-empty caught-up">
+        <span className="grid-empty-icon good" aria-hidden><Check /></span>
+        <strong>All caught up</strong>
+        <span className="caught-up-links"><a href="#claims">Claims</a><a href="#insights">Insights</a></span>
+      </div>
+    );
+  }
   return (
     <div className="grid-empty">
       {calm ? <Doorstep3D /> : <span className="grid-empty-icon" aria-hidden><SearchX /></span>}
