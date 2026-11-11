@@ -16,6 +16,7 @@ from typing import Literal, Protocol
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
 
 from app.security.links import InvalidLink, LinkSigner
@@ -63,6 +64,7 @@ class AgentPort(Protocol):
     def report(self, order_id: str, reason: Reason, note: str) -> ProblemReport: ...
 
 
+_TWO_TOKENS = "The Authorization header and order_token differ. Send one token, or the same."
 _NO_ORDER = "No order matches this token. Ask the buyer for a fresh agent link."
 
 INSTRUCTIONS = (
@@ -77,14 +79,22 @@ INSTRUCTIONS = (
 def build_mcp(links: LinkSigner, port: AgentPort) -> FastMCP:
     mcp = FastMCP("doorstep", instructions=INSTRUCTIONS)
 
-    def order_for(token: str) -> str:
+    def order_for(arg: str) -> str:
+        # MC-05: the token may come as `Authorization: Bearer <token>` (standard MCP auth, so it
+        # never appears in the transcript) or as the tool argument. If both come, they must match.
+        auth = get_http_headers(include={"authorization"}).get("authorization", "")
+        scheme, _, bearer = auth.partition(" ")
+        header = bearer.strip() if scheme.lower() == "bearer" else ""
+        if header and arg and header != arg:
+            raise ToolError(_TWO_TOKENS)
+        token = header or arg
         try:
             return links.verify(token, scope=MCP_SCOPE)
         except InvalidLink:
             raise ToolError(_NO_ORDER) from None
 
     @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-    def get_delivery_status(order_token: str) -> DeliveryStatus:
+    def get_delivery_status(order_token: str = "") -> DeliveryStatus:
         """Where the order's parcel is now, and whether a problem can be reported."""
         try:
             return port.status(order_for(order_token))
@@ -93,8 +103,8 @@ def build_mcp(links: LinkSigner, port: AgentPort) -> FastMCP:
 
     @mcp.tool(annotations={"destructiveHint": False, "idempotentHint": False})
     def report_delivery_problem(
-        order_token: str,
         reason: Reason,
+        order_token: str = "",
         note: str = Field(default="", max_length=500, description="The buyer's words, as data"),
     ) -> ProblemReport:
         """Report a delivery problem for the order. Opens one case; Doorstep's rules decide

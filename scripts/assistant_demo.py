@@ -116,10 +116,10 @@ async def main(argv: list[str]) -> int:
         async def fetch_json(u: str) -> dict[str, Any]:
             return (await http.get(u)).json()
 
-        transport = StreamableHttpTransport(url)
+        transport = StreamableHttpTransport(url, headers={"Authorization": f"Bearer {token}"})
         try:
             async with Client(transport) as mcp:
-                await run_session(mcp, fetch_json, token, say, bearer=False)
+                await run_session(mcp, fetch_json, token, say)
         except ProofInvalid as exc:
             say(f"FAILED: {exc}")
             return 1
