@@ -79,6 +79,13 @@ test.describe("desktop", () => {
     await row.locator('[col-id="reason"]').click();
     await expect(detail).toBeVisible();
 
+    // Keyboard: Enter on a focused cell folds and unfolds the detail too.
+    await row.locator('[col-id="reason"]').focus();
+    await page.keyboard.press("Enter");
+    await expect(detail).toHaveCount(0);
+    await page.keyboard.press("Enter");
+    await expect(detail).toBeVisible();
+
     // The PayPal id copies.
     await row.locator('[col-id="paypal_dispute_id"] .copy-id').click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^SIM-DISPUTE-/);
