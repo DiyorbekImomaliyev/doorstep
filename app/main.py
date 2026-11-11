@@ -78,12 +78,14 @@ def create_app(deps: AppDeps) -> FastAPI:
         from app.api.autopilot import build_autopilot_router
         from app.api.disputes_desk import build_disputes_desk_router
         from app.api.ledger import build_ledger_router
+        from app.api.money_desk import build_money_desk_router
         from app.api.policy_check import build_policy_check_router
         from app.api.proof import build_proof_router
 
         app.include_router(build_ledger_router(deps, deps.services))
         app.include_router(build_disputes_desk_router(deps, deps.services, rulebook))
         app.include_router(build_automate_desk_router(deps, deps.services, rulebook))
+        app.include_router(build_money_desk_router(deps, deps.services))
         app.include_router(build_autopilot_router(deps, deps.services, rulebook))
         app.include_router(build_policy_check_router(deps, deps.services, rulebook))
         app.include_router(build_proof_router(deps, deps.services))
