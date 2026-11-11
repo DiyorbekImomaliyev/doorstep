@@ -715,13 +715,24 @@ class PolicyService:
         external refund Doorstep knows of."""
         return _remaining_refundable(self.session, order)
 
-    def confirm_refund(self, ma: MoneyAction, status: str) -> bool:
+    def confirm_refund(
+        self, ma: MoneyAction, status: str, *, paypal_refund_id: str | None = None
+    ) -> bool:
         """PO-13: PayPal's later answer on a pending refund. COMPLETED settles the case; FAILED or
         CANCELLED (or a status Doorstep does not know) fails it and a person reviews. Still
         PENDING, or a refund that is not pending, changes nothing. True when the refund completed.
+
+        PO-16: a refund Doorstep marked FAILED (its call timed out, or PayPal said FAILED first)
+        that PayPal later reports COMPLETED did move the money, so the record follows PayPal and
+        keeps PayPal's refund id. Nothing short of COMPLETED reopens a failed refund.
         """
-        if ma.status != MoneyActionStatus.PENDING.value or status == REFUND_PENDING:
+        sent_after_all = ma.status == MoneyActionStatus.FAILED.value and status in _DONE
+        if not sent_after_all and (
+            ma.status != MoneyActionStatus.PENDING.value or status == REFUND_PENDING
+        ):
             return False
+        if ma.paypal_refund_id is None:
+            ma.paypal_refund_id = paypal_refund_id
         s = self.session
         case = s.get_one(Case, ma.case_id)
         decision = s.get_one(Decision, ma.decision_id)
@@ -773,7 +784,8 @@ class PolicyService:
 
         A refund Doorstep sent itself is recognised by its PayPal id, or by its custom_id (our
         money action id) when the webhook beats the refund job; a pending one is then confirmed
-        (PO-13). Anything else was made outside Doorstep and is recorded once.
+        (PO-13), and one we marked failed but PayPal completed is reconciled (PO-16). Anything
+        else was made outside Doorstep and is recorded once.
         """
         s = self.session
         if amount.currency != order.currency:
@@ -787,7 +799,7 @@ class PolicyService:
             )
         ).first()
         if known is not None:
-            self.confirm_refund(known, status)
+            self.confirm_refund(known, status, paypal_refund_id=paypal_refund_id)
             return known
         kind = (
             MoneyActionKind.PARTIAL_REFUND
