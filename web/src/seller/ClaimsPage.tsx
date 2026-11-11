@@ -4,11 +4,16 @@ import type { ClaimRow } from "../api";
 import { ErrorBox } from "../components/ui";
 import { daysLeft } from "../grid/due";
 import { money, type Tone } from "../format";
+import { CARRIER } from "../insights/data";
 import LedgerGrid, { RIGHT, ItemCell, Kpis, PageHead, StatusPill, joinMoney, sumByCurrency, type Totalled } from "./LedgerGrid";
 
 type Row = ClaimRow & Totalled;
 
 const OPEN = ["PREPARED", "SUBMITTED"];
+/** A withdrawn or expired claim was never made, so it is left out of the claimed total. */
+const MADE = (x: ClaimRow) => !["WITHDRAWN", "EXPIRED"].includes(x.status);
+/** The carrier's own name; the claim terms say "Your carrier" when Doorstep has none on file. */
+const carrierOf = (r: ClaimRow) => CARRIER[r.carrier] ?? r.carrier_name;
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   PREPARED: { label: "Ready", tone: "accent" },
   SUBMITTED: { label: "Submitted", tone: "warn" },
@@ -36,7 +41,7 @@ function Due({ r }: { r: ClaimRow }) {
   );
 }
 
-export default function ClaimsPage({ rows, error, onOpenOrder }: { rows: ClaimRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void }) {
+export default function ClaimsPage({ rows, error, onOpenOrder }: { rows: ClaimRow[] | null; error: string | null; onOpenOrder: (orderId: string) => void; token: string; onChanged: () => void }) {
   const kpis = useMemo(() => {
     const r = rows ?? [];
     const open = r.filter((x) => OPEN.includes(x.status));
@@ -49,7 +54,7 @@ export default function ClaimsPage({ rows, error, onOpenOrder }: { rows: ClaimRo
   }, [rows]);
 
   const totals = useMemo((): Row[] => {
-    const by = sumByCurrency(rows ?? [], (x) => x.claim_minor);
+    const by = sumByCurrency((rows ?? []).filter(MADE), (x) => x.claim_minor);
     const paid = sumByCurrency(rows ?? [], (x) => x.recovered_minor ?? 0);
     return Object.keys(by).map((currency) => ({
       __total: `Total ${currency}`, currency, claim_minor: by[currency], recovered_minor: paid[currency] ?? 0,
@@ -59,7 +64,7 @@ export default function ClaimsPage({ rows, error, onOpenOrder }: { rows: ClaimRo
   const columns = useMemo((): ColDef<Row>[] => [
     { headerName: "Item", field: "item", flex: 2, minWidth: 220,
       cellRenderer: (p: ICellRendererParams<Row>) => p.data && <ItemCell item={p.data.item} sub={p.data.order_ref} total={p.data.__total} /> },
-    { headerName: "Carrier", field: "carrier_name", flex: 1, minWidth: 130, enableRowGroup: true, valueFormatter: (p) => (p.data?.__total ? "" : p.value) },
+    { headerName: "Carrier", colId: "carrier_name", flex: 1, minWidth: 130, enableRowGroup: true, valueGetter: (p) => (!p.data || p.data.__total ? "" : carrierOf(p.data)) },
     { headerName: "Claim", field: "claim_minor", ...RIGHT, width: 120,
       valueFormatter: (p) => (p.data ? money(p.data.claim_minor, p.data.currency) : ""),
       tooltipValueGetter: (p) => (p.data?.cover_minor != null && !p.data.__total ? `Carrier cover ${money(p.data.cover_minor, p.data.currency)}` : undefined) },
@@ -75,7 +80,7 @@ export default function ClaimsPage({ rows, error, onOpenOrder }: { rows: ClaimRo
   const card = (r: Row) => (
     <>
       <span className="lc-top"><span className="lc-item">{r.item}</span><span className="lc-money num">{money(r.claim_minor, r.currency)}</span></span>
-      <span className="lc-meta">{r.order_ref} · {r.carrier_name}</span>
+      <span className="lc-meta">{r.order_ref} · {carrierOf(r)}</span>
       <span className="lc-bottom">
         <StatusPill tone={statusOf(r.status).tone}>{statusOf(r.status).label}</StatusPill>
         <Due r={r} />
