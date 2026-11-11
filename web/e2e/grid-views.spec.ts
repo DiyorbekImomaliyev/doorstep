@@ -35,9 +35,11 @@ test("GV-01 a saved view is kept across a reload and puts the grouping back", as
   const pills = page.locator(".orders-grid .ag-toolbar .ag-column-drop-cell");
   await expect(pills).toContainText("Delivery");
 
-  page.once("dialog", (d) => { void d.accept("Mine"); });
   await viewsButton(page).click();
   await page.getByRole("menuitem", { name: "Save view…" }).click();
+  await page.getByRole("textbox", { name: "View name" }).fill("Mine");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Save view" })).toHaveCount(0);
   await viewsButton(page).click();
   await expect(page.getByRole("menuitemradio", { name: "Mine", exact: true })).toHaveAttribute("aria-checked", "true");
   await closeMenu(page);
@@ -108,4 +110,16 @@ test("GV-03 orders updated since the last visit get a dot and a New filter", asy
   await expect(page.locator(".orders-grid .new-dot")).toHaveCount(0);
   const seen = await page.evaluate((t) => localStorage.getItem(`doorstep.seen.${t}`), token);
   expect(Date.parse(seen!)).toBeGreaterThan(Date.now() - 60_000);
+});
+
+test("GV-01 Esc cancels the name popover and saves nothing", async ({ page }) => {
+  await openShop(page);
+  await viewsButton(page).click();
+  await page.getByRole("menuitem", { name: "Save view…" }).click();
+  await page.getByRole("textbox", { name: "View name" }).fill("Nope");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Save view" })).toHaveCount(0);
+  await expect(viewsButton(page)).toBeFocused();
+  await viewsButton(page).click();
+  await expect(page.getByRole("menuitemradio", { name: "Nope", exact: true })).toHaveCount(0);
 });

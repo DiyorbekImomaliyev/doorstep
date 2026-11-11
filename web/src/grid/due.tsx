@@ -86,7 +86,7 @@ export function useDueColumns(rows: OrderRow[], phone: boolean, api: RefObject<G
       valueGetter: (p) => (p.data?.case_id ? ref.current.get(p.data.case_id)?.at ?? null : null),
       // Soonest first; rows without a deadline stay last in both directions.
       comparator: (a: number | null, b: number | null, _x, _y, desc) => (a == null ? (b == null ? 0 : desc ? -1 : 1) : b == null ? (desc ? 1 : -1) : a - b),
-      tooltipValueGetter: (p) => {
+      tooltip: (p) => {
         const c = p.data?.case_id ? ref.current.get(p.data.case_id) : undefined;
         return c ? `Carrier claim · ${c.carrier} · ${new Date(c.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : undefined;
       },

@@ -8,7 +8,7 @@ import {
   type CellKeyDownEvent, type ColDef, type DefaultMenuItem, type ExcelStyle, type FullWidthCellKeyDownEvent, type GetContextMenuItemsParams,
   type GetMainMenuItemsParams, type GridApi, type IAggFuncParams, type IRowNode, type IStatusPanelValueFormatterParams, type MenuItemDef,
   type ProcessCellForExportParams, type RowClickedEvent, type ShowValuesAsDef, type ShowValuesAsTransformParams, type SideBarDef,
-  type StatusPanelDef, type Toolbar,
+  type GridState, type GridStateKey, type StatusPanelDef, type Toolbar,
 } from "ag-grid-community";
 import {
   CellSelectionModule, ClipboardModule, ColumnMenuModule, ColumnsToolPanelModule, ContextMenuModule, ExcelExportModule, NewFiltersToolPanelModule, LicenseManager,
@@ -17,7 +17,7 @@ import {
 } from "ag-grid-enterprise";
 import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
-import type { OrderRow } from "../api";
+import { api as apiClient, type OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
 import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
@@ -34,6 +34,9 @@ import Doorstep3D from "../components/Doorstep3D";
 import type { DoorstepNote } from "../grid/notes";
 import { doorstepOwns, hasNote, notesFor, notesSource } from "../grid/notes";
 import { useGridViews } from "../grid/views";
+import { IGNORE } from "../grid/ask";
+import { NameView } from "../grid/NameView";
+import "../grid/extras.css";
 import { NewItem, bindSeen, doesExternalFilterPass, isExternalFilterPresent, newIds, syncSeen } from "../grid/seen";
 
 /**
@@ -464,6 +467,15 @@ const emptySelector = (p: { overlayType: string }) =>
  */
 function EmptyOverlay({ text, searching, overlayType }: { text?: string; searching?: boolean; overlayType?: string }) {
   const calm = !searching && overlayType !== "noMatchingRows";
+  if (calm && text?.startsWith("All caught up")) {
+    return (
+      <div className="grid-empty caught-up">
+        <span className="grid-empty-icon good" aria-hidden><Check /></span>
+        <strong>All caught up</strong>
+        <span className="caught-up-links"><a href="#claims">Claims</a><a href="#insights">Insights</a></span>
+      </div>
+    );
+  }
   return (
     <div className="grid-empty">
       {calm ? <Doorstep3D /> : <span className="grid-empty-icon" aria-hidden><SearchX /></span>}
@@ -479,6 +491,8 @@ const EXPORT_COLUMNS = ["item", "buyer", "status", "next", "risk", "proof", "mon
 const excelStyles: ExcelStyle[] = [
   { id: "header", font: { bold: true, color: "#1F1A18" }, interior: { color: "#F6ECEE", pattern: "Solid" } },
   { id: "laneRow", font: { bold: true, color: "#7B2D3D" } },
+  { id: "coverTitle", font: { bold: true, size: 14, color: "#7B2D3D" } },
+  { id: "coverText", font: { color: "#5A524E" } },
 ];
 
 function exportValue(id: string, r: OrderRow, v: unknown): string {
@@ -503,7 +517,7 @@ function exportParams() {
     // The grand total row exports its money at stake (AG Grid's aggregate) under At stake.
     processCellCallback: (q: { column: { getColId(): string }; node?: IRowNode | null; value: unknown }) =>
       (q.node?.data ? exportValue(q.column.getColId(), q.node.data as OrderRow, q.value)
-        : q.node?.footer && q.column.getColId() === "money" ? String((q.node.aggData?.money as StakeTotal | undefined) ?? "") : ""),
+        : q.node?.footer && q.column.getColId() === "money" ? String((q.node.aggData?.money as StakeTotal | undefined) ?? "").replaceAll(" + ", " · ") : ""),
     processRowGroupCallback: (q: { node: IRowNode }) => groupLabel(q.node),
     skipPinnedTop: true,
   };
@@ -559,9 +573,59 @@ export function exportHandoffPdf(api: GridApi, o: { shop: string; region: string
   });
 }
 
-export function exportExcel(api: GridApi) {
+/** Money per currency, never summed across them: "£340.00 · $120.00". */
+function perCurrency(rows: OrderRow[]): string {
+  const by: Record<string, number> = {};
+  rows.forEach((r) => (by[r.currency] = (by[r.currency] ?? 0) + r.money_at_stake_minor));
+  const parts = Object.entries(by).filter(([, v]) => v > 0).map(([c, v]) => money(v, c));
+  return parts.length ? parts.join(" · ") : money(0, Object.keys(by)[0] ?? "GBP");
+}
+
+async function shopNameNow(): Promise<string> {
+  const token = /\/seller\/([^/?#]+)/.exec(window.location.pathname)?.[1];
+  try { return token ? (await apiClient.me(token)).name : "Doorstep"; } catch { return "Doorstep"; }
+}
+
+/**
+ * GX-01: one workbook. "Orders" is what the grid shows (with a small cover header); "By delivery"
+ * is the same orders grouped per delivery method, each group titled with its count and money per
+ * currency. The grouping is switched on only while the sheet is read, then put back.
+ */
+export async function exportExcel(api: GridApi) {
   const p = exportParams();
-  api.exportDataAsExcel({ ...p, fileName: `${p.fileName}.xlsx`, sheetName: "Orders", author: "Doorstep" });
+  const shop = await shopNameNow();
+  if (api.isDestroyed()) return;
+  const stamp = new Date();
+  const cover = (title: string) => [
+    { cells: [{ styleId: "coverTitle", mergeAcross: 3, data: { value: `${shop} · ${title}`, type: "String" as const } }] },
+    { cells: [{ styleId: "coverText", mergeAcross: 3, data: { value: `Exported ${stamp.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`, type: "String" as const } }] },
+    { cells: [] },
+  ];
+  const orders = api.getSheetDataForExcel({ ...p, sheetName: "Orders", author: "Doorstep", prependContent: cover("Orders") });
+
+  const saved = api.getColumnState();
+  const grouped = saved.filter((c) => c.rowGroup).sort((a, b) => (a.rowGroupIndex ?? 0) - (b.rowGroupIndex ?? 0));
+  const hidden = new Map(saved.filter((c) => ["lane", "urgency", "method"].includes(c.colId)).map((c) => [c.colId, !!c.hide]));
+  let delivery: ReturnType<GridApi["getSheetDataForExcel"]>;
+  try {
+    api.applyColumnState({ state: [{ colId: "method", rowGroup: true, rowGroupIndex: 0 }], defaultState: { rowGroup: false } });
+    delivery = api.getSheetDataForExcel({
+      ...p, sheetName: "By delivery", prependContent: cover("By delivery"),
+      processRowGroupCallback: (q) => {
+        if (q.node.footer) return "Total";
+        const rows = leavesOf(q.node);
+        return `${groupLabel(q.node)} · ${rows.length} order${rows.length === 1 ? "" : "s"} · ${perCurrency(rows)}`;
+      },
+    });
+  } finally {
+    api.applyColumnState({ state: grouped.map((c, i) => ({ colId: c.colId, rowGroup: true, rowGroupIndex: i })), defaultState: { rowGroup: false } });
+    hidden.forEach((h, colId) => api.setColumnsVisible([colId], !h));
+  }
+  api.exportMultipleSheetsAsExcel({
+    data: [orders, delivery].filter((d): d is string => !!d),
+    fileName: `${p.fileName}.xlsx`,
+    author: "Doorstep",
+  });
 }
 function exportCsv(api: GridApi) {
   const p = exportParams();
@@ -587,6 +651,35 @@ function findKey(e: React.KeyboardEvent) {
 export function toggleColumnsPanel(api: GridApi) {
   if (api.isSideBarVisible()) api.setSideBarVisible(false);
   else { api.setSideBarVisible(true); api.openToolPanel("columns"); }
+}
+
+// ---------- remembered layout (GS-01) ----------
+
+/** Column order, widths and grouping are kept per browser (never the filters). */
+const KEPT = ["columnOrder", "columnSizing", "rowGroup"] as const;
+const REST: GridStateKey[] = [...IGNORE.filter((k) => !(KEPT as readonly string[]).includes(k)), "filter", "sort"];
+const layoutKey = () => `doorstep.grid.${/\/seller\/([^/?#]+)/.exec(window.location.pathname)?.[1] ?? ""}`;
+
+function readLayout(): Partial<GridState> | null {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(layoutKey()) ?? "null") as unknown;
+    return v && typeof v === "object" ? (v as Partial<GridState>) : null;
+  } catch { return null; }
+}
+
+function writeLayout(state: GridState) {
+  const out: Partial<GridState> = {};
+  for (const k of KEPT) if (state[k] !== undefined) Object.assign(out, { [k]: state[k] });
+  try { window.localStorage.setItem(layoutKey(), JSON.stringify(out)); } catch { /* storage blocked or full */ }
+}
+
+function restoreLayout(api: GridApi) {
+  const saved = readLayout();
+  if (!saved) return;
+  try {
+    api.setState(saved, REST);
+    api.setColumnsVisible(["lane", "urgency"], false); // helper columns stay hidden when ungrouped
+  } catch { /* a stale layout is ignored */ }
 }
 
 // ---------- the grid ----------
@@ -762,7 +855,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     {
       colId: "risk", headerName: "Risk", field: "delivery_risk", width: 86, type: "rightAligned", hide: !scored || phone,
-      filter: "agNumberColumnFilter", tooltipField: "delivery_risk", tooltipComponent: RiskTip,
+      filter: "agNumberColumnFilter", tooltip: ({ data }) => data?.delivery_risk, tooltipComponent: RiskTip,
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <RiskCell r={p.data} /> : null),
     },
     {
@@ -770,7 +863,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       valueGetter: (p) => p.data?.evidence.score ?? 0,
       // Filtered by how many of the five proofs are on file (0 to 5), as the cell shows them.
       filter: "agNumberColumnFilter", filterValueGetter: (p) => (p.data ? proofList(p.data).filter((x) => x.ok).length : 0),
-      tooltipValueGetter: () => "proof", tooltipComponent: EvidenceTip,
+      tooltip: () => "proof", tooltipComponent: EvidenceTip,
       cellRenderer: ProofCell,
     },
     {
@@ -919,10 +1012,11 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         getRowId={getRowId}
         defaultColDef={defaultColDef}
         quickFilterText={search}
-        onGridReady={(e) => { api.current = e.api; views.bind(e.api); bindSeen(e.api); syncSeen(rows); onReady(e.api); }}
+        onGridReady={(e) => { api.current = e.api; if (!card && !phone) restoreLayout(e.api); views.bind(e.api); bindSeen(e.api); syncSeen(rows); onReady(e.api); }}
         isExternalFilterPresent={isExternalFilterPresent}
         doesExternalFilterPass={doesExternalFilterPass}
         rowClassRules={rowClassRules}
+        onStateUpdated={(e) => { if (!card && !phone && !e.sources.includes("gridInitializing") && !e.sources.includes("api") && e.sources.some((x) => (KEPT as readonly string[]).includes(x))) writeLayout(e.state); }}
         onRowClicked={onRowClicked}
         onCellKeyDown={onCellKeyDown}
         rowStyle={rowStyle}
@@ -978,6 +1072,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
         chartThemeOverrides={chartThemeOverrides}
         domLayout="autoHeight"
       />
+      {views.naming && <NameView onDone={views.finish} />}
     </div>
   );
 }

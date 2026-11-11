@@ -1,0 +1,24 @@
+/* Control Room grid extras: the view-name popover, the empty state. */
+.orders-grid { position: relative; }
+.name-view {
+  position: absolute; top: 46px; right: 12px; z-index: 30; display: flex; gap: 8px; align-items: center;
+  padding: 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow-lg);
+}
+.name-view input {
+  font: inherit; font-size: 13.5px; height: 32px; width: 168px; padding: 0 10px; color: var(--text);
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface);
+}
+.name-view input:focus { outline: 2px solid var(--accent-line); border-color: var(--accent); }
+.name-view .btn { height: 32px; }
+
+/* "All caught up": the Needs you list is empty. */
+.caught-up { gap: 8px; pointer-events: auto; }
+.caught-up strong { font-family: var(--serif); font-size: 17px; font-weight: 600; color: var(--text); }
+.grid-empty-icon.good { background: var(--good-soft); color: var(--good); border-color: #d6e7dc; }
+.caught-up-links { display: flex; gap: 16px; font-size: 13px; }
+.caught-up-links a { color: var(--accent); text-decoration: none; font-weight: 550; }
+.caught-up-links a:hover { text-decoration: underline; }
+
+/* Case drawer: the counterfactual fold. */
+details.fold > p.muted { margin: 0; padding: 0 14px 12px; font-size: 13.5px; line-height: 1.5; }
+details.fold summary svg { width: 15px; height: 15px; color: var(--text-3); }

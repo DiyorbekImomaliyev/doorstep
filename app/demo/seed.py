@@ -38,6 +38,7 @@ from app.orders.models import (
     Evidence,
     Order,
     Product,
+    Recovery,
     Seller,
     Shipment,
     TrackingEvent,
@@ -127,6 +128,7 @@ class _Spec:
     seal_scan_after_h: int | None = None  # the buyer scanned the seal this long after delivery
     dispute: bool = False  # the buyer opened a (simulated) PayPal dispute before reporting
     approved: bool = False  # Malika already approved this refund (AP-01 precedent)
+    carrier_paid: bool = False  # RC-09: the carrier already paid Malika's claim for this one
     arrives_after_report: bool = False  # AD-01: the courier scans it delivered after the report
 
 
@@ -394,6 +396,7 @@ SCENARIO: tuple[_Spec, ...] = (
         carrier="royal_mail",
         delivered_zip="B12 0XS",
         approved=True,
+        carrier_paid=True,
     ),
     # AD-01: tracking went quiet, Malika refunded it as lost, then the courier scanned it delivered.
     _Spec(
@@ -602,9 +605,30 @@ def _build(
                 case = session.get(Case, report.case_id)
                 assert case is not None
                 actions.act(case, "approve", seller_approver(seller_id))
+                if spec.carrier_paid:
+                    _carrier_paid(session, case.id, now)
             if spec.arrives_after_report:
                 _arrive_after_report(session, order, shipment, report.case_id)
     session.flush()
+
+
+def _carrier_paid(session: Session, case_id: str, now: datetime) -> None:
+    """RC-09: Malika filed the carrier claim and was paid in full (through the recovery service,
+    so the audit rows exist), so "Recovered from carriers" shows real money."""
+    from app.cases.recovery import seller_mark
+
+    recovery = session.scalars(select(Recovery).where(Recovery.case_id == case_id)).first()
+    if recovery is None:
+        return
+    seller_mark(session, recovery, "submitted", actor="demo-seed", now=now - timedelta(days=3))
+    seller_mark(
+        session,
+        recovery,
+        "paid",
+        actor="demo-seed",
+        now=now - timedelta(days=1),
+        amount_minor=recovery.claim_minor,
+    )
 
 
 def _arrive_after_report(session: Session, order: Order, shipment: Shipment, case_id: str) -> None:
