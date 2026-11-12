@@ -163,7 +163,7 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
           <section className="sec">
             <details className="fold">
               <summary><Info aria-hidden />Why{d.explainer_source === "model" ? " (AI explanation)" : ""}</summary>
-              <div><p className="prose small">{d.explanation}</p></div>
+              <div><p className="prose small">{plainRule(d.explanation, d.rule_id, d.rule_version, d.rule_name)}</p></div>
             </details>
             {d.reasons.length > 0 && (
               <details className="fold">
@@ -180,15 +180,15 @@ function CaseBody({ token, caseId, protection, onClose, onChanged }: { token: st
               <details className="fold">
                 <summary><FileText aria-hidden />Claim letter (draft)</summary>
                 <div className="col" style={{ gap: 10 }}>
-                  <p className="prose small">{d.claim_letter}</p>
-                  <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => navigator.clipboard?.writeText(d.claim_letter ?? "")}><Copy size={14} />Copy letter</button>
+                  <p className="prose small">{plainRule(d.claim_letter, d.rule_id, d.rule_version, d.rule_name)}</p>
+                  <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => navigator.clipboard?.writeText(plainRule(d.claim_letter ?? "", d.rule_id, d.rule_version, d.rule_name))}><Copy size={14} />Copy letter</button>
                 </div>
               </details>
             )}
             {d.buyer_message && (
               <details className="fold">
                 <summary><MessageSquare aria-hidden />Message to the buyer</summary>
-                <div><p className="prose small">{d.buyer_message}</p></div>
+                <div><p className="prose small">{plainRule(d.buyer_message, d.rule_id, d.rule_version, d.rule_name)}</p></div>
               </details>
             )}
           </section>
@@ -273,6 +273,24 @@ const closedUnpaid = (c: CaseView) => c.state === "CLOSED" && !c.dispute_resolve
 const offerFirst = (c: CaseView) => !!c.offer && c.scan_audit?.verdict === "contradicted";
 
 /** The "what would have changed this" text without the law's name: the pill above cites it once. */
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * AQ-02: the explainer's text with the internal rule id written as the law's plain name, as
+ * app/ai/explainer.py `plain_rule` does for the buyer's copy. The stored summary keeps the id
+ * (EX-01); the id and version stay in the rule line's code chip above.
+ */
+function plainRule(text: string, id?: string | null, version?: string | null, name?: string | null): string {
+  if (!id || !text.includes(id)) return text;
+  const rid = esc(id);
+  const ver = version ? `(?:version\\s+|v)?${esc(version)}` : "(?!)";
+  if (!name) return text.replace(new RegExp(`(?:\\b(?:the\\s+)?rule\\s+)?\\b${rid}\\b(?:\\s*\\(${ver}\\))?`, "g"), "the rule");
+  let t = text.replace(new RegExp(`\\s*[(\\[](?:[Rr]ule\\s+)?${rid}(?:[,;]?\\s*${ver})?[)\\]]`, "g"), "");
+  t = t.replace(new RegExp(`(?:\\b(?:[Tt]he\\s+)?[Rr]ule\\s+)?\\b${rid}\\b(?:\\s*\\(${ver}\\)|,?\\s+${ver})?`, "g"), () => name);
+  const n = esc(name);
+  return t.replace(new RegExp(`${n}(?:\\s*\\([^()]*${n}\\)|,\\s*${n})`, "g"), () => name);
+}
+
 function counterText(text: string, id?: string | null, name?: string | null): string {
   let t = id ? text.replaceAll(id, name ?? id) : text;
   if (name) {
