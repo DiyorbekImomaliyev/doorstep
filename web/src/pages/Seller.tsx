@@ -143,7 +143,11 @@ export default function Seller({ token }: { token: string }) {
     seen.current = next;
     if (!prev) return;
     const ids = rows.filter((r) => prev.get(r.order_id) !== next.get(r.order_id)).map((r) => r.order_id);
-    if (ids.length) setChanged({ ids: new Set(ids), at: new Date() });
+    if (!ids.length) return;
+    setChanged({ ids: new Set(ids), at: new Date() });
+    // A case the worker opened or settled may carry a new carrier claim: keep the tags and the card current.
+    if (rows.some((r) => ids.includes(r.order_id) && r.case_id)) { claims.reload(); recovered.reload(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
   const [search, setSearch] = useState("");
   const searchBox = useRef<HTMLInputElement>(null);
@@ -160,7 +164,13 @@ export default function Seller({ token }: { token: string }) {
   }, []);
   const gridApi = useRef<GridApi | null>(null);
   const [page, setPage] = useState<Page>(() => pageOfHash(location.hash));
-  const go = (p: Page) => { setPage(p); history.replaceState(null, "", p === "orders" ? location.pathname + location.search : `#${p}`); };
+  const go = (p: Page) => { setPage(p); history.replaceState(null, "", p === "orders" ? pageBase() : `${pageBase()}#${p}`); };
+  // FP-W1: a row's claim tag opens the Claims page (the sidebar's) on that claim (?claim=<id>), at the top.
+  const openClaims = useCallback((recoveryId: string) => {
+    history.replaceState(null, "", `${pageBase()}${pageBase().includes("?") ? "&" : "?"}claim=${encodeURIComponent(recoveryId)}#claims`);
+    setPage("claims");
+    window.scrollTo({ top: 0 });
+  }, []);
   // The Money page follows the worker: a queued or pending refund turns completed on screen.
   usePoll(moneyRows.reload, page === "money" && !!moneyRows.data?.some((r) => r.status === "queued" || r.status === "pending"));
   // A plain <a href="#claims"> anywhere opens that page.
@@ -446,7 +456,7 @@ export default function Seller({ token }: { token: string }) {
                     onDismiss={() => setReading(undoStack.current.length ? answered.current : null)} />
                 )}
                 <OrdersGrid rows={shown} search={search} empty={activeMeta.empty} onOpen={onOpen} onReady={onReady} changed={changed}
-                  onHandoff={handoff}
+                  onHandoff={handoff} claims={claims.data} onClaim={openClaims}
                   loading={!rows} guide={(active === "action" || active === "all") && !reading}
                   source={!rows ? "" : rows.some((r) => r.simulated) ? "Demo orders · refunds simulated" : "PayPal sandbox orders"} />
               </div>
@@ -469,6 +479,14 @@ export default function Seller({ token }: { token: string }) {
       <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );
+}
+
+/** The seller page's URL without a claim focus (?claim=), so a later visit to Claims starts unfocused. */
+function pageBase(): string {
+  const q = new URLSearchParams(location.search);
+  q.delete("claim");
+  const s = q.toString();
+  return location.pathname + (s ? `?${s}` : "");
 }
 
 /** "Good afternoon, Malika": the first name from the shop name ("Malika's Vintage"). */

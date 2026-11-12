@@ -587,7 +587,7 @@ a.demo-item:hover .di-go svg { transform: translateX(3px); }
 
 /* Lanes: row grouping drawn as one full-width row */
 .orders-grid .ag-row-group { background: var(--bg); }
-.lane-row { display: flex; align-items: center; gap: 10px; height: 100%; width: 100%; padding: 0 2px; cursor: pointer; user-select: none; }
+.lane-row { display: flex; align-items: center; gap: 10px; height: 100%; width: 100%; padding: 0 16px 0 2px; cursor: pointer; user-select: none; }
 .lane-row .chev { width: 16px; height: 16px; color: var(--text-3); transition: transform .2s ease; flex: none; }
 .lane-row[aria-expanded="false"] .chev { transform: rotate(-90deg); }
 .lane-name { font-weight: 600; font-size: 13.5px; color: var(--text); }
@@ -994,7 +994,7 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .orders-grid .ag-toolbar .ag-column-drop-empty-message { color: var(--text-3); font-size: 12.5px; }
 .orders-grid .lane-row.group-by .lane-name { font-weight: 550; }
 /* AG Grid's grand total row: quiet, the money right-aligned like the lanes' above it. */
-.orders-grid .total-row { display: flex; align-items: center; gap: 10px; height: 100%; width: 100%; padding: 0 2px 0 28px; font-size: 12.5px; color: var(--text-3); cursor: default; }
+.orders-grid .total-row { display: flex; align-items: center; gap: 10px; height: 100%; width: 100%; padding: 0 16px 0 28px; font-size: 12.5px; color: var(--text-3); cursor: default; }
 .orders-grid .total-row .total-name { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; font-weight: 600; }
 .orders-grid .total-row .total-stake { margin-left: auto; color: var(--text); font-weight: 600; }
 .orders-grid .total-row .total-stake span { color: var(--text-2); font-weight: 400; }
@@ -1019,13 +1019,37 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .detail-timeline .ag-cell > span { display: block; overflow: hidden; text-overflow: ellipsis; }
 
 /* One card per order under 600 px (grid/OrderCard.tsx). */
-.order-card { display: grid; grid-template-rows: auto auto 1fr; gap: 6px; height: 100%; padding: 12px 0; min-width: 0; align-content: space-between; white-space: normal; }
+.order-card { display: grid; grid-template-rows: auto auto 1fr; gap: 6px; width: 100%; height: 100%; padding: 12px 0; min-width: 0; align-content: space-between; white-space: normal; }
 .order-card .oc-top { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .order-card .item-tile { width: 32px; height: 32px; }
 .order-card .oc-item { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .order-card .oc-money { flex: none; font-size: 15px; font-weight: 600; line-height: 1.3; }
 .order-card .oc-money.none { color: var(--text-3); font-weight: 500; }
-.order-card .oc-meta { font-size: 12.5px; color: var(--text-3); padding-left: 42px; line-height: 1.2; }
+.order-card .oc-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: 12.5px; color: var(--text-3); padding-left: 42px; line-height: 1.2; }
+.order-card .oc-meta > .num { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* FP-W1: a case's carrier claim, as a small tag that opens the Claims page. */
+.claim-tag {
+  display: inline-flex; align-items: center; gap: 5px; flex: none; height: 22px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text-2); font: 550 11.5px/1 var(--font); white-space: nowrap; cursor: pointer;
+  transition: border-color var(--dur-fast), filter var(--dur-fast);
+}
+.claim-tag svg { width: 12px; height: 12px; flex: none; }
+.claim-tag .claim-tag-status { font-weight: 500; opacity: .85; }
+.claim-tag .claim-tag-status::before { content: "·"; margin-right: 5px; }
+.claim-tag:hover { border-color: currentColor; }
+.claim-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.claim-tag.tone-accent { background: var(--accent-soft); color: var(--accent); }
+.claim-tag.tone-warn { background: var(--warn-soft); color: var(--warn); }
+.claim-tag.tone-good { background: var(--good-soft); color: var(--good); }
+.claim-tag.tone-bad { background: var(--bad-soft); color: var(--bad); }
+.orders-grid .claim-col { padding-left: 10px; padding-right: 6px; }
+.orders-grid .claim-col .claim-tag { font-size: 11px; gap: 4px; padding: 0 6px; }
+.orders-grid .claim-col .claim-tag .claim-tag-status::before { content: none; }
+.orders-grid .claim-cell { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 5px; height: 100%; line-height: 1; }
+.orders-grid .claim-cell .due-line { display: flex; align-items: center; gap: 6px; font-size: 12px; padding-left: 1px; }
+.orders-grid .claim-cell .due-bar { width: 36px; height: 3px; border-radius: 2px; background: #ece6e1; overflow: hidden; }
+.orders-grid .claim-cell .due-bar > span { display: block; height: 100%; }
 .order-card .oc-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding-left: 42px; }
 .order-card .oc-bottom .journey-cell { flex: 1; min-width: 0; height: auto; }
 .order-card .oc-bottom .row-action { flex: none; height: 36px; min-width: 112px; }
