@@ -1,7 +1,7 @@
 """AS-06: Ask Doorstep, the Insights agent. One question in, one validated plan out.
 
 - The model reads only the question and a fixed menu of measures, groupings and periods: no data
-  rows, no names, no addresses (CLAUDE.md rule 9). It returns an `InsightPlan` (rule 3,
+  rows, no names, no addresses (RULES.md rule 9). It returns an `InsightPlan` (rule 3,
   temperature 0, one retry in the adapter; a grouping that does not fit the measure is invalid).
 - The browser turns the plan into an AG Studio widget and computes the answer's figures from the
   seller's own rows, so no number ever comes from the model.

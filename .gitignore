@@ -36,3 +36,7 @@ data/
 # Local dev receipt keys (stored beside the SQLite file)
 *.receipt-key
 doorstep.db
+
+# local helper worktrees and workflows
+.claude/worktrees/
+.claude/workflows/

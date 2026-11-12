@@ -11,7 +11,7 @@
   id that was not retrieved counts as invalid output.
 - Fallbacks: invalid output twice or no model -> the top passages quoted verbatim, with their ids.
   No relevant passage -> the rule file itself is quoted (RG-02), with its source and disclaimer.
-- The question and the policy text are data, never instructions (CLAUDE.md rule 8). The reader
+- The question and the policy text are data, never instructions (RULES.md rule 8). The reader
   never decides anything: decisions stay with app/policy.
 """
 
@@ -142,7 +142,7 @@ class PolicyReader:
             )
         by_id = {p.id: p for p in hits}
         if self.llm is not None:
-            for _ in range(2):  # one retry on invalid output (CLAUDE.md rule 3)
+            for _ in range(2):  # one retry on invalid output (RULES.md rule 3)
                 draft = self._ask(question, hits)
                 if (
                     draft is not None

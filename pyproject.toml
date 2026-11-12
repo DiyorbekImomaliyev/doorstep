@@ -94,7 +94,7 @@ source_modules = ["app.agent", "app.ai", "app.mcp"]
 forbidden_modules = ["app.paypal_client.writes"]
 
 [tool.mutmut]
-# Mutation testing on the money path (CLAUDE.md): only app/policy is mutated; the whole app is
+# Mutation testing on the money path (RULES.md): only app/policy is mutated; the whole app is
 # copied because policy imports it. Same deterministic Hypothesis seed as `make test`.
 source_paths = ["app"]
 only_mutate = ["app/policy/*"]

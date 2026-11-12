@@ -1,4 +1,4 @@
-"""The ONE adapter for model calls (CLAUDE.md AI provider rule).
+"""The ONE adapter for model calls (RULES.md AI provider rule).
 
 - Every call returns a validated Pydantic model (hard rule 3). Invalid output: one retry on the
   same provider, then `InvalidModelOutput`; callers use their own fallback.
@@ -8,7 +8,7 @@
 - Claude: official SDK, `messages.parse(output_format=...)` structured outputs. Claude Sonnet 5.5
   rejects non-default `temperature` and forced tool choice, so determinism there comes
   from structured output plus low effort; Gemini calls use temperature 0.
-- Opus models are refused in the app (CLAUDE.md).
+- Opus models are refused in the app (RULES.md).
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ _US_ZIP4 = re.compile(r"\b(\d{5})-\d{4}\b")
 def data_block(tag: str, text: str, *, limit: int) -> str:
     """Untrusted text (a buyer's note, a question, a policy) as data inside one tag pair.
 
-    CLAUDE.md hard rule 8: <, > and & are escaped, so the text can never close its
+    RULES.md hard rule 8: <, > and & are escaped, so the text can never close its
     block or open another, whatever it says. The limit cuts the text before escaping.
     """
     return f"<{tag}>{html.escape(text[:limit], quote=False)}</{tag}>"
@@ -124,7 +124,7 @@ class AnthropicProvider:
         self, api_key: str, model: str, *, base_url: str | None = None, timeout_s: float = 60.0
     ) -> None:
         if "opus" in model.lower():
-            raise LLMError("Opus models are not used in the app (CLAUDE.md)")
+            raise LLMError("Opus models are not used in the app (RULES.md)")
         import anthropic
 
         self._anthropic = anthropic

@@ -162,7 +162,7 @@ Usernames are left out.
 | Payment | Capture | Captures through the outbox, also when the buyer closes the tab after approving: the approved event or a sweep asks PayPal, and only an `APPROVED` order on a deliverable address is captured. A declined payment method is never retried: the buyer pays another way on a new PayPal order. Shows PayPal's Seller Protection verdict, never uses it as a money input |
 | Shipping | Order tracking | Adds the carrier and tracking number to the capture through the outbox |
 | Settlement | Refunds | Full or partial refund with `PayPal-Request-Id` and our id in `custom_id` |
-| Disputes | Disputes API | Reads disputes live before every refund; sends `provide-evidence`; makes refund offers in the inquiry stage |
+| Disputes | Disputes API | Reads disputes live before every refund. A dispute a buyer opens at PayPal reaches Doorstep by webhook or by a one-minute sweep that asks PayPal, and puts the order's case on the evidence route; the seller sends `provide-evidence` in one tap (run end to end in the sandbox on Nov 12, 2026). Makes refund offers in the inquiry stage |
 | Events | Webhooks | `CHECKOUT.ORDER.APPROVED` (completes a checkout the buyer left), `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED` (also confirms a pending refund), `PAYMENT.CAPTURE.REVERSED` (recorded as money back with the buyer; a case that could still pay goes to a person), `PAYMENT.CAPTURE.DECLINED / DENIED` (a pending payment that failed: the buyer pays another way), `CUSTOMER.DISPUTE.CREATED / UPDATED / RESOLVED` (a resolved dispute closes its case), each verified with `verify-webhook-signature` |
 | Agent | PayPal Agent Toolkit | Read-only allowlist: orders get, shipment get, disputes list and get |
 
@@ -413,7 +413,7 @@ proof are the evidence those claims ask for. Prices: [WiserReview, Jul 2026](htt
 
 | Check | Result | Measured |
 | --- | --- | --- |
-| Unit and property tests (`make test`) | 1,890 passed | every push, in CI |
+| Unit and property tests (`make test`) | 2,017 passed | every push, in CI |
 | Branch coverage (`make cov`) | 100% on `app/policy` and `app/orders/state.py`; CI fails below 100% | every push, in CI |
 | Mutation testing on `app/policy` (`make mutmut-gate`) | 0 surviving logic mutants out of 3,129; only wording changes may survive | CI run, Nov 9; CI re-runs it on every change to `app/policy`, and new money code is mutation-tested before it is committed |
 | Postgres concurrency (`make test-pg`) | 12 passed on Postgres 16: row locks, `SKIP LOCKED`, the refund-offer lease | every push, in CI |

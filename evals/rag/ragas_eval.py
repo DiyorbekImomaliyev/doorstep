@@ -7,7 +7,7 @@ retrieves. Ragas 0.4 scores each answer with its own prompts and scoring:
 - context recall, the share of the reference answer the passages cover (reported only).
 
 Every model call Ragas makes goes through app/ai/llm.py (AdapterRagasLLM below), so the app's one
-model adapter stays the only way to reach a model (CLAUDE.md). The reader's answers and the
+model adapter stays the only way to reach a model (RULES.md). The reader's answers and the
 judge's verdicts are recorded once and replayed (evals/recording.py), on the eval provider only.
 
 A question is scored only when the model wrote the answer. If the reader fell back to quoting

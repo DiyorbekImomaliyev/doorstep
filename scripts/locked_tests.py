@@ -1,4 +1,4 @@
-"""Locked tests stay as the human approved them (CLAUDE.md, `make locked-untouched`).
+"""Locked tests stay as the human approved them (RULES.md, `make locked-untouched`).
 
 Compares tests/ with the newest tests-locked-* tag. New test files are allowed. A locked file
 may change in two ways only, each listed below with the human's approval:

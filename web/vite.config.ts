@@ -5,7 +5,7 @@ const api = "http://localhost:8000";
 
 export default defineConfig(({ mode }) => {
   // AG Grid Enterprise and AG Studio licences: from the repo-root .env locally, from the Render env
-  // group at build time. Never committed (CLAUDE.md rule 10).
+  // group at build time. Never committed (RULES.md rule 10).
   // loadEnv reads ../.env and lets real environment variables (Render) win.
   const env = loadEnv(mode, "..", "AG_");
   return {

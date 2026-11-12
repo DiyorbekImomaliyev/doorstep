@@ -2,7 +2,7 @@
 
 - The browser sends the question and a `GridMenu`: the journey labels, next steps and delivery
   methods the grid can filter by, read from AG Grid's AI Toolkit schema. No rows, no items, no
-  buyers, no order references (CLAUDE.md rule 9).
+  buyers, no order references (RULES.md rule 9).
 - The model returns a `GridPlan` (rule 3, temperature 0, one retry in the adapter). A plan that
   names a value outside the menu is invalid and the keyword reading answers instead.
 - Fallback: a keyword reading of the same menu. Used when no model is configured, when it is down,

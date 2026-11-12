@@ -180,7 +180,7 @@ class Explanation(BaseModel):
     rule_id: str | None
     source: Literal["model", "template"]
     blocked_reason: str | None = None
-    provider: str | None = None  # which model provider answered (CLAUDE.md fallback rule)
+    provider: str | None = None  # which model provider answered (RULES.md fallback rule)
 
 
 _SYMBOL = {"GBP": "£", "USD": "$"}

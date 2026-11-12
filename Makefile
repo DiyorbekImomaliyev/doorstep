@@ -54,13 +54,13 @@ test-integration:
 	uv run pytest tests/integration -q
 
 # Unit + property tests with 100% branch coverage on the money path and the order state machine
-# (CLAUDE.md): the same run as `make test`, plus the coverage floor.
+# (RULES.md): the same run as `make test`, plus the coverage floor.
 cov:
 	uv run pytest tests/unit tests/property -q --hypothesis-seed=$(HYPOTHESIS_SEED) \
 		--cov=app/policy --cov=app/orders/state --cov-branch --cov-fail-under=100 \
 		--cov-report=term-missing:skip-covered
 
-# Locked tests are never edited or deleted (CLAUDE.md); new test files are fine. A placeholder
+# Locked tests are never edited or deleted (RULES.md); new test files are fine. A placeholder
 # leaves test_unbuilt_xfail.py, or an approved one leaves a locked file, when its criterion is built.
 locked-untouched:
 	uv run python scripts/locked_tests.py

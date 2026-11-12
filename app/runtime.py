@@ -1,4 +1,4 @@
-"""Builds the running system from environment variables (CLAUDE.md "Environment variables").
+"""Builds the running system from environment variables (RULES.md "Environment variables").
 
 One place reads the environment, so the web service, the worker and the scripts are wired the
 same way. Missing credentials degrade honestly: without PayPal keys, checkout answers 503 and

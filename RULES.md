@@ -1,9 +1,8 @@
-# Doorstep — project memory
+# Doorstep — engineering rules
 
 Doorstep is an AI delivery agent for small PayPal sellers and their buyers. It prevents avoidable
 delivery failures, proves every handoff, and settles money fairly through PayPal when something
 still goes wrong. Hackathon build: PayPal sandbox + Shippo test mode, UK and US orders.
-Deadline: Nov 12, 2026, 11pm GMT+3 (submit by the afternoon).
 
 The design lives in `README.md`: architecture, the data flow of one order, design decisions,
 system design, AI components and the PayPal map. Read the part a task touches before changing it.
@@ -73,8 +72,6 @@ render.yaml
 
 ## PayPal tooling rules
 
-- Use the PayPal AI Toolkit skill and commands. Run `/paypal:doctor` before declaring any phase
-  green. On 401 errors: the sandbox token expired; ask the human to run `/paypal:setup refresh`.
 - Orders and Payments: official PayPal Server SDK (Python), guided by the APIMatic Context Plugin.
   Tracking, disputes and webhook-signature verification: REST through `app/paypal_client`.
 - The runtime agent uses the PayPal Agent Toolkit (`paypal-agent-toolkit`, LangChain adapter)

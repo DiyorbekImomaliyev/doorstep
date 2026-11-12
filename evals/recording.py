@@ -1,4 +1,4 @@
-"""Record once, replay (CLAUDE.md): model answers for evals, keyed by the exact prompt.
+"""Record once, replay (RULES.md): model answers for evals, keyed by the exact prompt.
 
 Every eval that calls a model goes through a Recorder. A prompt with a recording is answered
 from it. A new prompt is asked live on EVAL_LLM_PROVIDER (the free tier), and its answer is
@@ -42,7 +42,7 @@ def _label(row: dict[str, Any]) -> str | None:
 
 
 class PaidKeyRefused(RuntimeError):
-    """The paid provider is never the main eval provider (CLAUDE.md)."""
+    """The paid provider is never the main eval provider (RULES.md)."""
 
 
 def paid_prompt_limit() -> int:
