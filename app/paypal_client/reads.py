@@ -21,6 +21,15 @@ COUNTED_REFUND_STATUSES = frozenset({"COMPLETED", "PENDING"})
 DISPUTE_LIST_MAX_AGE = timedelta(days=170)
 _DISPUTE_PAGE_SIZE = 50
 _DISPUTE_MAX_PAGES = 10  # 500 disputes: more than that is not something to page through blind
+# DI-07: the fields of a dispute the Disputes page shows, the same ones a webhook carries.
+_DISPUTE_FACTS = (
+    "reason",
+    "status",
+    "dispute_life_cycle_stage",
+    "dispute_channel",
+    "seller_response_due_date",
+    "dispute_amount",
+)
 
 # Webhook headers PayPal signs with (lower-case; HTTP header names are case-insensitive).
 _SIGNATURE_HEADERS = {
@@ -70,8 +79,11 @@ def get_capture_state(client: PayPalClient, paypal_order_id: str, capture_id: st
     )
 
 
-def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[DisputeSummary]:
-    """Every unresolved dispute created since `since`, with the captures each one names.
+def list_open_disputes_since(
+    client: PayPalClient, since: datetime, facts: dict[str, dict[str, Any]] | None = None
+) -> list[DisputeSummary]:
+    """Every unresolved dispute created since `since`, with the captures each one names. When
+    `facts` is given, it is filled with each dispute's own facts by id (DI-07).
 
     The list is filtered by time, not by transaction (the transaction filter answers 400 when
     there is nothing to find). An unresolved dispute the list does not tie to a seller capture is
@@ -94,10 +106,10 @@ def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[Disp
                 continue
             dispute_id = str(item.get("dispute_id") or "")
             captures_named = _seller_captures(item)  # the list may name only the buyer's side
+            detail: dict[str, Any] = {}
             if not captures_named and dispute_id:  # the dispute itself names the seller's capture
-                captures_named = _seller_captures(
-                    client.request("GET", f"/v1/customer/disputes/{dispute_id}")
-                )
+                detail = client.request("GET", f"/v1/customer/disputes/{dispute_id}")
+                captures_named = _seller_captures(detail)
             found.append(
                 DisputeSummary(
                     dispute_id=dispute_id,
@@ -106,6 +118,8 @@ def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[Disp
                     reason=str(item.get("reason") or ""),
                 )
             )
+            if facts is not None and dispute_id:
+                facts[dispute_id] = _dispute_facts({**item, **detail})
         next_href = next(
             (link.get("href") for link in page.get("links") or [] if link.get("rel") == "next"),
             None,
@@ -144,6 +158,11 @@ def get_dispute(client: PayPalClient, dispute_id: str) -> DisputeDetail:
         or any(str(h.get("actor") or "").upper() == "SELLER" for h in history),
         outcome_code=str((body.get("dispute_outcome") or {}).get("outcome_code") or ""),
     )
+
+
+def _dispute_facts(dispute: Mapping[str, Any]) -> dict[str, Any]:
+    """DI-07: the dispute's own facts for the Disputes page, never the buyer's name or messages."""
+    return {key: dispute[key] for key in _DISPUTE_FACTS if dispute.get(key)}
 
 
 def _seller_captures(dispute: Mapping[str, Any]) -> list[str]:

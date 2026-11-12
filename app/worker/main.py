@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.explainer import Explainer
 from app.ai.recovery import RecoveryDrafter
-from app.cases.dispute_intake import OpenCase, Refresh, take_dispute
+from app.cases.dispute_intake import OpenCase, Refresh, record_read, take_dispute
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import CasePipeline
 from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expired
@@ -161,7 +161,8 @@ def sweep_disputes(
     which is safe to repeat. Returns how many disputes matched an order."""
     if rt.paypal is None:  # nothing to ask
         return 0
-    listed = list_open_disputes_since(rt.paypal, rt.clock.now() - DISPUTE_LIST_MAX_AGE)
+    facts: dict[str, dict[str, Any]] = {}
+    listed = list_open_disputes_since(rt.paypal, rt.clock.now() - DISPUTE_LIST_MAX_AGE, facts)
     matched = 0
     with rt.session_factory() as s:
         for found in listed:
@@ -180,6 +181,7 @@ def sweep_disputes(
                 refresh=refresh,
             )
             log.debug("dispute sweep: %s", said)
+            record_read(s, found.dispute_id, facts.get(found.dispute_id, {}), clock=rt.clock)
             matched += 1
         # DI-05: a dispute we hold open that PayPal no longer lists as open may be decided.
         listed_ids = {found.dispute_id for found in listed}

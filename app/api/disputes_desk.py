@@ -32,6 +32,7 @@ from app.api.autopilot import seller_from_link
 from app.api.deps import AppDeps, Services
 from app.api.journey import Db
 from app.api.views import latest_decision, money_status
+from app.cases.dispute_intake import READ_ACTION
 from app.money import Money
 from app.orders.enums import CaseState, MoneyActionKind, MoneyActionStatus
 from app.orders.models import AuditLog, Case, Dispute, MoneyAction, Order, Shipment, TrackingEvent
@@ -226,12 +227,16 @@ def _webhooks_by_dispute(s: Session, ids: set[str]) -> dict[str, list[WebhookInb
     return found
 
 
-def paypal_facts(hooks: list[WebhookInbox]) -> PayPalFacts:
-    """DS-04: each field from the latest webhook that carries it; a field never sent stays None."""
+def paypal_facts(hooks: list[WebhookInbox], read: AuditLog | None = None) -> PayPalFacts:
+    """DS-04: each field from the latest webhook that carries it; a field never sent stays None.
+    DI-07: `read` is Doorstep's last read of the dispute from PayPal, taken in time order with the
+    webhooks, so a server PayPal cannot reach still shows the reason and the reply-by date."""
     facts = PayPalFacts(events=len(hooks))
-    for row in hooks:  # oldest first, so later events overwrite earlier ones
-        res = _dict(_dict(row.payload).get("resource"))
-        facts.updated_at = row.received_at
+    sources = [(row.received_at, _dict(_dict(row.payload).get("resource"))) for row in hooks]
+    if read is not None:
+        sources.append((read.at, _dict(read.after)))
+    for at, res in sorted(sources, key=lambda source: source[0]):  # later ones overwrite
+        facts.updated_at = at
         facts.reason = _text(res.get("reason")) or facts.reason
         facts.status = _text(res.get("status")) or facts.status
         facts.stage = _text(res.get("dispute_life_cycle_stage")) or facts.stage
@@ -307,6 +312,17 @@ class _Desk:
         order_ids = list({d.order_id for d in disputes})
         self.reports = latest_reports(s, order_ids)
         self.hooks = _webhooks_by_dispute(s, {d.paypal_dispute_id for d in disputes})
+        self.reads: dict[str, AuditLog] = {}
+        for row in s.scalars(  # oldest first, so each dispute keeps its latest read
+            select(AuditLog)
+            .where(
+                AuditLog.entity_type == "dispute",
+                AuditLog.action == READ_ACTION,
+                AuditLog.entity_id.in_([d.id for d in disputes]),
+            )
+            .order_by(AuditLog.at, AuditLog.id)
+        ):
+            self.reads[row.entity_id] = row
         self.money: dict[str, list[MoneyAction]] = defaultdict(list)
         for m in s.scalars(
             select(MoneyAction)
@@ -330,7 +346,7 @@ class _Desk:
         evidence_ma = _latest_money(actions, MoneyActionKind.EVIDENCE)
         offer_ma = _latest_money(actions, MoneyActionKind.OFFER)
         hooks = self.hooks.get(d.paypal_dispute_id, [])
-        facts = paypal_facts(hooks)
+        facts = paypal_facts(hooks, self.reads.get(d.id))
         stage: Stage = "needs_reply"
         if d.status == "resolved":
             stage = "resolved"

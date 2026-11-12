@@ -9,8 +9,8 @@ never gets one). Both call `take_dispute`, which is safe to repeat:
    seller can send evidence. A held case stays held: a person decides it again, and that decision
    sees the open dispute. A refund already in the outbox is stopped by its own re-check.
 3. An order that never had a case, and can have one, gets one opened by "paypal" and decided on
-   the facts as they are. A shipped order with no carrier scan yet is first brought up to date
-   from the carrier (DI-06), as a server the carrier cannot reach gets no tracking webhook. The
+   the facts as they are. An order with no carrier scan yet is first brought up to date from
+   the carrier (DI-06), as a server the carrier cannot reach gets no tracking webhook. The
    policy's first check routes the case to DISPUTE_EVIDENCE, as the dispute is open. Only
    delivery problems open a case: other dispute reasons are recorded for a person.
 
@@ -21,6 +21,7 @@ through app.policy (hard rules 1 and 7).
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,8 +30,10 @@ from app.cases.engine import ClaimReason
 from app.cases.reactions import record_listed_disputes
 from app.clock import Clock
 from app.orders.enums import CaseState, OrderState
-from app.orders.models import Case, Dispute, Order
+from app.orders.models import AuditLog, Case, Dispute, Order, Shipment, TrackingEvent
 from app.orders.state import FINISHED_CASE_STATES
+
+READ_ACTION = "paypal.dispute_read"  # DI-07: the audit action that keeps PayPal's dispute facts
 
 # PayPal's dispute reasons that are delivery problems, and the buyer report each one matches.
 PAYPAL_REASONS: dict[str, ClaimReason] = {
@@ -75,12 +78,61 @@ def take_dispute(
     claim = PAYPAL_REASONS.get(reason.upper())
     if cases or open_case is None or claim is None:
         return f"Recorded dispute {dispute_id}; the Disputes page shows it to the seller."
-    if refresh is not None and OrderState(order.state) not in CASE_STATES_FROM:
+    if refresh is not None and (
+        OrderState(order.state) not in CASE_STATES_FROM or not _has_scan(session, order)
+    ):
         refresh(session, order)
     if OrderState(order.state) not in CASE_STATES_FROM:
         return f"Recorded dispute {dispute_id}; the order is {order.state.lower()}, so no case."
     open_case(session, order, claim)
     return f"Recorded dispute {dispute_id} and opened a case to send evidence through it."
+
+
+def record_read(session: Session, dispute_id: str, facts: dict[str, Any], *, clock: Clock) -> bool:
+    """DI-07: what PayPal says about a dispute on file (reason, stage, reply-by date, amount), kept
+    for the Disputes page, as a server PayPal cannot reach gets no webhook to show. Written only
+    when it changed; True when written."""
+    row = session.scalar(select(Dispute).where(Dispute.paypal_dispute_id == dispute_id))
+    if row is None or not facts:
+        return False
+    if latest_read(session, row.id) == facts:
+        return False
+    session.add(
+        AuditLog(
+            actor="paypal",
+            action=READ_ACTION,
+            entity_type="dispute",
+            entity_id=row.id,
+            before={},
+            after=dict(facts),
+            at=clock.now(),
+        )
+    )
+    session.flush()
+    return True
+
+
+def latest_read(session: Session, dispute_row_id: str) -> dict[str, Any] | None:
+    """The facts `record_read` last kept for this dispute, or None."""
+    row = session.scalars(
+        select(AuditLog)
+        .where(
+            AuditLog.entity_type == "dispute",
+            AuditLog.entity_id == dispute_row_id,
+            AuditLog.action == READ_ACTION,
+        )
+        .order_by(AuditLog.at.desc(), AuditLog.id.desc())
+    ).first()
+    return dict(row.after) if row is not None else None
+
+
+def _has_scan(session: Session, order: Order) -> bool:
+    """True when the carrier has sent any scan for this order's parcels."""
+    shipments = select(Shipment.id).where(Shipment.order_id == order.id)
+    found = session.scalar(
+        select(TrackingEvent.id).where(TrackingEvent.shipment_id.in_(shipments)).limit(1)
+    )
+    return found is not None
 
 
 def _on_file(session: Session, order: Order, dispute_id: str, clock: Clock) -> None:
