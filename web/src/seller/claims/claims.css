@@ -80,6 +80,12 @@
 .cd-grid .row-action.quiet { border-color: transparent; background: transparent; color: var(--text-2); font-weight: 550; }
 .cd-grid .row-action.quiet:hover { background: var(--surface-2); color: var(--text); }
 .cd-grid .row-action:disabled { opacity: .55; cursor: progress; }
+/* FP-R1: the buyer side; when it waits for the seller it is a link to the case */
+button.cd-buyer { font: inherit; font-size: 12px; font-weight: 550; cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+button.cd-buyer svg { width: 12px; height: 12px; opacity: .75; }
+button.cd-buyer:hover { border-color: currentColor; }
+button.cd-buyer:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cd-buyer-mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-3); }
 .cd-due { display: inline-flex; flex-direction: column; justify-content: center; gap: 5px; height: 100%; color: var(--text-3); font-weight: 500; line-height: 1; }
 .cd-due.u-bad { color: var(--u-bad); font-weight: 650; } .cd-due.u-warn { color: #8a5a12; font-weight: 650; }
 .cd-due.filed { flex-direction: row; align-items: center; font-size: 12.5px; color: var(--text-3); }
@@ -183,7 +189,9 @@
   .cd-cards li.open .ledger-card { padding-bottom: 10px; }
   .cd-card-chev { width: 16px; height: 16px; margin-left: auto; color: var(--text-3); transition: transform .2s; flex: none; }
   .cd-cards li.open .cd-card-chev { transform: rotate(180deg); color: var(--accent); }
-  .cd-cards .lc-paid + .cd-card-chev { margin-left: 0; }
+  .cd-cards .lc-paid + .cd-card-chev, .cd-cards .lc-paid + .cd-buyer-mini, .cd-cards .cd-buyer-mini + .cd-card-chev { margin-left: 0; }
+  .cd-cards .cd-buyer-mini { margin-left: auto; }
+  .cd-cards .lc-bottom > .faint { display: none; }
   .cd-cards .cd-due { flex-direction: row; align-items: center; gap: 8px; height: auto; }
   .cd-detail { margin: 0 12px 14px; }
   .cd-detail-grid { grid-template-columns: minmax(0, 1fr); }

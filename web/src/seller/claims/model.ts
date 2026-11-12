@@ -94,5 +94,19 @@ export function summarise(rows: DeskRow[], now: number): Summary {
   };
 }
 
+/** FP-R1: the buyer's side of the same parcel, from the case and its refunds. A claim gets money back
+ *  from the carrier; this says what the seller owes the buyer (the Control Room's Needs you). */
+export type BuyerSide = { label: string; tone: Tone; hint: string; needsYou: boolean };
+export function buyerOf(r: Pick<DeskRow, "case_state" | "refunded_minor" | "currency" | "simulated">): BuyerSide | null {
+  const s = r.case_state;
+  if (s === "DISPUTE_EVIDENCE") return { label: "Dispute", tone: "bad", hint: "The buyer opened a PayPal dispute", needsYou: true };
+  if (r.refunded_minor > 0) return { label: "Refunded", tone: "good", hint: `${money(r.refunded_minor, r.currency)} back to the buyer${r.simulated ? " (simulated)" : ""}`, needsYou: false };
+  if (s === "AWAITING_SELLER" || s === "HOLD_FOR_REVIEW") return { label: "Needs you", tone: "accent", hint: "The buyer's case waits for you in Needs you", needsYou: true };
+  if (s === "AUTO_REFUND" || s === "DECIDED") return { label: "Refunding", tone: "neutral", hint: "The buyer's refund is on its way", needsYou: false };
+  if (s === "SETTLED" || s === "CLOSED") return { label: "Closed", tone: "neutral", hint: "The buyer's case closed with no refund", needsYou: false };
+  if (s) return { label: "Open", tone: "neutral", hint: "The buyer's case is open", needsYou: false };
+  return null;
+}
+
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 export const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });

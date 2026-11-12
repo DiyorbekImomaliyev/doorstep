@@ -29,10 +29,25 @@ type Props = {
   error?: string | null;
   onOpenOrder: (orderId: string) => void;
   onChanged: () => void;
+  /** FP-R1: open one claim on arrival (its recovery, case or order id), e.g. from a "Claim £75" tag
+   *  on a Needs you row. The same works as a link: `?claim=<id>#claims`. */
+  focus?: string | null;
+  /** Called once the focus was used, so a later visit opens the desk as usual. */
+  onFocused?: () => void;
 };
 
+const claimInLink = () => new URLSearchParams(window.location.search).get("claim");
+/** Drops `?claim=` from the address once used, so a refresh or a later visit opens the desk as usual. */
+function dropClaimFromLink() {
+  const q = new URLSearchParams(window.location.search);
+  if (!q.has("claim")) return;
+  q.delete("claim");
+  const rest = q.toString();
+  history.replaceState(history.state, "", `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
+}
+
 /** CL-02..CL-07: the claims desk, where a seller gets money back from carriers. */
-export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged }: Props) {
+export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged, focus, onFocused }: Props) {
   const desk = useAsync(() => claimsApi.desk(token), [token]);
   const phone = useMedia("(max-width: 600px)");
   // Seller.tsx reloads its claim rows after a change anywhere (the case drawer marks a claim too).
@@ -92,9 +107,30 @@ export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged
     const r = byId.get(id);
     if (r && seg !== "all" && seg !== r.status) setSeg("all");
     pick(id);
-    // The picked row at the top, its story under it (the phone list scrolls its card itself).
-    if (!phone) window.setTimeout(() => gridBox.current?.querySelector(`.ag-row[row-id="${id}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
+    // The picked row at the top, its story under it (the phone list scrolls its card itself). On
+    // arrival the grid may still be drawing its rows: look again for a moment.
+    if (phone) return;
+    let tries = 0;
+    const scroll = () => {
+      const el = gridBox.current?.querySelector(`.ag-row[row-id="${id}"]`);
+      if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
+      else if (++tries < 20) window.setTimeout(scroll, 100);
+    };
+    window.setTimeout(scroll, 80);
   }, [byId, seg, phone, pick]);
+
+  // FP-R1: a claim asked for by the app (focus) or a link (?claim=): its recovery, case or order id.
+  const [want, setWant] = useState<string | null>(() => focus ?? claimInLink());
+  useEffect(() => { if (focus) setWant(focus); }, [focus]);
+  useEffect(() => {
+    if (!want || !rows) return;
+    const r = rows.find((x) => x.recovery_id === want || x.case_id === want || x.order_id === want);
+    setWant(null);
+    dropClaimFromLink();
+    onFocused?.();
+    if (r) focusClaim(r.recovery_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [want, rows]);
   const next = useCallback((r: DeskRow) => {
     if (r.actions.includes("submitted")) void act(r, "submitted");
     else if (r.actions.includes("paid")) { setOpen(r.recovery_id); setPaying(r.recovery_id); }

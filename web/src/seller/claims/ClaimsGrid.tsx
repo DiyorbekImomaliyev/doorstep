@@ -5,10 +5,11 @@ import { ArrowUpRight, ChevronDown, ChevronRight, SearchX } from "lucide-react";
 import { money } from "../../format";
 import { gridTheme } from "../../grid/theme";
 import { ItemCell, StatusPill } from "../LedgerGrid";
+import BuyerCell from "./BuyerCell";
 import type { DeskRow } from "./claimsApi";
 import ClaimDetail from "./ClaimDetail";
 import { useDesk } from "./desk";
-import { FAULT, carrierOf, daysLeft, isMade, isOpen, joinMoney, plural, rateText, record, statusOf, sumBy, urgency, type Seg } from "./model";
+import { FAULT, buyerOf, carrierOf, daysLeft, isMade, isOpen, joinMoney, plural, rateText, record, statusOf, sumBy, urgency, type Seg } from "./model";
 
 export type Row = DeskRow & { __total?: string };
 
@@ -123,20 +124,24 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
   nextRef.current = onNext;
 
   const columns = useMemo((): ColDef<Row>[] => [
-    { headerName: "Item", colId: "item", field: "item", flex: 2, minWidth: 240, cellRenderer: ItemColumn, cellRendererParams: { onToggle: toggle } },
-    { headerName: "Carrier", colId: "carrier", flex: 1, minWidth: 130, enableRowGroup: true,
+    { headerName: "Item", colId: "item", field: "item", flex: 2, minWidth: 220, cellRenderer: ItemColumn, cellRendererParams: { onToggle: toggle } },
+    { headerName: "Carrier", colId: "carrier", flex: 1, minWidth: 120, enableRowGroup: true,
       valueGetter: (p) => (!p.data || p.data.__total ? "" : carrierOf(p.data)) },
-    { headerName: "Fault", colId: "fault", width: 110, valueGetter: (p) => (!p.data || p.data.__total ? "" : FAULT[p.data.failure_point] ?? p.data.failure_point) },
-    { headerName: "Claim", colId: "claim", field: "claim_minor", ...RIGHT, width: 110,
+    { headerName: "Fault", colId: "fault", width: 96, valueGetter: (p) => (!p.data || p.data.__total ? "" : FAULT[p.data.failure_point] ?? p.data.failure_point) },
+    { headerName: "Claim", colId: "claim", field: "claim_minor", ...RIGHT, width: 96,
       valueFormatter: (p) => (p.data ? money(p.data.claim_minor, p.data.currency) : ""),
       tooltipValueGetter: (p) => (p.data && !p.data.__total ? (p.data.cover_minor != null ? `Carrier cover ${money(p.data.cover_minor, p.data.currency)}` : "Cover unconfirmed") : undefined) },
-    { headerName: "Status", colId: "status", field: "status", width: 120, valueFormatter: (p) => statusOf(p.value ?? "").label,
+    { headerName: "Status", colId: "status", field: "status", width: 112, valueFormatter: (p) => statusOf(p.value ?? "").label,
       cellRenderer: (p: CustomCellRendererProps<Row>) => (p.data && !p.data.__total ? <StatusPill tone={statusOf(p.data.status).tone}>{statusOf(p.data.status).label}</StatusPill> : null) },
-    { headerName: "Due", colId: "due", field: "deadline_at", width: 100,
+    { headerName: "Due", colId: "due", field: "deadline_at", width: 92,
       cellRenderer: (p: CustomCellRendererProps<Row>) => (p.data && !p.data.__total ? <DueCell r={p.data} /> : null) },
-    { headerName: "Paid", colId: "paid", field: "recovered_minor", ...RIGHT, width: 110,
+    { headerName: "Paid", colId: "paid", field: "recovered_minor", ...RIGHT, width: 96,
       valueFormatter: (p) => (p.data && (p.data.__total || p.data.recovered_minor != null) ? money(p.data.recovered_minor, p.data.currency) : "—") },
-    { headerName: "", colId: "next", width: 150, sortable: false, resizable: false, cellClass: "cd-next-cell",
+    // FP-R1: the other side of the same parcel. The value carries the label so the cell redraws when it changes.
+    { headerName: "Buyer", colId: "buyer", width: 126, headerTooltip: "The buyer's side of this parcel: refunded, waiting for you, or a dispute",
+      valueGetter: (p) => (!p.data || p.data.__total ? "" : buyerOf(p.data)?.label ?? ""),
+      cellRenderer: (p: CustomCellRendererProps<Row>) => (p.data && !p.data.__total ? <BuyerCell r={p.data} /> : null) },
+    { headerName: "", colId: "next", width: 142, sortable: false, resizable: false, cellClass: "cd-next-cell",
       cellRenderer: NextCell, cellRendererParams: { onNext: (r: DeskRow) => nextRef.current(r), onCase: (r: DeskRow) => caseRef.current(r) } },
   ], [toggle]);
   const defaultColDef = useMemo<ColDef<Row>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true }), []);
@@ -200,6 +205,7 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
           if (byCarrier) e.api.applyColumnState({ state: [{ colId: "carrier", rowGroup: true, hide: true }] });
         }}
         onRowDataUpdated={syncOpen}
+        onFirstDataRendered={syncOpen}
         isExternalFilterPresent={() => segRef.current !== "all"}
         doesExternalFilterPass={(n) => !!n.data && n.data.status === segRef.current}
         masterDetail
