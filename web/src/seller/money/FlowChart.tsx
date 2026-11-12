@@ -9,13 +9,26 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 const OUT = C.accent;
 const BACK = "#2f6f73"; // the Insights palette's second hue, so money back reads the same everywhere
 
-type Props = { weeks: Week[]; currency: string };
+type Props = { weeks: Week[]; currency: string; compact?: boolean };
+
+/** Narrow x labels for a phone: the month only where it changes ("5 Oct", "12", "19", "2 Nov"). */
+function shortLabels(weeks: Week[]): Map<string, string> {
+  const out = new Map<string, string>();
+  let month = "";
+  for (const w of weeks) {
+    const [day, mon] = w.week.split(" ");
+    out.set(w.week, mon && mon !== month ? w.week : day);
+    month = mon ?? month;
+  }
+  return out;
+}
 
 /** MN-03: weekly money out (refunds) against money back (carrier claims), one currency. */
-export default function FlowChart({ weeks, currency }: Props) {
+export default function FlowChart({ weeks, currency, compact = false }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<AgChartInstance | null>(null);
   const fmt = (major: number) => money(Math.round(major * 100), currency);
+  const short = useMemo(() => shortLabels(weeks), [weeks]);
   const options = useMemo((): AgCartesianChartOptions => ({
     data: weeks,
     height: 216,
@@ -39,12 +52,14 @@ export default function FlowChart({ weeks, currency }: Props) {
       }) },
     })),
     axes: {
-      x: { type: "category", position: "bottom", line: { enabled: false }, label: { color: C.ink3, fontSize: 11.5, autoRotate: false, avoidCollisions: true }, paddingInner: 0.35, groupPaddingInner: 0.12 },
+      x: { type: "category", position: "bottom", line: { enabled: false }, paddingInner: 0.35, groupPaddingInner: 0.12,
+        label: { color: C.ink3, fontSize: 11.5, autoRotate: false, avoidCollisions: true, wrapping: "never",
+          ...(compact ? { formatter: (p: { value: string }) => short.get(p.value) ?? p.value } : {}) } },
       y: { type: "number", position: "left", line: { enabled: false }, nice: true, gridLine: { style: [{ stroke: C.hair, lineDash: [] }] },
         label: { color: C.ink3, fontSize: 11.5, formatter: (p: { value: number }) => fmt(p.value) } },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [weeks, currency]);
+  }), [weeks, currency, compact, short]);
 
   useEffect(() => {
     if (!host.current) return;

@@ -5,6 +5,7 @@ import type { AutopilotStatement } from "../../api";
 import { FAILURE_POINT, money, when, type Tone } from "../../format";
 import LedgerGrid, { ItemCell, RIGHT, StatusPill, joinMoney, sumByCurrency } from "../LedgerGrid";
 import type { CurrencyLimits, Outcome, ReplayCase, RuleCard, Run } from "./automateApi";
+import Chips from "../Chips";
 import { Empty, Meter, Segmented, Switch } from "./parts";
 
 export const KIND_TITLE: Record<string, string> = { CARRIER_LOST: "Lost parcels", DAMAGED_IN_TRANSIT: "Damaged in transit" };
@@ -75,7 +76,7 @@ export function RuleCardView({ c, limits, stopping, busy, onOn, onOff, onDismiss
             <span><span className="faint">Learned from</span><strong className="num">{c.approvals}</strong></span>
           </div>
         </>
-      ) : c.status === "idle" ? null : (
+      ) : (
         <div className="ax-progress">
           <div className="ax-cap-line"><span>Approvals</span><span className="num"><strong>{Math.min(c.approvals, c.needed)}</strong> of {c.needed}</span></div>
           <Meter label={`${title}: approvals toward an offer`} total={c.needed} parts={[{ value: Math.min(c.approvals, c.needed), tone: "accent" }]} />
@@ -241,11 +242,11 @@ export function WhatIf({ cards, selected, onSelect, limits, onOpen }: {
         </div>
       </div>
       <div className="ax-wi-filter">
-        <Segmented<Filter> label="Filter replayed cases" value={filter} onChange={setFilter} items={[
-          { key: "all", label: "All", count: cases.length },
-          { key: "rule", label: "Rule", count: rule.length },
-          { key: "auto", label: "Automatic", count: auto.length },
-          { key: "you", label: "You", count: you.length },
+        <Chips<Filter> label="Filter replayed cases" value={filter} onChange={setFilter} items={[
+          { key: "all", label: "All", count: cases.length, title: "Every replayed case" },
+          { key: "rule", label: "Rule", count: rule.length, tone: OUTCOME.rule.tone, title: "The rule would have refunded these" },
+          { key: "auto", label: "Automatic", count: auto.length, tone: OUTCOME.auto.tone, title: "Refunded automatically anyway, under the shop's auto limit" },
+          { key: "you", label: "You", count: you.length, tone: OUTCOME.you.tone, title: "Still yours to decide" },
         ]} />
       </div>
       <LedgerGrid<ReplayCase>

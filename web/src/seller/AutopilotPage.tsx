@@ -4,6 +4,7 @@ import { api, type Autopilot, type AutopilotStatement } from "../api";
 import { ErrorBox, Loading, usePoll } from "../components/ui";
 import { money } from "../format";
 import { PageHead, joinMoney } from "./LedgerGrid";
+import LiveRefresh from "./LiveRefresh";
 import { automateApi, type AutopilotDesk } from "./automate/automateApi";
 import { RuleCardView, Runs, WhatIf, kindTitle } from "./automate/autopilotParts";
 import { Empty, Meter, Sparkbars, UndoToast, useUndo } from "./automate/parts";
@@ -62,17 +63,19 @@ export default function AutopilotPage({ token, data, statement, onChange, onOpen
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState<Set<string>>(new Set());
   const [pick, setPick] = useState<number | null>(null);
+  const [updated, setUpdated] = useState<Date | null>(null);
   const undo = useUndo();
   const whatIf = useRef<HTMLDivElement>(null);
 
   const reload = () => {
-    automateApi.autopilot(token).then((d) => { setDesk(d); setLoadErr(null); }).catch((e) => setLoadErr(String(e.message ?? e)));
+    automateApi.autopilot(token).then((d) => { setDesk(d); setLoadErr(null); setUpdated(new Date()); }).catch((e) => setLoadErr(String(e.message ?? e)));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(reload, [token, data, statement]); // the Control Room reloaded: follow it
   // Live: rules refund as buyers report, and the worker completes those refunds at PayPal. Quick
   // while one is on its way, calm otherwise (the Control Room's 10 s).
-  usePoll(reload, !!desk, desk?.runs.some((r) => r.status === "queued" || r.status === "pending") ? 3000 : 10_000);
+  const following = desk?.runs.filter((r) => r.status === "queued" || r.status === "pending").length ?? 0;
+  usePoll(reload, !!desk, following ? 3000 : 10_000);
 
   async function act(fn: () => Promise<unknown>, done: string) {
     setBusy(true); setActErr(null);
@@ -124,14 +127,20 @@ export default function AutopilotPage({ token, data, statement, onChange, onOpen
 
   return (
     <div className="ax-page stack-lg">
-      <PageHead title="Autopilot" line="Refunds Doorstep may approve for you" right={stopAll.length > 0 ? (
-        <button type="button" className="btn" disabled={busy || !!undo.pending}
-          title="Stops every rule now. Doorstep won't offer them again."
-          onClick={() => turnOff(stopAll.map((c) => c.rule_id!), `Turning off ${stopAll.length} rule${stopAll.length === 1 ? "" : "s"}`,
-            `Autopilot off: ${stopAll.map((c) => kindText(c.failure_point)).join(" and ")} come to you again.`)}>
-          <Power size={15} aria-hidden />Turn all off
-        </button>
-      ) : undefined} />
+      <PageHead title="Autopilot" line="Refunds Doorstep may approve for you" right={
+        <div className="row head-tools">
+          <LiveRefresh text={following ? `Following ${following}` : "Live"} updated={updated} onRefresh={reload}
+            title={following ? "Following PayPal every 3 seconds" : "Refreshes every 10 seconds while this tab is open"} />
+          {stopAll.length > 0 && (
+            <button type="button" className="btn" disabled={busy || !!undo.pending}
+              title="Stops every rule now. Doorstep won't offer them again."
+              onClick={() => turnOff(stopAll.map((c) => c.rule_id!), `Turning off ${stopAll.length} rule${stopAll.length === 1 ? "" : "s"}`,
+                `Autopilot off: ${stopAll.map((c) => kindText(c.failure_point)).join(" and ")} come to you again.`)}>
+              <Power size={15} aria-hidden />Turn all off
+            </button>
+          )}
+        </div>
+      } />
       {loadErr && !desk && <ErrorBox message="Autopilot did not load. Refresh to try again." />}
       {actErr && <ErrorBox message={actErr} />}
 

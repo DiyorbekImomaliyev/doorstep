@@ -64,8 +64,40 @@ test("UI-02 an invalid link is a calm page with a way on, and every page has its
   await expect(page).toHaveTitle("Checkout · Doorstep");
 });
 
+test("UI-03 Money and Autopilot share the live status, Refresh and filter chips of Claims and Disputes", async ({ page }) => {
+  for (const hash of ["claims", "disputes", "money", "autopilot"]) {
+    await page.goto(`/seller/${seed.seller_token}#${hash}`);
+    const head = page.locator(".page-head");
+    await expect(head.locator(".live .live-dot"), hash).toBeVisible();
+    await expect(head.getByRole("button", { name: /^Refresh/ }), hash).toBeVisible();
+  }
+  await page.goto(`/seller/${seed.seller_token}#money`);
+  await expect(page.getByRole("group", { name: "Filter by status" })).toHaveClass(/\bchips\b/);
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.goto(`/seller/${seed.seller_token}#autopilot`);
+  await expect(page.getByRole("group", { name: "Filter replayed cases" })).toHaveClass(/\bchips\b/);
+  // The two rule cards share the row: no empty third column.
+  const cards = page.getByLabel("Autopilot rules").locator(".ax-rule");
+  await expect(cards).toHaveCount(2);
+  const [a, b] = [await cards.nth(0).boundingBox(), await cards.nth(1).boundingBox()];
+  const row = await page.locator(".ax-rules").boundingBox();
+  expect(Math.round(b!.x + b!.width)).toBe(Math.round(row!.x + row!.width));
+  expect(Math.round(a!.height)).toBe(Math.round(b!.height));
+});
+
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test("UI-05 the prevention tip and the money chart's dates fit a phone on whole lines", async ({ page }) => {
+    await page.goto(`/seller/${seed.seller_token}`);
+    const tip = page.getByLabel("Prevention suggestion").locator(".tip-title");
+    if (await tip.count()) {
+      await tip.scrollIntoViewIfNeeded();
+      expect(await tip.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+    }
+    await page.goto(`/seller/${seed.seller_token}#money`);
+    await expect(page.getByLabel(/^Money flow by week/)).toBeVisible();
+    expect(await noOverflow(page)).toBe(true);
+  });
   test("UI-02 public pages fit a phone, and their controls are 44 px tap targets", async ({ page }) => {
     for (const url of ["/", `/t/${seed.buyers["sam-jacket"]}`, `/t/${seed.buyers["failed-attempt"]}`, `/shop/${seed.summary.seller_id}`, "/proof", "/t/bad-link"]) {
       await page.goto(url);

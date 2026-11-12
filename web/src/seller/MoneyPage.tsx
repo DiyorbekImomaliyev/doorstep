@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { ArrowDownLeft, ArrowUpRight, Download, HandCoins, KeyRound, Landmark, Radio, Scale, ShieldCheck, ShieldOff } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Download, HandCoins, KeyRound, Landmark, Scale, ShieldCheck, ShieldOff } from "lucide-react";
 import type { MoneyRow } from "../api";
 import { ErrorBox, Toast, usePoll } from "../components/ui";
 import { money } from "../format";
 import { useMedia } from "../motion";
+import Chips from "./Chips";
 import { PageHead } from "./LedgerGrid";
+import LiveRefresh from "./LiveRefresh";
 import FlowChart from "./money/FlowChart";
 import MoneyGrid, { type Row } from "./money/MoneyGrid";
 import { exportLedger } from "./money/exportLedger";
@@ -107,9 +109,9 @@ export default function MoneyPage({ rows: listRows, error, onOpenOrder, token, o
                 ))}
               </div>
             )}
-            <span className={`mn-live${flying ? " on" : ""}`} title={flying ? "Following PayPal every 2 s" : "Refreshes every 10 s"} aria-live="polite">
-              <Radio aria-hidden />{flying ? `Following ${flying}` : "Live"}{updated && !phone ? ` · ${updated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
-            </span>
+            <LiveRefresh text={flying ? `Following ${flying}` : "Live"} updated={updated}
+              title={flying ? "Following PayPal every 2 seconds" : "Refreshes every 10 seconds while this tab is open"}
+              onRefresh={() => { reload(); changedCb.current(); }} />
             {!phone && (
               <button type="button" className="btn" onClick={doExport} disabled={!rows?.length} title="Excel: every money action, totals per currency">
                 <Download aria-hidden />Export
@@ -159,7 +161,7 @@ export default function MoneyPage({ rows: listRows, error, onOpenOrder, token, o
           <section className="table-card mn-flow" aria-label="Money flow">
             <div className="mn-flow-chart">
               <div className="mn-card-head"><p className="mn-card-title">Money flow</p><span className="faint">Weekly · {currency}</span></div>
-              {rows ? <FlowChart weeks={weeks} currency={currency} /> : <span className="skeleton" style={{ display: "block", height: 216 }} />}
+              {rows ? <FlowChart weeks={weeks} currency={currency} compact={phone} /> : <span className="skeleton" style={{ display: "block", height: 216 }} />}
             </div>
             <aside className="mn-proof" aria-label="Proof">
               <div className="mn-card-head"><p className="mn-card-title">Proof</p></div>
@@ -177,13 +179,11 @@ export default function MoneyPage({ rows: listRows, error, onOpenOrder, token, o
             </aside>
           </section>
 
-          <div className="mn-filter" role="group" aria-label="Filter by status">
-            <button type="button" aria-pressed={status === "all"} onClick={() => setStatus("all")}>All<span className="count num">{rows?.length ?? ""}</span></button>
-            {chips.map((s) => (
-              <button key={s} type="button" aria-pressed={status === s} disabled={!counts[s]} onClick={() => setStatus(s)} title={statusOf(s).hint}>
-                <span className={`mn-chip-dot t-${statusOf(s).tone}`} aria-hidden />{statusOf(s).label}<span className="count num">{counts[s] ?? 0}</span>
-              </button>
-            ))}
+          <div className="desk-bar">
+            <Chips label="Filter by status" value={status} onChange={setStatus} items={[
+              { key: "all", label: "All", count: rows?.length, title: "Every money action" },
+              ...chips.map((s) => ({ key: s, label: statusOf(s).label, count: counts[s] ?? 0, tone: statusOf(s).tone, title: statusOf(s).hint, disabled: !counts[s] })),
+            ]} />
           </div>
 
           <MoneyGrid rows={rows} token={token} status={status} onOpenOrder={onOpenOrder} onRedecided={onRedecided} onApi={onApi} changed={changed} />

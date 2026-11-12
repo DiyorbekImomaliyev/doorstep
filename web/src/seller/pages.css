@@ -38,6 +38,10 @@ p.lg-empty { padding: 28px 16px; text-align: center; margin: 0; }
 .tip.tip-slim { align-items: center; gap: 10px; padding: 8px 14px; }
 .tip.tip-slim .tip-icon { width: 24px; height: 24px; border-radius: 6px; }
 .tip.tip-slim .tip-title { font-weight: 600; font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A phone shows the whole suggestion on two lines, never a cut-off one. */
+@media (max-width: 600px) { .tip.tip-slim .tip-title { white-space: normal; overflow: visible; line-height: 1.35; text-wrap: balance; } }
+/* The page head's right side: live status, Refresh, then the page's own action. */
+.head-tools { gap: 10px; flex-wrap: wrap; align-items: center; }
 .nav .count.alert { color: var(--accent); font-weight: 600; }
 
 /* One toolbar above each desk's grid: filter chips on the left, the desk's own controls on the right. */
