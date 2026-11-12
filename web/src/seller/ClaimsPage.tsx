@@ -5,6 +5,7 @@ import type { ClaimRow, RecoveryView } from "../api";
 import { ErrorBox, Toast, useAsync, usePoll } from "../components/ui";
 import { money } from "../format";
 import { useMedia } from "../motion";
+import { GridTools } from "../grid/deskGrid";
 import { afterMark, claimsApi, type DeskRow, type Mark } from "./claims/claimsApi";
 import ClaimCards from "./claims/ClaimCards";
 import ClaimClock from "./claims/ClaimClock";
@@ -206,9 +207,12 @@ export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged
                 ? { key: k, label: "All", count: s?.counts.all, title: "Every claim" }
                 : { key: k, label: statusOf(k).label, count: s?.counts[k], tone: statusOf(k).tone, title: statusOf(k).hint }))} />
             {!phone && (
-              <button type="button" className="btn cd-toggle" aria-pressed={byCarrier} onClick={() => setByCarrier((v) => !v)} title="Group by carrier, with won ÷ claimed">
-                <Layers size={14} aria-hidden />By carrier
-              </button>
+              <div className="desk-tools">
+                <button type="button" className="btn cd-toggle" aria-pressed={byCarrier} onClick={() => setByCarrier((v) => !v)} title="Group by carrier, with won ÷ claimed">
+                  <Layers size={14} aria-hidden />By carrier
+                </button>
+                <GridTools api={() => grid.current} />
+              </div>
             )}
           </div>
           <section className="table-card cd-table" aria-label="Carrier claims" ref={gridBox}>

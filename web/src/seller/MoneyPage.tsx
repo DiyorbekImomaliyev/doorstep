@@ -5,6 +5,7 @@ import type { MoneyRow } from "../api";
 import { ErrorBox, Toast, usePoll } from "../components/ui";
 import { money } from "../format";
 import { useMedia } from "../motion";
+import { GridTools } from "../grid/deskGrid";
 import Chips from "./Chips";
 import { PageHead } from "./LedgerGrid";
 import LiveRefresh from "./LiveRefresh";
@@ -184,9 +185,11 @@ export default function MoneyPage({ rows: listRows, error, onOpenOrder, token, o
               { key: "all", label: "All", count: rows?.length, title: "Every money action" },
               ...chips.map((s) => ({ key: s, label: statusOf(s).label, count: counts[s] ?? 0, tone: statusOf(s).tone, title: statusOf(s).hint, disabled: !counts[s] })),
             ]} />
+            {/* Excel stays the page's Export: one ledger workbook. */}
+            {!phone && <GridTools api={() => grid.current} excel={false} />}
           </div>
 
-          <MoneyGrid rows={rows} token={token} status={status} onOpenOrder={onOpenOrder} onRedecided={onRedecided} onApi={onApi} changed={changed} />
+          <MoneyGrid rows={rows} token={token} status={status} onOpenOrder={onOpenOrder} onRedecided={onRedecided} onApi={onApi} changed={changed} onExcel={doExport} />
         </>
       )}
       </div>

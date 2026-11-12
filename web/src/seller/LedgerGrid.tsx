@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { AgGridReact } from "ag-grid-react";
-import type { ColDef, RowClickedEvent, StatusPanelDef } from "ag-grid-community";
+import type { CellKeyDownEvent, ColDef, RowClickedEvent, StatusPanelDef } from "ag-grid-community";
+import { isSelecting, useDeskGrid } from "../grid/deskGrid";
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { gridTheme } from "../grid/theme";
@@ -104,14 +105,28 @@ type Props<T extends object> = {
   groupPanel?: boolean;
 };
 
-const statusBar: { statusPanels: StatusPanelDef[] } = {
-  statusPanels: [{ statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" }],
-};
+type Rec = Record<string, unknown> & Totalled;
+const fieldOf = <T,>(c: ColDef<T>) => (c.field as string | undefined) ?? "";
 
 /** The Control Room's grid look for a read-only list; phones get a stack of cards. */
-export default function LedgerGrid<T extends object>({ label, rows, columns, getRowId, onOpen, empty, totals, totalLines, card, groupPanel }: Props<T>) {
+export default function LedgerGrid<T extends object>({ label, rows, columns: given, getRowId, onOpen, empty, totals, totalLines, card, groupPanel }: Props<T>) {
   const phone = useMedia("(max-width: 600px)");
-  const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true }), []);
+  const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true, enableCellChangeFlash: true }), []);
+  // GP-01..GP-06: the Control Room's grid kit. Money is any `*_minor` field (in the row's currency), dates any `*_at`.
+  const rec = (r: T) => r as unknown as Rec;
+  const kit = useDeskGrid<T>({
+    page: label.toLowerCase(), sheet: label,
+    money: given.filter((c) => fieldOf(c).endsWith("_minor")).map((c) => ({ colId: c.colId ?? fieldOf(c), minor: (r: T) => rec(r)[fieldOf(c)] as number | null })),
+    currency: (r) => rec(r).currency as string | undefined,
+    dates: Object.fromEntries(given.filter((c) => fieldOf(c).endsWith("_at")).map((c) => [c.colId ?? fieldOf(c), (r: T) => (rec(r).__total ? null : rec(r)[fieldOf(c)] as string | null)])),
+    text: (id, r) => (id === "item" ? rec(r).__total ?? (rec(r).order_ref ? `${String(rec(r).item)} (${String(rec(r).order_ref)})` : undefined) : undefined),
+    isRecord: (r) => !rec(r).__total,
+    onOpen,
+  });
+  const columns = useMemo(() => kit.columns(given), [kit, given]);
+  const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
+    statusPanels: [...kit.statusPanels, { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" }],
+  }), [kit]);
   if (!rows) return <Loading height={320} />;
   if (phone) {
     return (
@@ -134,6 +149,13 @@ export default function LedgerGrid<T extends object>({ label, rows, columns, get
   const clicked = (e: RowClickedEvent<T>) => {
     if (e.node.rowPinned || !e.data || !onOpen) return;
     if ((e.event?.target as HTMLElement | null)?.closest("button, a")) return;
+    if (isSelecting(e.api, e.event)) return;
+    onOpen(e.data);
+  };
+  // Keyboard: arrows move between cells; Enter on a row opens it.
+  const keyDown = (e: CellKeyDownEvent<T>) => {
+    const k = e.event as KeyboardEvent | null | undefined;
+    if (k?.key !== "Enter" || !onOpen || e.node.rowPinned || !e.data || (k.target as HTMLElement | null)?.closest("button, a")) return;
     onOpen(e.data);
   };
   return (
@@ -145,13 +167,14 @@ export default function LedgerGrid<T extends object>({ label, rows, columns, get
         defaultColDef={defaultColDef}
         getRowId={(p) => getRowId(p.data)}
         onRowClicked={clicked}
+        onCellKeyDown={keyDown}
         rowHeight={60}
         pinnedBottomRowData={totals}
         statusBar={statusBar}
         rowGroupPanelShow={groupPanel ? "always" : undefined}
         groupDisplayType="groupRows"
         groupDefaultExpanded={-1}
-        suppressCellFocus
+        {...kit.props}
         tooltipShowDelay={250}
         overlayNoRowsTemplate={`<span class="lg-empty">${empty}</span>`}
         domLayout="autoHeight"

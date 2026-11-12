@@ -5,6 +5,7 @@ import { ExcelExportModule, MasterDetailModule, StatusBarModule } from "ag-grid-
 import { ChevronRight, ShieldCheck } from "lucide-react";
 import { money, when } from "../../format";
 import { gridTheme } from "../../grid/theme";
+import { deskExcelStyles, isSelecting, useDeskGrid } from "../../grid/deskGrid";
 import { useMedia } from "../../motion";
 import { CopyId, ItemCell, RIGHT, StatusPill, type Totalled } from "../LedgerGrid";
 import { KIND, hasLeft, keyShort, statusOf } from "./ledger";
@@ -19,9 +20,7 @@ export type Row = DeskRow & Totalled;
 const rowId = (p: { data: Row }) => p.data.action_id ?? p.data.__total ?? "";
 const isMaster = (d: Row | undefined) => !!d && !d.__total;
 const amountOf = (r: DeskRow) => (r.kind === "evidence" ? "—" : money(r.amount_minor, r.currency));
-const statusBar: { statusPanels: StatusPanelDef[] } = {
-  statusPanels: [{ statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" }],
-};
+const excelStyles = [...ledgerExcelStyles, ...deskExcelStyles];
 
 function Receipts({ r }: { r: DeskRow }) {
   if (!r.receipts) return <span className="faint">—</span>;
@@ -38,15 +37,33 @@ type Props = {
   onApi?: (api: GridApi<Row> | null) => void;
   /** Rows whose status just changed, to flash. */
   changed: Set<string>;
+  /** The page's ledger workbook (Export), also in the right-click menu. */
+  onExcel?: () => void;
 };
 
 /** MN-04, MN-05: the ledger grid; a row opens its whole story beneath it. Phones get cards. */
-export default function MoneyGrid({ rows, token, status, onOpenOrder, onRedecided, onApi, changed }: Props) {
+export default function MoneyGrid({ rows, token, status, onOpenOrder, onRedecided, onApi, changed, onExcel }: Props) {
   const phone = useMedia("(max-width: 600px)");
   const api = useRef<GridApi<Row> | null>(null);
   const statusRef = useRef(status);
   statusRef.current = status;
   const [openCard, setOpenCard] = useState<string | null>(null);
+  const live = useRef({ onOpenOrder, onExcel });
+  live.current = { onOpenOrder, onExcel };
+  // GP-01..GP-06: the Control Room's grid kit (menu, range sums, side bar, kept layout); Excel is the ledger workbook.
+  const kit = useDeskGrid<Row>({
+    page: "money", sheet: "Money",
+    money: [{ colId: "amount_minor", minor: (r) => (r.__total || r.kind !== "evidence" ? r.amount_minor : null) }],
+    currency: (r) => r.currency,
+    dates: { created_at: (r) => (r.__total ? null : r.created_at), completed_at: (r) => (r.__total ? null : r.completed_at) },
+    text: (id, r) => (id === "item" ? r.__total ?? `${r.item} (${r.order_ref})` : r.__total ? "" : id === "status" ? statusOf(r.status).label : undefined),
+    skip: ["open"], isRecord: (r) => !r.__total,
+    onOpen: (r) => live.current.onOpenOrder(r.order_id), canOpen: (r) => !!r.order_id,
+    excel: () => live.current.onExcel?.(),
+  });
+  const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
+    statusPanels: [...kit.statusPanels, { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" }],
+  }), [kit]);
 
   const totals = useMemo((): Row[] => {
     const by: Record<string, number> = {};
@@ -54,7 +71,7 @@ export default function MoneyGrid({ rows, token, status, onOpenOrder, onRedecide
     return Object.entries(by).map(([currency, amount_minor]) => ({ __total: `Refunded ${currency}`, currency, amount_minor }) as Row);
   }, [rows]);
 
-  const columns = useMemo((): ColDef<Row>[] => [
+  const columns = useMemo((): ColDef<Row>[] => kit.columns([
     { colId: "open", headerName: "", width: 48, sortable: false, resizable: false, suppressMovable: true,
       cellRenderer: (p: ICellRendererParams<Row>) => p.data && !p.data.__total && (
         <button type="button" className="mn-expand" aria-expanded={!!p.node.expanded} aria-label={`${p.node.expanded ? "Hide" : "Show"} details for ${p.data.item || "order"}`}
@@ -79,14 +96,15 @@ export default function MoneyGrid({ rows, token, status, onOpenOrder, onRedecide
     { headerName: "Signed", field: "receipts", width: 82, headerTooltip: "Signed receipts (Ed25519)", ...RIGHT,
       cellRenderer: (p: ICellRendererParams<Row>) => (p.data && !p.data.__total ? <Receipts r={p.data} /> : null) },
     // Export only: the workbook gets these as their own columns.
-    { headerName: "Completed", field: "completed_at", hide: true, cellClass: "mnDate" },
-    { headerName: "Order", field: "order_ref", hide: true },
-    { headerName: "Currency", field: "currency", hide: true },
-  ], []);
+    { headerName: "Completed", field: "completed_at", hide: true, cellClass: "mnDate", suppressColumnsToolPanel: true, filter: false },
+    { headerName: "Order", field: "order_ref", hide: true, suppressColumnsToolPanel: true, filter: false },
+    { headerName: "Currency", field: "currency", hide: true, suppressColumnsToolPanel: true, filter: false },
+  ]), [kit]);
 
   const toggle = (node: IRowNode<Row>) => { if (!node.rowPinned && node.data && !node.data.__total) node.setExpanded(!node.expanded); };
   const clicked = (e: RowClickedEvent<Row>) => {
     if ((e.event?.target as HTMLElement | null)?.closest("button, a, [data-own-click]")) return;
+    if (isSelecting(e.api, e.event)) return;
     toggle(e.node);
   };
   const keyDown = (e: CellKeyDownEvent<Row>) => {
@@ -110,7 +128,7 @@ export default function MoneyGrid({ rows, token, status, onOpenOrder, onRedecide
   const Detail = useCallback((p: CustomDetailCellRendererProps<Row>) => (
     <MoneyDetailPanel row={p.data!} token={props.current.token} onOpenOrder={(id) => props.current.onOpenOrder(id)} onRedecided={(m) => props.current.onRedecided(m)} />
   ), []);
-  const defaultColDef = useMemo<ColDef<Row>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true }), []);
+  const defaultColDef = useMemo<ColDef<Row>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true, enableCellChangeFlash: true }), []);
 
   if (!rows) return <div className="table-card mn-grid-skeleton" aria-busy="true" aria-label="Loading">{[0, 1, 2, 3].map((i) => <span key={i} className="skeleton" />)}</div>;
 
@@ -149,7 +167,8 @@ export default function MoneyGrid({ rows, token, status, onOpenOrder, onRedecide
         onRowClicked={clicked}
         onCellKeyDown={keyDown}
         onRowGroupOpened={(e) => e.api.refreshCells({ rowNodes: [e.node], columns: ["open"], force: true })}
-        excelStyles={ledgerExcelStyles}
+        {...kit.props}
+        excelStyles={excelStyles}
         rowHeight={60}
         pinnedBottomRowData={totals}
         statusBar={statusBar}

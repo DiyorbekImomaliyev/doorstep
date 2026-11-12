@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps, type CustomStatusPanelProps } from "ag-grid-react";
-import type { ColDef, GridApi, IRowNode, RowClickedEvent, StatusPanelDef } from "ag-grid-community";
+import type { CellKeyDownEvent, ColDef, GridApi, IRowNode, RowClickedEvent, StatusPanelDef } from "ag-grid-community";
 import { ArrowUpRight, ChevronDown, ChevronRight, SearchX } from "lucide-react";
 import { money } from "../../format";
 import { gridTheme } from "../../grid/theme";
+import { isSelecting, useDeskGrid } from "../../grid/deskGrid";
 import { ItemCell, StatusPill } from "../LedgerGrid";
 import BuyerCell from "./BuyerCell";
 import type { DeskRow } from "./claimsApi";
@@ -122,8 +123,24 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
   caseRef.current = desk.openCase;
   const nextRef = useRef(onNext);
   nextRef.current = onNext;
+  const carrierRef = useRef(byCarrier);
+  carrierRef.current = byCarrier;
+  // GP-01..GP-06: the Control Room's grid kit (menu, Excel, range sums, side bar, kept layout).
+  const kit = useDeskGrid<Row>({
+    page: "claims", sheet: "Claims",
+    money: [
+      { colId: "claim", minor: (r) => r.claim_minor },
+      { colId: "paid", minor: (r) => (r.__total ? r.recovered_minor ?? 0 : r.recovered_minor) },
+    ],
+    currency: (r) => r.currency,
+    dates: { due: (r) => (r.__total ? null : r.deadline_at) },
+    text: (id, r) => (id === "item" ? r.__total ?? `${r.item} (${r.order_ref})` : r.__total ? "" : undefined),
+    skip: ["next"], transient: ["carrier"], isRecord: (r) => !r.__total,
+    onOpen: (r) => caseRef.current(r),
+    onReset: (a) => a.applyColumnState({ state: [{ colId: "carrier", rowGroup: carrierRef.current, hide: carrierRef.current }], defaultState: { rowGroup: false } }),
+  });
 
-  const columns = useMemo((): ColDef<Row>[] => [
+  const columns = useMemo((): ColDef<Row>[] => kit.columns([
     { headerName: "Item", colId: "item", field: "item", flex: 2, minWidth: 220, cellRenderer: ItemColumn, cellRendererParams: { onToggle: toggle } },
     { headerName: "Carrier", colId: "carrier", flex: 1, minWidth: 120, enableRowGroup: true,
       valueGetter: (p) => (!p.data || p.data.__total ? "" : carrierOf(p.data)) },
@@ -143,17 +160,25 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
       cellRenderer: (p: CustomCellRendererProps<Row>) => (p.data && !p.data.__total ? <BuyerCell r={p.data} /> : null) },
     { headerName: "", colId: "next", width: 142, sortable: false, resizable: false, cellClass: "cd-next-cell",
       cellRenderer: NextCell, cellRendererParams: { onNext: (r: DeskRow) => nextRef.current(r), onCase: (r: DeskRow) => caseRef.current(r) } },
-  ], [toggle]);
-  const defaultColDef = useMemo<ColDef<Row>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true }), []);
+  ]), [toggle, kit]);
+  const defaultColDef = useMemo<ColDef<Row>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true, enableCellChangeFlash: true }), []);
 
+  // A column filter from the side bar narrows the totals too: the claims it lets through.
+  const [passed, setPassed] = useState<Set<string> | null>(null);
+  const readFilter = useCallback((a: GridApi<Row>) => {
+    if (!a.isColumnFilterPresent()) { setPassed(null); return; }
+    const ids = new Set<string>();
+    a.forEachNodeAfterFilter((n) => { if (n.data && !n.group && !n.data.__total) ids.add(n.data.recovery_id); });
+    setPassed(ids);
+  }, []);
   // Totals per currency over what the filter shows, claims never made left out; never across currencies.
   const totals = useMemo((): Row[] => {
-    const shown = rows.filter((r) => (seg === "all" || r.status === seg) && isMade(r));
+    const shown = rows.filter((r) => (seg === "all" || r.status === seg) && isMade(r) && (!passed || passed.has(r.recovery_id)));
     if (!shown.length) return [];
     const claimed = sumBy(shown, (r) => r.claim_minor);
     const paid = sumBy(shown, (r) => r.recovered_minor ?? 0);
     return Object.keys(claimed).map((currency) => ({ __total: `Total ${currency}`, currency, claim_minor: claimed[currency], recovered_minor: paid[currency] ?? 0 }) as Row);
-  }, [rows, seg]);
+  }, [rows, seg, passed]);
 
   // The filter, the grouping and the open claim follow the page's state.
   useEffect(() => { api.current?.onFilterChanged(); }, [seg]);
@@ -182,15 +207,25 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
   const clicked = (e: RowClickedEvent<Row>) => {
     if (e.node.rowPinned || !e.data || e.node.group) return;
     if ((e.event?.target as HTMLElement | null)?.closest("button, a, input, [data-own-click]")) return;
+    if (isSelecting(e.api, e.event)) return;
+    toggle(e.data.recovery_id);
+  };
+  // Keyboard: arrows move between cells; Enter on a row opens or closes its claim.
+  const keyDown = (e: CellKeyDownEvent<Row>) => {
+    const k = e.event as KeyboardEvent | null | undefined;
+    if (k?.key !== "Enter" || e.node.rowPinned || e.node.group || !e.data || e.data.__total) return;
+    if ((k.target as HTMLElement | null)?.closest("button, a, input")) return;
+    k.preventDefault();
     toggle(e.data.recovery_id);
   };
   const source = rows.some((r) => r.simulated) ? "Demo orders · carrier history simulated" : "";
   const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
     statusPanels: [
       { statusPanel: SourcePanel, statusPanelParams: { text: source }, align: "left" },
+      ...kit.statusPanels,
       { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" },
     ],
-  }), [source]);
+  }), [source, kit]);
 
   return (
     <div className="ledger-grid orders-grid cd-grid clickable">
@@ -204,7 +239,8 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
           api.current = e.api; onReady(e.api);
           if (byCarrier) e.api.applyColumnState({ state: [{ colId: "carrier", rowGroup: true, hide: true }] });
         }}
-        onRowDataUpdated={syncOpen}
+        onRowDataUpdated={(e) => { syncOpen(); if (e.api.isColumnFilterPresent()) readFilter(e.api); }}
+        onFilterChanged={(e) => readFilter(e.api)}
         onFirstDataRendered={syncOpen}
         isExternalFilterPresent={() => segRef.current !== "all"}
         doesExternalFilterPass={(n) => !!n.data && n.data.status === segRef.current}
@@ -214,8 +250,8 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
         detailRowAutoHeight
         rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: false }}
         onRowClicked={clicked}
-        // Keyboard: Tab reaches each row's chevron and action; a click draws no cell focus box.
-        suppressCellFocus
+        onCellKeyDown={keyDown}
+        {...kit.props}
         rowHeight={60}
         pinnedBottomRowData={totals}
         statusBar={statusBar}
