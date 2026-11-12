@@ -197,6 +197,33 @@ def source_name(source: str) -> str:
     return re.split(r"\s+[—-]\s+https?://|\s+https?://", source, maxsplit=1)[0].strip()
 
 
+def law_name(source: str) -> str:
+    """The law a rule encodes, short enough for a sentence (read from the rule's `source`):
+    'Consumer Rights Act 2015 s.29', 'Directive 2011/83/EU Art. 20'."""
+    return re.split(r";|\s\(|,\s+via\s", source_name(source), maxsplit=1)[0].strip()
+
+
+def plain_rule(text: str, rule_id: str | None, version: str | None, law: str) -> str:
+    """AQ-02: the internal rule id written as the law's plain name ('under rule
+    uk_possession_v1 (2026-11-09)' -> 'under Consumer Rights Act 2015 s.29'), for text a buyer
+    or a carrier reads. Without a law name the id becomes 'the rule'."""
+    if not rule_id or rule_id not in text:
+        return text
+    rid = re.escape(rule_id)
+    ver = rf"(?:version\s+|v)?{re.escape(version)}" if version else r"(?!)"
+    if not law:
+        return re.sub(rf"(?:\b(?:the\s+)?rule\s+)?\b{rid}\b(?:\s*\({ver}\))?", "the rule", text)
+    # A bracket that only carries the id (and its version) goes: the law is named beside it.
+    text = re.sub(rf"\s*[(\[](?:[Rr]ule\s+)?{rid}(?:[,;]?\s*{ver})?[)\]]", "", text)
+    text = re.sub(
+        rf"(?:\b(?:[Tt]he\s+)?[Rr]ule\s+)?\b{rid}\b(?:\s*\({ver}\)|,?\s+{ver})?", law, text
+    )
+    # 'Consumer Rights Act 2015 s.29 (version 2026-11-09, Consumer Rights Act 2015 s.29)' and
+    # 'Consumer Rights Act 2015 s.29, Consumer Rights Act 2015 s.29' say it once.
+    name = re.escape(law)
+    return re.sub(rf"{name}(?:\s*\([^()]*{name}\)|,\s*{name})", law, text)
+
+
 def _buyer_next(ctx: ExplainContext) -> str:
     """What happens next, in the buyer's terms: who acts, and for how much (never an accusation)."""
     amount = money_text(ctx.refund) if ctx.refund is not None else None
@@ -378,10 +405,14 @@ class Explainer:
         if problem is not None:
             log.warning("explainer draft blocked: %s", problem)
             return template(ctx, blocked_reason=problem)
+        # AQ-02: the buyer and the carrier read the law's name, never the internal rule id. The
+        # seller summary keeps the id (EX-01); the seller page shows it as the law's name too.
+        law = law_name(ctx.rule_source)
+        letter = draft.claim_letter if ctx.failure_point in _CARRIER_FAULTS else None
         return Explanation(
             summary=draft.summary,
-            buyer_message=draft.buyer_message,
-            claim_letter=draft.claim_letter if ctx.failure_point in _CARRIER_FAULTS else None,
+            buyer_message=plain_rule(draft.buyer_message, ctx.rule_id, ctx.rule_version, law),
+            claim_letter=plain_rule(letter, ctx.rule_id, ctx.rule_version, law) if letter else None,
             rule_id=ctx.rule_id,
             source="model",
             provider=getattr(self.llm, "last_provider", None),
