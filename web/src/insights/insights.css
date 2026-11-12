@@ -441,7 +441,9 @@ li[data-kind="method"] .ds-next-ico { color: #2f6f73; }
 .ds-atlas-tile[data-picked] .ds-atlas-ring, .ds-atlas-tile:focus-visible .ds-atlas-ring { opacity: 1; }
 .ds-atlas-tile:focus-visible .ds-atlas-top { stroke: var(--ag-accent-color, #7b2d3d); stroke-width: 2; }
 .ds-atlas[data-picking] .ds-atlas-tile:not([data-picked]), .ds-atlas-tile[data-out] { opacity: .38; }
-.ds-atlas-code { fill: #5a524e; font-weight: 600; letter-spacing: .02em; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.ds-atlas-code { fill: #5a524e; font-weight: 600; letter-spacing: .02em; pointer-events: none; }
+.ds-atlas-pill { fill: #fff; stroke: #e8e2dc; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+.ds-atlas-lead { stroke: #a89a94; stroke-width: 1; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .ds-atlas-switch { position: absolute; top: 2px; right: 2px; display: inline-flex; padding: 2px; gap: 2px; border: 1px solid #e8e2dc; border-radius: 999px; background: #fff; }
 .ds-atlas-switch button { appearance: none; border: 0; background: transparent; font: inherit; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 999px; color: #736b67; cursor: pointer; transition: background .15s, color .15s; }
 .ds-atlas-switch button:hover { color: #1f1a18; }
