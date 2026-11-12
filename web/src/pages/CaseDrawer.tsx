@@ -545,7 +545,8 @@ const REACTION_OUTCOME: Record<string, { tone: Tone; label: string }> = {
 };
 
 const AGENT_OUTCOME: Record<string, { tone: Tone; label: string }> = {
-  refund_queued: { tone: "good", label: "Refund queued by policy" },
+  // A refund exists for this case (queued, at PayPal or sent): the step above says which.
+  refund_queued: { tone: "good", label: "Refund by policy" },
   escalated_to_seller: { tone: "accent", label: "Escalated to you" },
   held_for_review: { tone: "accent", label: "Held for review" },
   dispute_path: { tone: "neutral", label: "Dispute path" },
