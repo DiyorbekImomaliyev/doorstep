@@ -292,11 +292,12 @@ function claimGauge(carrier: string | null): Widget {
     format: {
       ...head(carrier ?? "All carriers", "Won ÷ claimed"),
       // A ratio, so the scale is the same for every carrier and never mixes currencies. The value
-      // sits at the track's end, where a short bar still shows it; the fixed 0-100% scale needs no ticks.
+      // sits past the track's end in dark ink (Studio's default is white), where a short bar still
+      // shows it; the fixed 0-100% scale needs no ticks.
       style: {
         direction: "horizontal",
         thickness: 18,
-        label: { enabled: true, placement: "outside-end" },
+        label: { enabled: true, placement: "outside-end", color: "#2b2523", typography: { fontSize: 15, fontWeight: "bold" } },
         scaleLabel: { enabled: false, min: 0, max: 1 },
       },
     },

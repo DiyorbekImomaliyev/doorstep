@@ -31,11 +31,10 @@
 
 /* status bar in the page head: live state, pause, edit */
 .ins-bar { display: flex; align-items: center; gap: 8px; }
-.ins-live { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-2); margin-right: 4px; white-space: nowrap; }
-.ins-live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
-.ins-live[data-live="true"]::before { background: var(--good); box-shadow: 0 0 0 0 rgba(47, 107, 79, .5); animation: ins-pulse 2s infinite; }
-@keyframes ins-pulse { 70% { box-shadow: 0 0 0 6px rgba(47, 107, 79, 0); } 100% { box-shadow: 0 0 0 0 rgba(47, 107, 79, 0); } }
-.ins-sync { font-weight: 400; color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* The live status uses the seller pages' .live look; paused, the dot goes grey and still. */
+.ins-live { margin: 0 4px 0 0; white-space: nowrap; gap: 6px; }
+.ins-live[data-live="false"] .live-dot { background: var(--line-2); animation: none; }
+.ins-sync { font-variant-numeric: tabular-nums; white-space: pre; }
 .rb-canvas { min-width: 0; min-height: 0; }
 
 /* ---------- drill-through: a carrier report over the page ---------- */

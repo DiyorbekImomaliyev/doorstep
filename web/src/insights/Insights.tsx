@@ -95,6 +95,8 @@ const LOCALE = {
   dsHistoryRemoveAnswer: "Removed an answer",
   dsHistoryMapped: "Set up ‘${name}’",
   dsHistoryReset: "Reset reports",
+  // A figure with nothing to count (no claims yet, nothing recovered) reads as a dash, not "N/A".
+  valueNotApplicable: "—",
 };
 /** AS-07: Studio's Agent Framework, on the main board only (the carrier pop-up has no agent). */
 const AI_MODULES = [AgStudioAiModule];
@@ -477,9 +479,10 @@ function Board({ prepared, token }: { prepared: Prepared; token: string }) {
     <>
       <Head>
         <div className="ins-bar">
-          <span className="ins-live" data-live={live} role="status" title={`Checks for changes every ${LIVE_MS / 1000} seconds while this tab is open`}>
-            {live ? "Live" : "Paused"}
-            <span className="ins-sync">· updated {synced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}{moved ? `, ${moved} row${moved === 1 ? "" : "s"} changed` : ""}</span>
+          {/* The same live status as every seller page: dot, Live, the time of the last check. */}
+          <span className="live ins-live" data-live={live} role="status" title={`Checks for changes every ${LIVE_MS / 1000} seconds while this tab is open`}>
+            <span className="live-dot" aria-hidden />{live ? "Live" : "Paused"}
+            <span className="ins-sync">{` · ${synced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}{moved ? ` · ${moved} changed` : ""}</span>
           </span>
           <button className="btn icon-btn" onClick={() => setLive((v) => !v)} aria-label={live ? "Pause live updates" : "Resume live updates"} title={live ? "Pause live updates" : "Resume live updates"}>
             {live ? <Pause size={15} aria-hidden /> : <Play size={15} aria-hidden />}
