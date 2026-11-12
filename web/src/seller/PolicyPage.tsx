@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, CircleCheck, Copy, ExternalLink, FileCheck, FileText, RefreshCw, Scale, ScrollText, ShieldCheck } from "lucide-react";
+import { Check, CircleCheck, CloudOff, Copy, ExternalLink, FileCheck, FileText, RefreshCw, Scale, ScrollText, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api, type PolicyCheck, type PolicyFact } from "../api";
 import { ErrorBox, Loading } from "../components/ui";
 import { PageHead, StatusPill } from "./LedgerGrid";
@@ -174,7 +174,7 @@ export default function PolicyPage({ token, check, failed }: { check: PolicyChec
             <div className={`kpi ${n ? "attention" : ""}`}>
               <span className="label"><FileText aria-hidden />Conflicts</span>
               <span className="value num">{res.status === "checked" ? n : "—"}{text && res.status === "checked" && <span className="ax-of"> of {plural(clauses(text), "clause")}</span>}</span>
-              <span className="sub">{res.status === "checked" ? (n ? `${issues.filter((i) => severity(i) === "High").length} high` : "none found") : res.status === "no_policy" ? "no policy" : "not checked"}</span>
+              <span className="sub">{res.status === "checked" ? (n ? `${issues.filter((i) => severity(i) === "High").length} high` : "none found") : res.status === "no_policy" ? "no policy" : text ? plural(clauses(text), "clause") : "\u00a0"}</span>
             </div>
             <div className="kpi ax-law">
               <span className="label"><Scale aria-hidden />Law</span>
@@ -184,7 +184,8 @@ export default function PolicyPage({ token, check, failed }: { check: PolicyChec
             <div className="kpi" title={res.provider ? `Read by ${res.provider}; every quote matched to your policy in code` : undefined}>
               <span className="label"><FileCheck aria-hidden />Checked</span>
               <span className="value num" style={{ fontSize: 22 }}>{at && res.status === "checked" ? hhmm(at) : "—"}</span>
-              <span className="sub">{res.status === "checked" ? "AI read · code verified" : res.status === "no_policy" ? "nothing to read" : unchecked(res)}</span>
+              {/* Unchecked: the band below says why, once; screen readers hear it here too. */}
+              <span className="sub">{res.status === "checked" ? "AI read · code verified" : res.status === "no_policy" ? "nothing to read" : <><span className="sr-only">{unchecked(res)}</span><span aria-hidden>Not yet</span></>}</span>
             </div>
           </section>
 
@@ -194,10 +195,12 @@ export default function PolicyPage({ token, check, failed }: { check: PolicyChec
             ) : (
               <>
                 {res.status === "unchecked" && (
-                  <div className="notice warn" role="status" style={{ alignItems: "center" }} title={res.dropped ? "The AI's findings did not quote your policy exactly, so none is shown." : "The AI model did not answer. Your policy is unchanged."}>
-                    <FileText aria-hidden />
-                    <span className="grow"><strong>{unchecked(res)}</strong> <span className="muted">· policy not checked</span></span>
-                    <button type="button" className="btn ghost sm" onClick={recheck} disabled={busy}>Retry</button>
+                  <div className="notice warn ax-unchecked" role="status" title={res.dropped ? "The AI's findings did not quote your policy exactly, so none is shown." : "The AI model did not answer. Your policy is unchanged."}>
+                    {res.dropped ? <ShieldAlert aria-hidden /> : <CloudOff aria-hidden />}
+                    <span className="grow"><strong>{unchecked(res)}</strong> <span className="muted">· policy not checked{at ? ` · tried ${hhmm(at)}` : ""}</span></span>
+                    <button type="button" className="btn sm" onClick={recheck} disabled={busy}>
+                      <RefreshCw size={14} aria-hidden className={busy ? "ax-spin" : undefined} />Retry
+                    </button>
                   </div>
                 )}
                 {res.status === "checked" && n === 0 && (

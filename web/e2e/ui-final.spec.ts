@@ -85,6 +85,17 @@ test("UI-03 Money and Autopilot share the live status, Refresh and filter chips 
   expect(Math.round(a!.height)).toBe(Math.round(b!.height));
 });
 
+test("UI-04 an unavailable AI policy check is said once, with Retry", async ({ page }) => {
+  const real = await (await page.request.get(`/api/seller/${seed.seller_token}/policy-check`)).json();
+  await page.route(/\/api\/seller\/[^/]+\/policy-check$/, (r) => r.fulfill({ json: { ...real, status: "unchecked", issues: [], provider: null, dropped: 0 } }));
+  await page.goto(`/seller/${seed.seller_token}#policy`);
+  const band = page.getByLabel("Policy check").getByRole("status");
+  await expect(band).toContainText("AI unavailable");
+  await expect(band.getByRole("button", { name: "Retry" })).toBeVisible();
+  // Said once on screen (the KPI keeps a screen-reader copy).
+  await expect(page.getByText("AI unavailable", { exact: true }).and(page.locator(":not(.sr-only)")).locator("visible=true")).toHaveCount(1);
+});
+
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   test("UI-05 the prevention tip and the money chart's dates fit a phone on whole lines", async ({ page }) => {
