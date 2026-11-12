@@ -5,7 +5,7 @@ import { StatusPill } from "../LedgerGrid";
 import type { DeskRow } from "./claimsApi";
 import ClaimDetail from "./ClaimDetail";
 import { DueCell } from "./ClaimsGrid";
-import { carrierOf, isMade, joinMoney, statusOf, sumBy, type Seg } from "./model";
+import { buyerOf, carrierOf, isMade, joinMoney, statusOf, sumBy, type Seg } from "./model";
 
 /** CL-07: the desk on a phone: one card per claim; a tap opens its story and actions in place. */
 export default function ClaimCards({ rows, seg, open, onOpen }: { rows: DeskRow[]; seg: Seg; open: string | null; onOpen: (id: string | null) => void }) {
@@ -23,6 +23,7 @@ export default function ClaimCards({ rows, seg, open, onOpen }: { rows: DeskRow[
       <ul className="ledger-cards cd-cards" ref={list}>
         {shown.map((r) => {
           const s = statusOf(r.status);
+          const buyer = buyerOf(r);
           const isOpenCard = open === r.recovery_id;
           return (
             <li key={r.recovery_id} data-claim={r.recovery_id} className={isOpenCard ? "open" : undefined}>
@@ -33,6 +34,7 @@ export default function ClaimCards({ rows, seg, open, onOpen }: { rows: DeskRow[
                   <StatusPill tone={s.tone}>{s.label}</StatusPill>
                   <DueCell r={r} />
                   {r.recovered_minor != null && <span className="num lc-paid">Paid {money(r.recovered_minor, r.currency)}</span>}
+                  {buyer && <span className="cd-buyer-mini" title={buyer.hint}>Buyer<StatusPill tone={buyer.tone}>{buyer.label}</StatusPill></span>}
                   <ChevronDown className="cd-card-chev" aria-hidden />
                 </span>
               </button>

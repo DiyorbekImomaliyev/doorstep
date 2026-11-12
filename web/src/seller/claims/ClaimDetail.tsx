@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check, ChevronDown, Copy, ExternalLink, Sparkles, TriangleAlert } from "lucide-react";
 import { Badge, ErrorBox } from "../../components/ui";
-import { ROUTE, money } from "../../format";
+import { money } from "../../format";
 import { CopyId } from "../LedgerGrid";
 import { claimsApi, type DeskEvent, type DeskRow } from "./claimsApi";
+import BuyerCell from "./BuyerCell";
 import { Hint, symbolOf, useDesk } from "./desk";
 import { FAULT, carrierOf, daysLeft, plural, shortDate, statusOf, urgency } from "./model";
 
@@ -150,16 +151,16 @@ function History({ r }: { r: DeskRow }) {
 
 function OrderAndCase({ r }: { r: DeskRow }) {
   const { openCase } = useDesk();
-  const route = r.case_state ? ROUTE[r.case_state] ?? { label: "Open", tone: "neutral" as const } : null;
   return (
     <section aria-label="Order and case">
       <h4>Order</h4>
       <div className="cd-kv">
         <span className="k">Ref</span><span><CopyId value={r.order_ref} /></span>
         <span className="k">Item</span><span className="num">{money(r.item_minor, r.currency)} · {FAULT[r.failure_point] ?? r.failure_point}</span>
+        {/* FP-R1: the buyer side of the same parcel, as in the grid's Buyer column. */}
+        <span className="k">Buyer</span><span><BuyerCell r={r} /></span>
         <span className="k">Refund</span>
         <span className="num">{r.refunded_minor ? money(r.refunded_minor, r.currency) : "None yet"}{r.simulated && r.refunded_minor > 0 && <Badge>Simulated</Badge>}</span>
-        {route && <><span className="k">Case</span><span><Badge tone={route.tone}>{route.label}</Badge></span></>}
       </div>
       <button type="button" className="btn ghost cd-open" onClick={() => openCase(r)}>Open in case<ArrowUpRight size={14} aria-hidden /></button>
     </section>

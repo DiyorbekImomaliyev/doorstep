@@ -180,9 +180,9 @@ test.describe("phone", () => {
     const segs = page.getByRole("group", { name: "Filter disputes" });
     await segs.getByRole("button", { name: "Evidence sent 1" }).click();
     await expect(card).toBeVisible();
-    await segs.getByRole("button", { name: "Needs reply 0" }).click();
-    await expect(page.getByText("Nothing in Needs reply")).toBeVisible();
-    await page.getByRole("button", { name: "Show all" }).click();
+    // On a phone an empty status hides (it adds nothing on a small screen); All brings every card back.
+    await expect(segs.getByRole("button", { name: "Needs reply 0" })).toBeHidden();
+    await segs.getByRole("button", { name: "All 1" }).click();
     await card.getByRole("button", { name: "Details" }).click();
     const detail = page.locator(".dd-cards .dd-detail");
     await expect(detail).toContainText("Proof of fulfilment");
