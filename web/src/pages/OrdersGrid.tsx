@@ -17,11 +17,12 @@ import {
 } from "ag-grid-enterprise";
 import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Circle, SearchX } from "lucide-react";
-import { api as apiClient, type OrderRow } from "../api";
+import { api as apiClient, type ClaimRow, type OrderRow } from "../api";
 import { DeliveryCell, JourneyCell, RiskCell, itemKind, journeyLabel, journeyTone } from "../components/gridCells";
 import { METHOD, ROUTE, ago, money, pct, stateTone, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
 import { useDueColumns } from "../grid/due";
+import { withClaims } from "../grid/claim";
 import { exportPackingList, packingIcon } from "../grid/packing";
 import { chartSelection, chartStakeByMethod, chartThemeOverrides, chartThemes, currencyColumns, customChartThemes, methodNameColumn } from "../grid/charts";
 import { isPivoting, pivotColumns, togglePivot } from "../grid/pivot";
@@ -239,7 +240,8 @@ function OrderCell(p: CustomCellRendererProps<OrderRow>) {
   const step = laneOf(r) === "you" && (!under || under === "lane") ? (p.node.parent?.childrenAfterSort?.indexOf(p.node) ?? -1) + 1 : 0;
   return (
     <div className="order-cell">
-      {step > 0 && <span className="step-no num" aria-hidden>{step}</span>}
+      {/* Under lanes every row keeps the number's slot, so the lanes' order names line up. */}
+      {(step > 0 || under === "lane") && <span className="step-no num" aria-hidden>{step || ""}</span>}
       <button data-own-click className="expander" aria-expanded={open}
         aria-label={`${open ? "Hide" : "Show"} details for ${r.item}`} onClick={() => p.node.setExpanded(!open)}>
         <ChevronRight aria-hidden />
@@ -773,12 +775,18 @@ export type OrdersGridProps = {
   guide?: boolean;
   /** Download the hand-off report (PDF) of what the grid shows. */
   onHandoff?: () => void;
+  /** FP-W1: the seller's carrier claims; a row whose case has one shows a tag that opens Claims. */
+  claims?: ClaimRow[] | null;
+  onClaim?: (recoveryId: string) => void;
 };
 
 const RAIL_MS = 8000;
 const loadingRows = { rowCount: 6 };
 
-export default function OrdersGrid({ rows, search, empty, onOpen, onReady, source, changed, loading = false, guide = false, onHandoff }: OrdersGridProps) {
+export default function OrdersGrid({ rows: orders, search, empty, onOpen, onReady, source, changed, loading = false, guide = false, onHandoff, claims, onClaim }: OrdersGridProps) {
+  const rows = useMemo(() => withClaims(orders, claims), [orders, claims]);
+  const claimRef = useRef(onClaim);
+  claimRef.current = onClaim;
   const api = useRef<GridApi | null>(null);
   const reduced = useReducedMotion();
   const phone = useMedia("(max-width: 640px)");
@@ -821,7 +829,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   // show a column of dashes: the column appears only when some row has a score.
   const scored = useMemo(() => rows.some((r) => r.delivery_risk != null), [rows]);
 
-  const dueColumns = useDueColumns(rows, phone, api);
+  const dueColumns = useDueColumns(phone, claimRef);
   const columns = useMemo<ColDef<OrderRow>[]>(() => [
     {
       colId: "lane", headerName: "Lane", rowGroup: grouped, hide: true, suppressColumnsToolPanel: true,
@@ -842,7 +850,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     {
       // The value is what the cell says ("Lost by carrier"), so grouping by Journey reads like the column.
-      colId: "status", headerName: "Journey", initialWidth: 166, hide: phone, enableCellChangeFlash: true,
+      colId: "status", headerName: "Journey", initialWidth: 160, hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => (p.data ? journeyLabel(p.data) : null), enableRowGroup: true, suppressHeaderMenuButton: false,
       // Filtered (and asked) by what the cell says: "Lost by carrier", not "Case open". Values a
       // reading picked survive the 10 s poll even when the last matching row leaves.
@@ -854,12 +862,12 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <JourneyCell r={p.data} quiet={hasNote(latestNotes.current, p.data.order_id, "status")} /> : null),
     },
     {
-      colId: "risk", headerName: "Risk", field: "delivery_risk", initialWidth: 86, type: "rightAligned", hide: !scored || phone,
+      colId: "risk", headerName: "Risk", field: "delivery_risk", initialWidth: 80, type: "rightAligned", hide: !scored || phone,
       filter: "agNumberColumnFilter", tooltip: ({ data }) => data?.delivery_risk, tooltipComponent: RiskTip,
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <RiskCell r={p.data} /> : null),
     },
     {
-      colId: "proof", headerName: "Proof", initialWidth: 112, hide: phone, enableCellChangeFlash: true,
+      colId: "proof", headerName: "Proof", initialWidth: 108, hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.evidence.score ?? 0,
       // Filtered by how many of the five proofs are on file (0 to 5), as the cell shows them.
       filter: "agNumberColumnFilter", filterValueGetter: (p) => (p.data ? proofList(p.data).filter((x) => x.ok).length : 0),
@@ -867,7 +875,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
       cellRenderer: ProofCell,
     },
     {
-      colId: "money", headerName: "At stake", chartDataType: "excluded", initialWidth: 128, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
+      colId: "money", headerName: "At stake", chartDataType: "excluded", initialWidth: 120, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
       filter: "agNumberColumnFilter", suppressHeaderMenuButton: false,
       // AG Grid aggregates it for group rows (per currency) and offers "% of total" in the column menu.
@@ -878,7 +886,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
     },
     ...dueColumns,
     {
-      colId: "method", headerName: "Delivery", field: "method", chartDataType: "excluded", initialWidth: 120, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
+      colId: "method", headerName: "Delivery", field: "method", chartDataType: "excluded", initialWidth: 116, hide: phone, enableRowGroup: true, suppressHeaderMenuButton: false,
       filter: "agSetColumnFilter", filterParams: { preservePreviousValues: true, valueFormatter: (p: { value: unknown }) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : "Not chosen") },
       valueFormatter: (p) => (p.value ? METHOD[String(p.value)] ?? String(p.value) : ""),
       cellRenderer: (p: CustomCellRendererProps<OrderRow>) => (p.data ? <DeliveryCell r={p.data} /> : null),
@@ -906,7 +914,7 @@ export default function OrdersGrid({ rows, search, empty, onOpen, onReady, sourc
   ], [grouped, onOpen, scored, phone, dueColumns]);
 
   // Under 600 px: one card column in place of the others.
-  const cardColumns = useMemo(() => withCard(columns, card, ActionCell, onOpen, (r) => (r ? haystack(r) : "")), [columns, card, onOpen]);
+  const cardColumns = useMemo(() => withCard(columns, card, ActionCell, onOpen, (r) => (r ? haystack(r) : ""), claimRef), [columns, card, onOpen]);
   // The Doorstep row: hidden while the seller searches (the rows below are then a search result).
   const guideText = useMemo(() => (guide && !search ? guideParts(rows, urgency, byUrgency) : null), [guide, search, rows]);
   const pinnedTop = useMemo(() => (guideText && !(api.current && isPivoting(api.current)) ? [GUIDE] : undefined), [guideText]);

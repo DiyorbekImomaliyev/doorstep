@@ -3,13 +3,14 @@ import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import type { OrderRow } from "../api";
 import { JourneyCell, itemKind } from "../components/gridCells";
 import { money } from "../format";
+import { ClaimTag, claimOf } from "./claim";
 
 /** Phone: below this width the grid is one card column. */
 export const CARD_QUERY = "(max-width: 599px)";
 export const CARD_HEIGHT = 144;
 
 type ActionRenderer = ComponentType<ICellRendererParams<OrderRow> & { onOpen: (r: OrderRow) => void }>;
-type CardParams = ICellRendererParams<OrderRow> & { onOpen: (r: OrderRow) => void; Action: ActionRenderer };
+type CardParams = ICellRendererParams<OrderRow> & { onOpen: (r: OrderRow) => void; Action: ActionRenderer; onClaim?: { current?: (id: string) => void } };
 
 /** One order as a card: item, amount, ref and area, journey, and the same Next button as the table. */
 export function OrderCard(p: CardParams) {
@@ -18,6 +19,7 @@ export function OrderCard(p: CardParams) {
   const k = itemKind(r.item);
   const stake = r.money_at_stake_minor;
   const Action = p.Action;
+  const claim = claimOf(r);
   return (
     <div className="order-card">
       <div className="oc-top">
@@ -25,7 +27,10 @@ export function OrderCard(p: CardParams) {
         <span className="item-name oc-item">{r.item}</span>
         <span className={`oc-money num ${stake ? "" : "none"}`} title="At stake">{money(stake, r.currency)}</span>
       </div>
-      <span className="oc-meta num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
+      <span className="oc-meta">
+        <span className="num">{r.order_ref} · {r.buyer_area || r.buyer_country}</span>
+        {claim && <ClaimTag claim={claim} onOpen={(id) => p.onClaim?.current?.(id)} />}
+      </span>
       <div className="oc-bottom">
         <JourneyCell r={r} quiet />
         <Action {...p} onOpen={p.onOpen} />
@@ -37,6 +42,7 @@ export function OrderCard(p: CardParams) {
 /** The columns as they are, or, on a phone, the one card column (the others hide; their ids stay). */
 export function withCard(
   cols: ColDef<OrderRow>[], card: boolean, Action: ActionRenderer, onOpen: (r: OrderRow) => void, quickText: (r?: OrderRow) => string,
+  onClaim?: { current?: (id: string) => void },
 ): ColDef<OrderRow>[] {
   if (!card) return cols;
   const rest = cols.map((c) => (c.colId === "lane" || c.colId === "urgency" || c.hide ? c : { ...c, hide: true, pinned: null }));
@@ -44,7 +50,7 @@ export function withCard(
     ...rest.slice(0, 2),
     {
       colId: "card", headerName: "Orders", flex: 1, minWidth: 0, sortable: false, resizable: false, filter: false,
-      suppressColumnsToolPanel: true, suppressMovable: true, cellRenderer: OrderCard, cellRendererParams: { onOpen, Action },
+      suppressColumnsToolPanel: true, suppressMovable: true, cellRenderer: OrderCard, cellRendererParams: { onOpen, Action, onClaim },
       getQuickFilterText: (p) => quickText(p.data),
     },
     ...rest.slice(2),
