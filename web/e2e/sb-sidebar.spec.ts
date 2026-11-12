@@ -68,6 +68,35 @@ test("SB-08 the Policy count is maroon until the Policy page shows it, then grey
   await expect(policy().locator(".count.alert")).toHaveText("1");
 });
 
+test("SB-09 Disputes and Claims are maroon only while they wait on the seller; once sent they stay grey", async ({ page }) => {
+  const dispute = (route: string) => ({ dispute_id: "d1", paypal_dispute_id: "PP-D-1", order_id: "o1", case_id: "c1", order_ref: "R1", item: "Headphones",
+    reason: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED", amount_minor: 8900, currency: "USD", status: "open", route, protection: null, outcome: null,
+    opened_at: "2026-11-12T10:00:00Z", simulated: true });
+  const claim = (id: string, status: string) => ({ recovery_id: id, case_id: "c", order_id: "o", order_ref: "R", item: "Jacket", carrier: "royal_mail",
+    carrier_name: "Royal Mail", claim_minor: 7500, cover_minor: 7500, currency: "GBP", status });
+  let route = "waiting";
+  let claims = [claim("r1", "PREPARED"), claim("r2", "SUBMITTED")];
+  await page.route(`**/api/seller/${token}/disputes`, (r) => r.fulfill({ json: [dispute(route)] }));
+  await page.route(`**/api/seller/${token}/claims`, (r) => r.fulfill({ json: claims }));
+  const item = (name: string) => side(page).locator(".nav button", { hasText: name });
+
+  await page.goto(`/seller/${token}`);
+  await expect(item("Disputes").locator(".count.alert")).toHaveText("1");
+  await expect(item("Disputes")).toHaveAttribute("title", /1 need a reply/);
+  await expect(item("Claims").locator(".count.alert")).toHaveText("1");
+  await expect(item("Claims")).toHaveAttribute("title", /1 to file · 1 with the carrier/);
+
+  // Evidence sent and the claim filed: both still open, now waiting on PayPal and the carrier.
+  route = "evidence";
+  claims = [claim("r1", "SUBMITTED"), claim("r2", "SUBMITTED")];
+  await page.reload();
+  await expect(item("Disputes").locator(".count")).toHaveText("1");
+  await expect(item("Disputes").locator(".count.alert")).toHaveCount(0);
+  await expect(item("Disputes")).toHaveAttribute("title", /1 with PayPal/);
+  await expect(item("Claims").locator(".count")).toHaveText("2");
+  await expect(item("Claims").locator(".count.alert")).toHaveCount(0);
+});
+
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
   test("SB-03 the strip has 44 px targets and the page does not scroll sideways", async ({ page }) => {

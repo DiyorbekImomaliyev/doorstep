@@ -346,11 +346,21 @@ export default function Seller({ token }: { token: string }) {
     try { window.localStorage.setItem(seenKey, policySig); } catch { /* storage blocked: it stays maroon */ }
     setPolicySeen(policySig);
   }, [page, policySig, policySeen, seenKey]);
+  // Maroon counts what waits on the seller; grey counts what waits on someone else, still open.
+  // A dispute needs the seller until evidence or an offer is sent (then PayPal decides); a claim
+  // needs the seller while it is ready to file (then the carrier decides).
+  const openDisputes = (disputes.data ?? []).filter((d) => d.status === "open");
+  const disputesYours = openDisputes.filter((d) => d.route === "waiting").length;
+  const disputesPaypal = openDisputes.length - disputesYours;
+  const claimsYours = (claims.data ?? []).filter((c) => c.status === "PREPARED").length;
+  const claimsCarrier = claims.data ? claims.data.filter((c) => c.status === "SUBMITTED").length : Math.max(0, badge.claims - claimsYours);
+  const both = (mine: number, mineText: string, theirs: number, theirsText: string, none: string) =>
+    [mine ? `${mine} ${mineText}` : "", theirs ? `${theirs} ${theirsText}` : ""].filter(Boolean).join(" · ") || none;
   const refundsOnWay = (moneyRows.data ?? []).filter((r) => r.status === "queued" || r.status === "pending").length;
   const rulesOn = (auto.data?.rules ?? []).filter((r) => r.status === "on").length;
   const navState: Partial<Record<Page, { n?: number; alert?: boolean; on?: boolean; tip: string }>> = {
-    claims: { n: badge.claims, alert: true, tip: badge.claims ? `${badge.claims} open` : "None open" },
-    disputes: { n: badge.disputes, alert: true, tip: badge.disputes ? `${badge.disputes} open` : "None open" },
+    claims: { n: claimsYours || claimsCarrier, alert: claimsYours > 0, tip: both(claimsYours, "to file", claimsCarrier, "with the carrier", "None open") },
+    disputes: { n: disputesYours || disputesPaypal, alert: disputesYours > 0, tip: both(disputesYours, "need a reply", disputesPaypal, "with PayPal", "None open") },
     money: { n: refundsOnWay, tip: refundsOnWay ? `${refundsOnWay} on their way` : "Nothing pending" },
     autopilot: { on: rulesOn > 0, tip: rulesOn ? `${rulesOn} rule${rulesOn === 1 ? "" : "s"} on` : "No rule on" },
     policy: { n: policyIssues, alert: policySeen !== policySig, tip: policyIssues ? `${policyIssues} issue${policyIssues === 1 ? "" : "s"} found${policySeen === policySig ? " · seen" : ""}` : policy.data?.status === "checked" ? "No issues" : "Not checked" },
