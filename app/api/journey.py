@@ -23,8 +23,8 @@ from sqlalchemy.orm import Session
 
 from app.agent.runner import AgentRun, DoorstepAgent, simulated_tools
 from app.ai.explainer import Explainer
-from app.ai.grid_agent import GridAgent, GridAnswer
-from app.ai.insights_agent import InsightAnswer, InsightsAgent
+from app.ai.grid_agent import GridAgent, GridAnswer, keyword_grid_plan
+from app.ai.insights_agent import InsightAnswer, InsightsAgent, keyword_plan
 from app.ai.llm import Image
 from app.ai.packing import PackingChecker
 from app.ai.policy_reader import PolicyReader, ReaderAnswer
@@ -86,7 +86,7 @@ from app.proof.seal import (
     seller_browser_for,
 )
 from app.security.links import InvalidLink
-from app.security.ratelimit import RateLimiter, limited
+from app.security.ratelimit import RateLimiter, client_key, limited
 from app.shipping.packing import PackingError, PackingService
 from app.shipping.service import ShippingError, ShippingService
 from app.worker.models import WebhookInbox
@@ -319,6 +319,12 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     report_cap = Depends(limited(RateLimiter(per_client=20, total=200, window_s=hour)))
     model_limiter = RateLimiter(per_client=60, total=400, window_s=hour)
     model_cap = Depends(limited(model_limiter))
+
+    def model_allowed(request: Request) -> bool:
+        """QA-08: past the model cap the two ask routes still answer, by the free keyword reader,
+        so Ask Doorstep and Ask the grid never go blank. No model call is made past the cap."""
+        return model_limiter.allow(client_key(request))
+
     agent_cap = Depends(limited(RateLimiter(per_client=90, total=600, window_s=hour)))
     verify_cap = Depends(limited(RateLimiter(per_client=120, total=1200, window_s=hour)))
 
@@ -860,25 +866,28 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         """AS-01: orders, shipments, cases, money actions and carrier claims for AG Studio."""
         return insights(s, _seller(s, token))
 
-    @router.post(
-        "/api/seller/{token}/insights/ask", response_model=InsightAnswer, dependencies=[model_cap]
-    )
-    def ask_insights(token: str, body: InsightQuestionIn, s: Db) -> InsightAnswer:
+    @router.post("/api/seller/{token}/insights/ask", response_model=InsightAnswer)
+    def ask_insights(token: str, body: InsightQuestionIn, s: Db, request: Request) -> InsightAnswer:
         """AS-06: Ask Doorstep reads one question into a chart plan. Reads nothing else; moves
         nothing. The browser builds the Studio widget and computes the figures from its rows."""
         _seller(s, token)
         s.commit()  # end the read: no connection is held while the model reads the question
+        if not model_allowed(request):
+            question = " ".join(body.question.split())[:300]
+            return InsightAnswer(question=question, plan=keyword_plan(question), mode="keywords")
         return ask_doorstep.ask(body.question)
 
-    @router.post(
-        "/api/seller/{token}/grid/ask", response_model=GridAnswer, dependencies=[model_cap]
-    )
-    def ask_the_grid(token: str, body: GridQuestionIn, s: Db) -> GridAnswer:
+    @router.post("/api/seller/{token}/grid/ask", response_model=GridAnswer)
+    def ask_the_grid(token: str, body: GridQuestionIn, s: Db, request: Request) -> GridAnswer:
         """G3: Ask the grid reads one question into a filter-and-sort plan for the Control Room.
         It sees the question and the grid's menu of labels only; it reads no rows and moves
         nothing. The browser applies the plan as AG Grid state."""
         _seller(s, token)
         s.commit()  # end the read: no connection is held while the model reads the question
+        if not model_allowed(request):
+            question = " ".join(body.question.split())[:300]
+            plan = keyword_grid_plan(question, body.menu)
+            return GridAnswer(question=question, plan=plan, mode="keywords")
         return ask_grid.ask(body.question, body.menu)
 
     @router.post(

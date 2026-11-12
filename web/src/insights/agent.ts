@@ -302,6 +302,8 @@ export function scanText(scan: { window: string; findings: Finding[] }): string 
 
 // ---------------------------------------------------------------- the harness
 
+const ASK_FAILED = "Couldn't read that just now. Try again in a moment.";
+
 /** What answer_question hands the console: the sentence, how it was read, and the chart it added. */
 export type Answered = {
   answerable: boolean; headline: string; detail: string[]; reading: string[]; chart: boolean; widgetId?: string; mode: Asked["mode"];
@@ -429,7 +431,15 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
     description: "Answer one question about the seller's orders, cases or money with a chart on the Answers page. Returns the figure, computed from the seller's rows.",
     params: (s) => s.object({ question: s.string({ description: "The seller's question, in their words" }) }),
     execute: async (args: { question: string }, ctx) => {
-      const asked = await askDoorstep(a().token, String(args.question ?? "").slice(0, 300), ctx.signal);
+      let asked: Awaited<ReturnType<typeof askDoorstep>>;
+      try {
+        asked = await askDoorstep(a().token, String(args.question ?? "").slice(0, 300), ctx.signal);
+      } catch (e) {
+        if (ctx.signal?.aborted) throw e;
+        // QA-08: a failed read is said, never an empty step.
+        const out: Answered = { answerable: false, headline: ASK_FAILED, detail: [], reading: [], chart: false, mode: "keywords" };
+        return ctx.success(ASK_FAILED, out);
+      }
       if (!asked.plan.answerable) {
         const out: Answered = { answerable: false, headline: asked.plan.note, detail: [], reading: [], chart: false, mode: asked.mode };
         return ctx.success(`Not answerable from the reports: ${asked.plan.note}`, out);
