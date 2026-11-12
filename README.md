@@ -8,6 +8,8 @@ recover the loss from the carrier.
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 [![Live app](https://img.shields.io/badge/live-doorstep--ojmg.onrender.com-7a1f2b.svg)](https://doorstep-ojmg.onrender.com)
 
+**Demo video (2 min):** https://www.youtube.com/watch?v=z5owHAEQOGk
+
 **Live app:** https://doorstep-ojmg.onrender.com · PayPal sandbox and Shippo test mode · UK and US
 orders
 
