@@ -98,8 +98,9 @@ forbidden_modules = ["app.paypal_client.writes"]
 # copied because policy imports it. Same deterministic Hypothesis seed as `make test`.
 source_paths = ["app"]
 only_mutate = ["app/policy/*"]
-also_copy = ["rules/", "tuning/", "evals/", "docs/", "web/src/insights/"]
-# RK tests read evals/ and docs/; AS-06 tests read the Insights menu in web/src/insights/.
+also_copy = ["rules/", "tuning/", "evals/", "docs/", "scripts/", "web/src/insights/"]
+# RK tests read evals/ and docs/; AS-06 tests read the Insights menu in web/src/insights/;
+# MC-04 tests load scripts/assistant_demo.py.
 pytest_add_cli_args_test_selection = ["tests/unit", "tests/property"]
 # The Ragas tests import pandas/pyarrow, whose native code aborts in a forked child on macOS;
 # they test the eval harness, not app/policy, so mutation runs leave them out.
