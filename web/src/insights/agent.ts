@@ -523,9 +523,36 @@ export function pickTopic(p: Prepared, words: string): TopicPick | undefined {
   return { topic: t, name: only ? `${only} · ${TOPICS[t].name}` : TOPICS[t].name, carrier, method: carrier ? null : method };
 }
 
+const byCarrier = (field: string, value: string, title: string, type: string): Widget => ({
+  type, dataMapping: { categoryKey: [{ id: `orders.${field}` }], valueKey: [{ id: value }] },
+  sort: [{ field: { id: value }, direction: "desc" }],
+  format: { title: { enabled: true, text: title }, subtitle: { enabled: false }, style: { theme: { common: { legend: { enabled: type === "donut-chart", position: "bottom" } } } } },
+}) as Widget;
+/**
+ * A page narrowed to one method or one carrier would split by that same field into one bar, so
+ * those widgets split by the other field instead (a lockers page compares carriers).
+ */
+const NARROWED: Record<"method" | "carrier", Record<string, Piece>> = {
+  method: {
+    mix: { key: "mix", label: "Orders by carrier", widget: byCarrier("carrier", "order_count", "Orders by carrier", "donut-chart"), size: "half" },
+    rate: { key: "rate", label: "Case rate by carrier", widget: byCarrier("carrier", "case_rate", "Case rate by carrier", "column-chart-grouped"), size: "wide" },
+    ev: { key: "ev", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "half" },
+    table: { key: "table", label: "Carrier scorecard", widget: W.carrierScorecard, size: "full", h: 14 },
+  },
+  carrier: {
+    cost: { key: "cost", label: "Delivery choice", widget: W.methodMix, size: "half" },
+    causes: { key: "causes", label: "What goes wrong", widget: W.failurePoints, size: "wide" },
+    score: { key: "score", label: "Method scorecard", widget: methodScorecard, size: "full", h: 14 },
+    ev: { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "wide" },
+    evc: { key: "evc", label: "Proof by method", widget: W.evidenceByMethod, size: "wide" },
+  },
+};
+
 /** The page for a topic: KPIs in one row, charts two to a row (13 + 11), tables full width. */
 export function topicPage(id: string, pick: TopicPick): { page: Page; parts: string[] } {
-  const pieces: Piece[] = TOPICS[pick.topic].pieces;
+  const swap = pick.carrier ? NARROWED.carrier : pick.method ? NARROWED.method : {};
+  const pieces: Piece[] = (TOPICS[pick.topic].pieces as Piece[]).map((x) => swap[x.key] ?? x)
+    .filter((x, i, all) => all.findIndex((y) => y.label === x.label) === i);
   const widgets: Record<string, Widget> = {};
   const layout: NonNullable<Page["widgetLayout"]> = {};
   const kpis = pieces.filter((x) => x.size === "kpi");

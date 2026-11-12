@@ -142,6 +142,8 @@ export type Answer = {
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** "1 delivery", "3 deliveries", "1 order". */
+const counted = (n: number, plural: string) => (n === 1 ? plural.replace(/ies$/, "y").replace(/s$/, "") : plural);
 
 export function answer(plan: Plan, prepared: Prepared, now = new Date()): Answer {
   const m = METRICS[plan.metric];
@@ -201,14 +203,17 @@ export function answer(plan: Plan, prepared: Prepared, now = new Date()): Answer
   const pool = (eligible.length ? eligible : groups).sort(order);
   const top = pool[0];
   const raw = [...groups].sort(order)[0];
+  // AI-05: plain sentences whatever the measure ("Most cases: Royal Mail, 12", not "has the highest cases").
   const lead = plan.metric === "net_loss"
     ? `**${top.key}** cost you the ${lowest ? "least" : "most"}${when}: **${fmt(top.value)}** net delivery loss.`
-    : `**${top.key}** has the ${lowest ? "lowest" : "highest"} ${m.noun}${when}: **${fmt(top.value)}**.`;
+    : m.kind === "int"
+      ? `${lowest ? "Fewest" : "Most"} ${m.noun}${when}: **${top.key}**, **${fmt(top.value)}**.`
+      : `${cap(m.noun)}${when} is ${lowest ? "lowest" : "highest"} for **${top.key}**: **${fmt(top.value)}**.`;
   const detail: string[] = [];
   if (m.minBase) {
-    detail.push(`From ${top.base.toLocaleString("en-GB")} ${m.baseNoun}.`);
+    detail.push(`From ${top.base.toLocaleString("en-GB")} ${counted(top.base, m.baseNoun!)}.`);
     if (raw.key !== top.key) {
-      detail.push(`${raw.key} shows ${fmt(raw.value)}, but from only ${raw.base} ${m.baseNoun}, so it is not ranked.`);
+      detail.push(`${raw.key} shows ${fmt(raw.value)}, but from only ${raw.base} ${counted(raw.base, m.baseNoun!)}, so it is not ranked.`);
     }
   } else if (m.kind === "money" || m.kind === "int") {
     const total = m.compute(rows).value ?? 0;

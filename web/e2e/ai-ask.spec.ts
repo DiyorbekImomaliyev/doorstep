@@ -96,7 +96,10 @@ test("AI-02 with the model up, Doorstep builds the topic page in one step, says 
   const panel = await ask(page, "build a page about lockers");
   await expect(panel.getByText("Built ‘Lockers’")).toBeVisible();
   await expect(panel.getByTestId("ask-built")).toContainText("filtered to Locker");
-  await expect(panel.getByTestId("ask-built").getByLabel("Widgets on the page")).toContainText("Method scorecard");
+  // Narrowed to lockers, the page compares carriers rather than splitting by the one method.
+  const chips = panel.getByTestId("ask-built").getByLabel("Widgets on the page");
+  await expect(chips).toContainText("Case rate by carrier");
+  await expect(chips).not.toContainText("Case rate by method");
   await expect(report(page, "Lockers")).toHaveAttribute("aria-current", "true");
   await expect(panel.getByTestId("ask-by")).toContainText("Claude");
   await expect(panel.locator(".ask-head")).toContainText("Read by Claude");
