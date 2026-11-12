@@ -14,7 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.explainer import _ACCUSING
-from app.orders.models import Case, Decision, Order, Shipment, TrackingEvent
+from app.cases.signals import EvidenceKind
+from app.orders.models import Case, Decision, Evidence, Order, Shipment, TrackingEvent
 from app.policy.carriers import normalise
 from app.policy.evidence import NOTES_MAX, EvidenceSubmission
 from app.proof.seal import proof_scan
@@ -22,6 +23,11 @@ from app.proof.seal import proof_scan
 # Carrier codes PayPal accepts in tracking_info; any other carrier is sent as OTHER.
 PAYPAL_CARRIER = {"royal_mail": "ROYAL_MAIL", "usps": "USPS", "ups": "UPS", "fedex": "FEDEX"}
 _MAX_EVENTS = 8
+# DE-05: a receipt confirmation counts only when the buyer made it; the seller's own browser never.
+_BUYER_CONFIRMED = {
+    "buyer": "the buyer confirmed receipt on Doorstep's order page",
+    "buyer_seal": "the buyer confirmed receipt by scanning the seal packed inside the parcel",
+}
 
 
 class UnsafeEvidence(ValueError):
@@ -61,6 +67,19 @@ def build_submission(
             f"Possession seal: the QR code packed inside the parcel was scanned on "
             f"{_when(seal.created_at)}, after the carrier's delivered scan."
         )
+    confirmed = session.scalars(
+        select(Evidence)
+        .where(
+            Evidence.order_id == order.id,
+            Evidence.kind == EvidenceKind.BUYER_CONFIRMATION.value,
+        )
+        .order_by(Evidence.created_at)
+    ).first()
+    said = (
+        _BUYER_CONFIRMED.get(str((confirmed.ai_result or {}).get("source"))) if confirmed else None
+    )
+    if confirmed is not None and said:
+        lines.append(f"Buyer confirmation: {said} on {_when(confirmed.created_at)}.")
     # The audit goes in only when the carrier's data agrees with itself; the raw tracking above is
     # there either way, so nothing the carrier reported is held back.
     audit = decision.signals.get("scan_audit") or {}
