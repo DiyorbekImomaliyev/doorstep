@@ -100,7 +100,12 @@ def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[Disp
             else:
                 captures_named = []
             found.append(
-                DisputeSummary(dispute_id=dispute_id, status=status, capture_ids=captures_named)
+                DisputeSummary(
+                    dispute_id=dispute_id,
+                    status=status,
+                    capture_ids=captures_named,
+                    reason=str(item.get("reason") or ""),
+                )
             )
         next_href = next(
             (link.get("href") for link in page.get("links") or [] if link.get("rel") == "next"),
@@ -138,6 +143,7 @@ def get_dispute(client: PayPalClient, dispute_id: str) -> DisputeDetail:
         offer_types=[str(t).upper() for t in allowed.get("offer_types") or []],
         seller_offer_made=bool(offer.get("seller_offered_amount"))
         or any(str(h.get("actor") or "").upper() == "SELLER" for h in history),
+        outcome_code=str((body.get("dispute_outcome") or {}).get("outcome_code") or ""),
     )
 
 

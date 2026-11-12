@@ -14,15 +14,22 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.explainer import Explainer
 from app.ai.recovery import RecoveryDrafter
+from app.cases.dispute_intake import OpenCase, take_dispute
+from app.cases.engine import ClaimReason
+from app.cases.pipeline import CasePipeline
 from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expired
 from app.checkout.address import AddressChecker
-from app.orders.models import MoneyAction
+from app.orders.models import Dispute, MoneyAction, Order
+from app.paypal_client.errors import PayPalClientError
+from app.paypal_client.reads import DISPUTE_LIST_MAX_AGE, get_dispute, list_open_disputes_since
 from app.policy.evidence import DISPUTE_EVIDENCE_JOB, DisputeEvidenceJobHandler
 from app.policy.offers import DISPUTE_OFFER_JOB, OfferJobHandler
-from app.policy.rules import load_rules
+from app.policy.rules import RuleBook, load_rules
 from app.policy.service import REFUND_JOB, PolicyService, RefundJobHandler
 from app.proof.receipts import ReceiptSigner, issue_refund_receipt
 from app.runtime import NotConfigured, Runtime, build_runtime
@@ -33,13 +40,14 @@ from app.worker.handlers import ADD_TRACKING, CAPTURE_ORDER, AddTrackingHandler,
 from app.worker.inbox import InboxProcessor
 from app.worker.kinds import COMPLETE_APPROVED
 from app.worker.models import Job
-from app.worker.paypal_events import paypal_inbox_handlers
+from app.worker.paypal_events import paypal_inbox_handlers, record_resolved
 from app.worker.runner import JobRunner
-from app.worker.simulated import RoutingRefundGateway, SimulatedRefundGateway
+from app.worker.simulated import SIM_PREFIX, RoutingRefundGateway, SimulatedRefundGateway
 
 log = logging.getLogger("doorstep.worker")
 
 SWEEP_EVERY_S = 300
+DISPUTE_SWEEP_EVERY_S = 60  # DI-02: a dispute shows within a minute even with no webhook
 
 # Jobs that call a model and can take tens of seconds. They run in a lane of their own (WK-01).
 MODEL_JOBS = frozenset({DRAFT_RECOVERY})
@@ -102,11 +110,70 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     handlers[DRAFT_RECOVERY] = DraftRecoveryHandler(RecoveryDrafter(llm))  # RC-03
     inbox_handlers: dict[tuple[str, str], Any] = {
         ("shippo", "track_updated"): handle_shippo_track_updated,
-        **paypal_inbox_handlers(rulebook, rt.clock, rt.services.receipts),
+        **paypal_inbox_handlers(
+            rulebook, rt.clock, rt.services.receipts, case_opener(rt, rulebook)
+        ),
     }
     inbox = InboxProcessor(rt.session_factory, inbox_handlers, rt.clock, rt.settings)
     runner = JobRunner(rt.session_factory, handlers, rt.clock, rt.settings)
     return inbox, runner
+
+
+def case_opener(rt: Runtime, rulebook: RuleBook) -> OpenCase:
+    """DI-03: open and decide a case for an order PayPal reports a dispute on. The decision is
+    worded from its template, so no model call runs inside the webhook or sweep transaction."""
+
+    def open_case(s: Session, order: Order, reason: ClaimReason) -> object:
+        pipeline = CasePipeline(
+            s, rulebook, rt.clock, rt.settings, Explainer(None), rt.services.receipts
+        )
+        return pipeline.report(order, reason, reported_by="paypal")
+
+    return open_case
+
+
+def sweep_disputes(rt: Runtime, open_case: OpenCase | None = None) -> int:
+    """DI-02: ask PayPal for its open disputes, in case a webhook never came (PayPal cannot reach
+    a local server). A dispute on a capture Doorstep knows goes through the webhook's own intake,
+    which is safe to repeat. Returns how many disputes matched an order."""
+    if rt.paypal is None:  # nothing to ask
+        return 0
+    listed = list_open_disputes_since(rt.paypal, rt.clock.now() - DISPUTE_LIST_MAX_AGE)
+    matched = 0
+    with rt.session_factory() as s:
+        for found in listed:
+            if not found.dispute_id or not found.capture_ids:
+                continue
+            order = s.scalars(select(Order).where(Order.capture_id.in_(found.capture_ids))).first()
+            if order is None:  # another shop's payment on the same PayPal account
+                continue
+            said = take_dispute(
+                s, order, found.dispute_id, reason=found.reason, clock=rt.clock, open_case=open_case
+            )
+            log.debug("dispute sweep: %s", said)
+            matched += 1
+        # DI-05: a dispute we hold open that PayPal no longer lists as open may be decided.
+        listed_ids = {found.dispute_id for found in listed}
+        held = s.scalars(
+            select(Dispute)
+            .join(Order, Order.id == Dispute.order_id)
+            .where(Dispute.status == "open", Order.capture_id.not_like(f"{SIM_PREFIX}%"))
+        ).all()
+        for row in held:
+            if row.paypal_dispute_id in listed_ids:
+                continue
+            try:
+                detail = get_dispute(rt.paypal, row.paypal_dispute_id)
+            except PayPalClientError as error:  # not this account's dispute: leave it as it is
+                log.warning("dispute sweep: %s unreadable (%s)", row.paypal_dispute_id, error)
+                continue
+            if detail.status == "RESOLVED":
+                record_resolved(s, row, detail.outcome_code)
+                log.info(
+                    "dispute %s resolved at PayPal: %s", row.paypal_dispute_id, detail.outcome_code
+                )
+        s.commit()
+    return matched
 
 
 def split_lanes(runner: JobRunner) -> tuple[JobRunner, JobRunner]:
@@ -185,7 +252,8 @@ def run_loop(rt: Runtime, should_stop: Callable[[], bool], poll_s: float = 2.0) 
         name="doorstep-model-jobs",
         daemon=True,
     ).start()
-    last_sweep = 0.0
+    last_sweep = last_dispute_sweep = 0.0
+    opener = case_opener(rt, load_rules(rt.deps.rules_dir))
     log.info("worker started")
     while not should_stop():
         try:
@@ -197,6 +265,12 @@ def run_loop(rt: Runtime, should_stop: Callable[[], bool], poll_s: float = 2.0) 
         except Exception:
             log.exception("worker loop error; continuing")
             done = 0
+        if time.monotonic() - last_dispute_sweep > DISPUTE_SWEEP_EVERY_S:
+            last_dispute_sweep = time.monotonic()
+            try:
+                sweep_disputes(rt, opener)
+            except Exception:  # a PayPal read failing must not stop the worker; next sweep retries
+                log.exception("dispute sweep failed; retrying next sweep")
         if not done:
             time.sleep(poll_s)
     log.info("worker stopped")

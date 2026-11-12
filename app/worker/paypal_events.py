@@ -12,7 +12,8 @@
 - PAYMENT.CAPTURE.DECLINED / DENIED: a pending capture did not go through. The order stays unpaid
   and is marked declined, so the buyer can pay another way; a completed capture is never un-paid
   by an event (CK-11).
-- CUSTOMER.DISPUTE.CREATED/UPDATED/RESOLVED: keeps the disputes table current, so the policy
+- CUSTOMER.DISPUTE.CREATED/UPDATED/RESOLVED: keeps the disputes table current (and puts the
+  order's case on the evidence route, DI-01), so the policy
   routes to DISPUTE_EVIDENCE instead of refunding outside the dispute (PO-05). RESOLVED closes the
   case that was waiting on the dispute, since PayPal decided it (PO-14).
 Events for orders Doorstep does not know are logged and skipped, never failed.
@@ -27,6 +28,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.cases.dispute_intake import OpenCase, take_dispute
 from app.clock import Clock
 from app.money import Money
 from app.orders.enums import CaseState, OrderState
@@ -188,7 +190,7 @@ def _make_capture_declined(clock: Clock) -> Handler:
     return handle
 
 
-def _make_dispute(clock: Clock) -> Handler:
+def _make_dispute(clock: Clock, open_case: OpenCase | None) -> Handler:
     def handle(s: Session, row: WebhookInbox) -> None:
         res = _resource(row)
         dispute_id = str(res.get("dispute_id") or "")
@@ -220,8 +222,30 @@ def _make_dispute(clock: Clock) -> Handler:
         s.flush()
         if resolved:
             _close_disputed_case(s, order, _dict(res.get("dispute_outcome")))
+            return
+        said = take_dispute(  # DI-01: the case goes on the evidence route
+            s,
+            order,
+            dispute_id,
+            reason=str(res.get("reason") or ""),
+            clock=clock,
+            open_case=open_case,
+        )
+        log.info("dispute %s: %s", dispute_id, said)
 
     return handle
+
+
+def record_resolved(s: Session, dispute: Dispute, outcome_code: str) -> None:
+    """DI-05: the sweep's way to PO-14, for a resolved webhook that never came. PayPal says the
+    dispute is resolved, so it is recorded resolved and the case waiting on it is finished."""
+    if dispute.status == "resolved":
+        return
+    dispute.status = "resolved"
+    s.flush()
+    order = s.get(Order, dispute.order_id)
+    if order is not None:
+        _close_disputed_case(s, order, {"outcome_code": outcome_code})
 
 
 def _close_disputed_case(s: Session, order: Order, outcome: dict[str, Any]) -> None:
@@ -255,9 +279,12 @@ def _make_order_approved(clock: Clock) -> Handler:
 
 
 def paypal_inbox_handlers(
-    rulebook: RuleBook, clock: Clock, receipts: ReceiptSigner | None = None
+    rulebook: RuleBook,
+    clock: Clock,
+    receipts: ReceiptSigner | None = None,
+    open_case: OpenCase | None = None,
 ) -> dict[tuple[str, str], Handler]:
-    dispute = _make_dispute(clock)
+    dispute = _make_dispute(clock, open_case)
     return {
         ("paypal", "CHECKOUT.ORDER.APPROVED"): _make_order_approved(clock),
         ("paypal", "PAYMENT.CAPTURE.COMPLETED"): _make_capture_completed(clock),

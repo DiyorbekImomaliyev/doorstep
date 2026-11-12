@@ -78,6 +78,7 @@ class DisputeSummary(BaseModel):
     dispute_id: str  # "" when PayPal lists a dispute without an id: never matched to an order
     status: str  # PayPal's status, upper case; anything but RESOLVED counts as open
     capture_ids: list[str] = []  # disputed_transactions[].seller_transaction_id
+    reason: str = ""  # PayPal's reason code, e.g. MERCHANDISE_OR_SERVICE_NOT_RECEIVED
 
 
 class DisputeDetail(BaseModel):
@@ -95,3 +96,4 @@ class DisputeDetail(BaseModel):
     amount: Money | None = None  # what the buyer disputes; None when PayPal leaves it out
     offer_types: list[str] = []  # offer types PayPal allows now; empty = no offer allowed
     seller_offer_made: bool = False  # the seller already has an offer on this dispute
+    outcome_code: str = ""  # dispute_outcome.outcome_code once RESOLVED (DI-05)
