@@ -162,10 +162,10 @@ export default function AutopilotPage({ token, data, statement, onChange, onOpen
               <span className="value num" style={{ fontSize: 22 }}>{home ? money(home.today_minor, home.currency) : "—"}<span className="ax-of"> of {home ? money(home.daily_cap_minor, home.currency) : "—"}</span></span>
               {home ? <Meter label="Refunds today against the daily cap" total={home.daily_cap_minor} parts={[{ value: home.today_minor, tone: "accent" }]} /> : <span className="sub"> </span>}
             </div>
-            <div className="kpi">
+            <div className="kpi" title="Carrier claims on the refunds Autopilot made in the last 7 days. Every claim is on the Claims page.">
               <span className="label"><Landmark aria-hidden />To claim back</span>
               <span className="value num" style={{ fontSize: 22 }}>{claimable}</span>
-              <span className="sub">{ready ? `${ready} claim${ready === 1 ? "" : "s"} ready` : recovered !== money(0, "GBP") ? `${recovered} recovered` : "from carriers"}</span>
+              <span className="sub">{ready ? `${ready} claim${ready === 1 ? "" : "s"} ready` : recovered !== money(0, "GBP") ? `${recovered} recovered` : "from its refunds"}</span>
             </div>
           </section>
 
