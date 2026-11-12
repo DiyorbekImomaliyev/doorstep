@@ -45,6 +45,29 @@ test("SB-02 arrow keys walk the sidebar and the focus ring shows", async ({ page
   expect(ring).toBe("solid");
 });
 
+test("SB-08 the Policy count is maroon until the Policy page shows it, then grey until a check finds a different clause", async ({ page }) => {
+  let quote = "Once tracking shows delivered, it is your responsibility.";
+  await page.route(`**/api/seller/${token}/policy-check`, (r) => r.fulfill({ json: {
+    status: "checked", facts: [], rule_id: null, rule_version: null, source: "", disclaimer: "", provider: null, dropped: 0,
+    issues: [{ quote, problem: "p", suggestion: "s", facts: [] }],
+  } }));
+  const policy = () => side(page).locator(".nav button", { hasText: "Policy" });
+  await page.goto(`/seller/${token}`);
+  await expect(policy().locator(".count.alert")).toHaveText("1");
+
+  await policy().click();
+  await expect(policy().locator(".count")).toHaveText("1");
+  await expect(policy().locator(".count.alert")).toHaveCount(0);
+  await expect(policy()).toHaveAttribute("title", /1 issue found · seen/);
+  await page.goto(`/seller/${token}`);
+  await expect(policy().locator(".count")).toHaveText("1");
+  await expect(policy().locator(".count.alert")).toHaveCount(0);
+
+  quote = "We are not responsible once the parcel is delivered.";
+  await page.reload();
+  await expect(policy().locator(".count.alert")).toHaveText("1");
+});
+
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
   test("SB-03 the strip has 44 px targets and the page does not scroll sideways", async ({ page }) => {

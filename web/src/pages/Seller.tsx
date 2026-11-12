@@ -335,6 +335,17 @@ export default function Seller({ token }: { token: string }) {
   };
   // SB-01: live state beside each sidebar item. Maroon (alert) means something needs the seller; grey is information.
   const policyIssues = policy.data?.status === "checked" ? policy.data.issues.length : 0;
+  // A policy conflict is fixed outside Doorstep (the seller edits the policy on their own shop), so
+  // maroon means "new since you last looked": once the Policy page has shown these clauses the count
+  // stays, in grey, until a check finds different ones.
+  const policySig = policy.data?.status === "checked" ? policy.data.issues.map((i) => i.quote).sort().join("\n") : "";
+  const seenKey = `doorstep.policySeen.${token}`;
+  const [policySeen, setPolicySeen] = useState(() => { try { return window.localStorage.getItem(seenKey) ?? ""; } catch { return ""; } });
+  useEffect(() => {
+    if (page !== "policy" || !policySig || policySeen === policySig) return;
+    try { window.localStorage.setItem(seenKey, policySig); } catch { /* storage blocked: it stays maroon */ }
+    setPolicySeen(policySig);
+  }, [page, policySig, policySeen, seenKey]);
   const refundsOnWay = (moneyRows.data ?? []).filter((r) => r.status === "queued" || r.status === "pending").length;
   const rulesOn = (auto.data?.rules ?? []).filter((r) => r.status === "on").length;
   const navState: Partial<Record<Page, { n?: number; alert?: boolean; on?: boolean; tip: string }>> = {
@@ -342,7 +353,7 @@ export default function Seller({ token }: { token: string }) {
     disputes: { n: badge.disputes, alert: true, tip: badge.disputes ? `${badge.disputes} open` : "None open" },
     money: { n: refundsOnWay, tip: refundsOnWay ? `${refundsOnWay} on their way` : "Nothing pending" },
     autopilot: { on: rulesOn > 0, tip: rulesOn ? `${rulesOn} rule${rulesOn === 1 ? "" : "s"} on` : "No rule on" },
-    policy: { n: policyIssues, alert: true, tip: policyIssues ? `${policyIssues} issue${policyIssues === 1 ? "" : "s"} found` : policy.data?.status === "checked" ? "No issues" : "Not checked" },
+    policy: { n: policyIssues, alert: policySeen !== policySig, tip: policyIssues ? `${policyIssues} issue${policyIssues === 1 ? "" : "s"} found${policySeen === policySig ? " · seen" : ""}` : policy.data?.status === "checked" ? "No issues" : "Not checked" },
     insights: { tip: "AG Studio" },
   };
   // Up and Down arrows walk the sidebar's buttons; Tab still visits each in order.
