@@ -54,9 +54,17 @@ export function useLedger(api: AgStudioApi | undefined, stamp: number): Ledger {
   const aiCount = undo.filter((e) => e.source?.type === "ai").length;
   const canRedoAll = !!furthest.current && redoStack.some((e) => e.id === furthest.current);
 
-  /** Runs an undo or redo; a report it brings back opens (a view change, not recorded). */
-  const step = useCallback((run: () => void) => {
+  /** Runs an undo or redo; a report it brings back opens (a view change, not recorded). The page on
+   *  screen is not part of the history, so when the step takes that page away, a page it keeps opens
+   *  first: Studio never restores a state whose open page is missing. */
+  const step = useCallback((run: () => void, target?: Entry) => {
     if (!api) return;
+    const now = api.getState();
+    const keep = target ? pagesOf(target) : null;
+    if (keep && !keep.includes(now.selectedPageId)) {
+      const open = keep.find((id) => now.pages.some((p) => p.id === id));
+      if (open) api.setState({ ...now, selectedPageId: open });
+    }
     const before = new Set(api.getState().pages.map((p) => p.id));
     run();
     const s = api.getState();
@@ -68,17 +76,19 @@ export function useLedger(api: AgStudioApi | undefined, stamp: number): Ledger {
     if (!api || !from) return;
     const h = api.getHistory();
     furthest.current = h.undo[h.undo.length - 1]?.id ?? null;
-    step(() => api.undo(from.id));
+    step(() => api.undo(from.id), from);
   }, [api, step]);
 
   return {
     history, aiCount, run, canRedoAll,
-    undo: () => { furthest.current = null; step(() => api?.undo()); },
+    undo: () => { furthest.current = null; if (api) step(() => api.undo(), api.getHistory().undo.at(-1)); },
     redo: () => {
       if (!api) return;
       const to = furthest.current;
       furthest.current = null;
-      step(() => (to && api.getHistory().redo.some((e) => e.id === to) ? api.redo(to) : api.redo()));
+      const stack = api.getHistory().redo;
+      const target = (to && stack.find((e) => e.id === to)) || stack.at(-1);
+      step(() => (target && target.id === to ? api.redo(to) : api.redo()), target);
     },
     undoTo: (e) => bulk(e),
     undoDoorstep: () => bulk(run[0]),

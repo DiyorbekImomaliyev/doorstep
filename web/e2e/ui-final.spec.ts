@@ -96,6 +96,32 @@ test("UI-04 an unavailable AI policy check is said once, with Retry", async ({ p
   await expect(page.getByText("AI unavailable", { exact: true }).and(page.locator(":not(.sr-only)")).locator("visible=true")).toHaveCount(1);
 });
 
+test("UI-07 undoing a build Doorstep made, and redoing it, keeps the console clean", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.route("**/insights/agent", (route) => route.fulfill({ json: {
+    message: "", mode: "model", provider: "anthropic",
+    calls: [{ call_id: "c1", name: "build_page", arguments: { topic: "delivery_methods", name: "Lockers", carrier: null, method: "Locker" } }],
+  } }));
+  await page.goto(`/seller/${seed.seller_token}#insights`);
+  const rail = page.getByRole("navigation", { name: "Reports" });
+  await expect(page.locator(".ag-studio-value-widget-content").first()).toHaveText(/\d/);
+  await page.getByRole("button", { name: "Pause live updates" }).click();
+  await page.getByRole("button", { name: "Ask Doorstep" }).click();
+  const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
+  await panel.getByRole("textbox", { name: "Your question" }).fill("build a page about lockers");
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText("Built ‘Lockers’")).toBeVisible();
+  const lockers = rail.getByRole("button", { name: /^Lockers/ });
+  await expect(lockers).toHaveAttribute("aria-current", "true");
+  await panel.getByRole("button", { name: "Undo this build" }).click();
+  await expect(lockers).toHaveCount(0);
+  await expect(rail.locator('[aria-current="true"]')).toHaveCount(1);
+  await panel.getByRole("button", { name: "Redo this build" }).click();
+  await expect(lockers).toHaveAttribute("aria-current", "true");
+  expect(errors).toEqual([]);
+});
+
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   test("UI-05 the prevention tip and the money chart's dates fit a phone on whole lines", async ({ page }) => {
