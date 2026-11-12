@@ -28,10 +28,16 @@ export function Chips({ label, items, onRemove }: { label: string; items: string
 
 const PROVIDER: Record<string, string> = { anthropic: "Claude", claude: "Claude", gemini: "Gemini", google: "Gemini" };
 
-/** Who read the question: a model (named) or Doorstep's keyword reader when no model answered. */
-export function ReadBy({ mode, provider }: { mode: "model" | "keywords" | "fallback" | string; provider?: string | null }) {
+/**
+ * Who read the question: a model (named), Doorstep's keyword reader when no model answered, or
+ * (AI-06) a safety rule that refused a request to act before any model read it.
+ */
+export function ReadBy({ mode, provider }: { mode: "model" | "keywords" | "fallback" | "rules" | string; provider?: string | null }) {
+  if (mode === "rules") {
+    return <span className="ds-readby" title="Requests to refund, approve or contact someone are refused before any model reads them">Safety rule</span>;
+  }
   const who = mode === "model" ? PROVIDER[(provider ?? "").toLowerCase()] ?? "AI" : "keywords";
-  return <span className="ds-readby">Read by {who}</span>;
+  return <span className="ds-readby" title={mode === "model" ? undefined : "No model answered: Doorstep's keyword reader did"}>Read by {who}</span>;
 }
 
 /** A sentence part: plain text, or a figure to stand out. */

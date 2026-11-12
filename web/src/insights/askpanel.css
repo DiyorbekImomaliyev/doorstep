@@ -1,0 +1,16 @@
+/* AI-01: the seller's own message in Ask Doorstep. White on the maroon accent (#7b2d3d, 9.8:1),
+   set on the bubble and everything inside it, so no inherited or Studio rule can darken the text. */
+.ask .ask-turn .ask-q,
+.ask .ask-turn .ask-q * {
+  color: #fff;
+}
+.ask .ask-turn .ask-q {
+  background: var(--accent, #7b2d3d);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.ask .ask-turn .ask-q::selection { background: rgba(255, 255, 255, 0.35); color: #fff; }
+
+/* AI-02: a topic page's widgets, as chips under "Built …". */
+.ask-built .ds-chips { margin-top: 2px; }

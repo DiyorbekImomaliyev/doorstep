@@ -73,6 +73,7 @@ def test_QA_08_past_the_cap_both_ask_routes_answer_by_keywords(session_factory, 
         "question": QUESTION,
         "plan": keyword_plan(QUESTION).model_dump(),
         "mode": "keywords",
+        "provider": None,
     }
     grid = api.post(
         f"/api/seller/{token}/grid/ask",

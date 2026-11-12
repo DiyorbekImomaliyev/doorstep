@@ -220,6 +220,7 @@ def test_AS_06_12_the_ask_endpoint_is_scoped_to_the_seller(session_factory, sett
         "question": "Which carrier cost me most?",
         "plan": PLAN.model_dump(),
         "mode": "model",
+        "provider": None,  # the fake model names no provider
     }
     assert api.post("/api/seller/nope/insights/ask", json={"question": "Cost?"}).status_code in (
         401,
