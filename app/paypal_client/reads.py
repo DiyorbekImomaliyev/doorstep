@@ -74,10 +74,12 @@ def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[Disp
     """Every unresolved dispute created since `since`, with the captures each one names.
 
     The list is filtered by time, not by transaction (the transaction filter answers 400 when
-    there is nothing to find). An unresolved dispute the list does not tie to a capture is read
-    once for it. Any status other than RESOLVED
-    counts as open, so a status PayPal adds later fails closed. A page link without a token, or
-    more pages than the cap, raises a retryable error: the refund waits rather than guesses.
+    there is nothing to find). An unresolved dispute the list does not tie to a seller capture is
+    read once for it: the sandbox lists `disputed_transactions` with only the buyer's transaction
+    id (seen Nov 12), while the dispute itself names `seller_transaction_id`. Any status other
+    than RESOLVED counts as open, so a status PayPal adds later fails closed. A page link without
+    a token, or more pages than the cap, raises a retryable error: the refund waits rather than
+    guesses.
     """
     query = {
         "start_time": since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
@@ -91,14 +93,11 @@ def list_open_disputes_since(client: PayPalClient, since: datetime) -> list[Disp
             if status == "RESOLVED":
                 continue
             dispute_id = str(item.get("dispute_id") or "")
-            if "disputed_transactions" in item:  # the list already names them: no extra read
-                captures_named = _seller_captures(item)
-            elif dispute_id:
+            captures_named = _seller_captures(item)  # the list may name only the buyer's side
+            if not captures_named and dispute_id:  # the dispute itself names the seller's capture
                 captures_named = _seller_captures(
                     client.request("GET", f"/v1/customer/disputes/{dispute_id}")
                 )
-            else:
-                captures_named = []
             found.append(
                 DisputeSummary(
                     dispute_id=dispute_id,

@@ -202,7 +202,14 @@ def test_DI_04_the_dispute_reason_is_read_from_the_paypal_list(clock):
     from app.paypal_client.reads import list_open_disputes_since
 
     paypal = _ListingPayPal(
-        [{"dispute_id": "D", "status": "OPEN", "reason": NOT_RECEIVED, "disputed_transactions": []}]
+        [
+            {
+                "dispute_id": "D",
+                "status": "OPEN",
+                "reason": NOT_RECEIVED,
+                "disputed_transactions": [{"seller_transaction_id": "CAP-D"}],
+            }
+        ]
     )
     [found] = list_open_disputes_since(paypal, clock.now())  # type: ignore[arg-type]
     assert found.reason == NOT_RECEIVED
@@ -375,3 +382,21 @@ def test_DI_06_shippo_client_reads_a_track(httpserver):
     with pytest.raises(ShippoError, match="404"):
         client.get_track("shippo", "BAD")
     assert httpserver.log[0][0].headers["Authorization"] == "ShippoToken shippo_test_x"
+
+
+def test_DI_04_a_list_entry_naming_only_the_buyers_side_is_read_for_the_seller_capture(clock):
+    """The sandbox lists a dispute with only buyer_transaction_id (Nov 12); its own record names
+    the seller's capture, so Doorstep reads it once."""
+    from app.paypal_client.reads import list_open_disputes_since
+
+    item = {
+        "dispute_id": "PP-R-1",
+        "status": "UNDER_REVIEW",
+        "reason": NOT_RECEIVED,
+        "disputed_transactions": [{"buyer_transaction_id": "BUYER-TX"}],
+    }
+    detail = {"dispute_id": "PP-R-1", "disputed_transactions": [{"seller_transaction_id": "CAP-9"}]}
+    paypal = _ListingPayPal([item], {"PP-R-1": detail})
+    [found] = list_open_disputes_since(paypal, clock.now())  # type: ignore[arg-type]
+    assert found.capture_ids == ["CAP-9"]
+    assert ("GET", "/v1/customer/disputes/PP-R-1") in paypal.calls
