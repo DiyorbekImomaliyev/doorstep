@@ -8,6 +8,7 @@ import { Brand, Loading } from "../components/ui";
 const WHEN = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC" : "None";
 const CARRIER: Record<string, string> = { royal_mail: "Royal Mail", evri: "Evri", dpd_uk: "DPD", parcelforce: "Parcelforce", usps: "USPS", ups: "UPS", fedex: "FedEx", dhl: "DHL", shippo: "Shippo (test carrier)" };
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const AUDIT: Record<string, string> = { consistent: "Consistent", contradicted: "Contradicted by the carrier's own data", inconclusive: "Not enough data" };
 
 export default function Proof() {
@@ -55,7 +56,7 @@ export default function Proof() {
             {check.valid && c ? (
               <div className="notice good"><CircleCheck aria-hidden /><span><strong>Genuine.</strong>&nbsp;Signed by Doorstep, and nothing in it has changed since.</span></div>
             ) : (
-              <div className="notice bad"><CircleX aria-hidden /><span><strong>Not valid.</strong>&nbsp;{check.reason}.</span></div>
+              <div className="notice bad"><CircleX aria-hidden /><span><strong>Not valid.</strong>&nbsp;{cap(check.reason ?? "")}.</span></div>
             )}
             {c && (
               <>

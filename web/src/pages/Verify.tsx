@@ -6,7 +6,8 @@ const KIND: Record<string, string> = {
   decision: "Decision", approval: "Approval", settlement: "Settled", refund: "Refund", evidence: "Dispute evidence",
   "send-evidence": "Evidence approved", "make-offer": "Refund offer approved", offer: "Refund offered in the PayPal dispute",
 };
-const kindLabel = (k: string) => KIND[k] ?? k.charAt(0).toUpperCase() + k.slice(1);
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const kindLabel = (k: string) => KIND[k] ?? cap(k);
 
 export default function Verify({ caseId }: { caseId: string }) {
   const { data: r, error } = useAsync(() => api.verify(caseId), [caseId]);
@@ -25,7 +26,7 @@ export default function Verify({ caseId }: { caseId: string }) {
           <section className="card col">
             {r.status === "ok" && <div className="notice good"><CircleCheck aria-hidden /><span><strong>Verified.</strong>&nbsp;This case's {r.receipts.length} receipt{r.receipts.length === 1 ? "" : "s"} {r.receipts.length === 1 ? "is" : "are"} intact. To prove it, all {r.checked.toLocaleString()} receipts in the shared chain up to this case were recomputed: every hash, link and signature matches.</span></div>}
             {r.status === "broken" && <div className="notice bad"><CircleX aria-hidden /><span><strong>Tampered.</strong>&nbsp;Receipt #{r.first_broken_seq}: {r.reason}.</span></div>}
-            {r.status === "not_run" && <div className="notice"><Info aria-hidden /><span><strong>Not checked.</strong>&nbsp;{r.reason}.</span></div>}
+            {r.status === "not_run" && <div className="notice"><Info aria-hidden /><span><strong>Not checked.</strong>&nbsp;{cap(r.reason ?? "")}.</span></div>}
             {r.receipts.length > 0 && (
               <ol className="checks chain" style={{ listStyle: "none" }} aria-label="Receipt chain, oldest first">
                 {r.receipts.map((x) => (
