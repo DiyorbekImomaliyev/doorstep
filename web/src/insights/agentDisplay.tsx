@@ -87,7 +87,22 @@ function AnswerDetail(p: AgAiToolDetailParams) {
         </div>
       )}
       {removed && <p className="ask-muted">Chart removed from Answers.</p>}
-      <p className="ask-source"><ReadBy mode={a.mode} /> · live figures from your orders{a.chart ? ", as on the chart" : ""}</p>
+      <p className="ask-source"><ReadBy mode={a.mode} provider={a.provider} /> · figures from your orders</p>
+    </div>
+  );
+}
+
+type Built = { name: string; carrier?: string | null; method?: string | null; parts: string[] };
+
+/** AI-02: what a topic page holds, said plainly: its name, its filter, and each widget placed. */
+function BuiltDetail(p: AgAiToolDetailParams) {
+  const b = dataOf<Built>(p);
+  if (!b) return null;
+  const only = b.carrier ?? b.method;
+  return (
+    <div className="ask-a ask-built" data-testid="ask-built">
+      <p className="ask-headline">Built <strong>{b.name}</strong>{only ? <>, filtered to {only}</> : null}.</p>
+      <Chips label="Widgets on the page" items={b.parts} />
     </div>
   );
 }
@@ -153,6 +168,14 @@ export const doorstepToolDisplay: Record<string, AgAiToolDisplay> = {
   build_report_template: {
     label: ({ args, status }) => ({ text: status === "done" ? "Built from template" : "Building from template", pill: args.carrier ? String(args.carrier) : undefined }),
   },
+  build_page: {
+    label: ({ args, status, result }) => {
+      const b = result?.success ? (result as { data?: Built }).data : undefined;
+      const name = String(b?.name ?? args.name ?? "").slice(0, 40);
+      return { text: `${status === "done" ? "Built" : "Building"} ‘${name}’`, pill: b ? count(b.parts.length, "widget") : undefined };
+    },
+    detail: BuiltDetail,
+  },
   // S6: Explain this chart.
   explain_chart: {
     label: ({ args, status }) => ({ text: `${status === "done" ? "Read" : "Reading"} “${String(args.name ?? "").slice(0, 48)}”` }),
@@ -179,7 +202,7 @@ const WIDGET_WORDS: Record<string, string> = {
   "doorstep-journey": "a parcel journey", "doorstep-money-flow": "a liability waterfall", "doorstep-brief": "Doorstep's brief",
   value: "a number", grid: "a table", "pivot-grid": "a pivot table", "donut-chart": "a donut chart", "line-chart": "a line chart",
 };
-function widgetLabel(type: unknown): string {
+export function widgetLabel(type: unknown): string {
   const t = String(type ?? "");
   if (WIDGET_WORDS[t]) return WIDGET_WORDS[t];
   if (/chart/.test(t)) return `a ${t.replace(/-chart.*$/, "").replace(/-/g, " ")} chart`;
@@ -193,7 +216,7 @@ const named = (name: (id: string) => string | undefined, id: unknown, fallback: 
 /** S9: one to three plain words per tool, for the Steps list under a reply. Hidden tools have none. */
 const TRACE_LABEL: Record<string, string> = {
   scan_for_anomalies: "Read orders", answer_question: "Answered", open_report: "Opened report", open_carrier_report: "Opened carrier",
-  create_report: "Built report", build_report_template: "Built report", check_page: "Checked page", explain_chart: "Read chart",
+  create_report: "Built report", build_report_template: "Built report", build_page: "Built report", check_page: "Checked page", explain_chart: "Read chart",
   add_widget: "Built chart", configure_widget: "Set up chart", position_widget: "Moved chart", remove_widget: "Removed chart",
   add_page_filter: "Filtered page", remove_page_filter: "Cleared filter", add_widget_filter: "Filtered chart",
   remove_widget_filter: "Cleared filter", delegate_to: "Asked Studio",

@@ -567,6 +567,12 @@ function PolicyPanel({ token, caseId }: { token: string; caseId: string }) {
 /** AT-01..05: the agent reads the PayPal side (Agent Toolkit, read-only) and asks the policy. */
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
+/** AI-08: "Planned by Claude" (or Gemini), or Doorstep's own plan when no model answered. */
+const PLANNERS: Record<string, string> = { anthropic: "Claude", gemini: "Gemini" };
+const plannerName = (planner: string) => planner.startsWith("model")
+  ? `Planned by ${PLANNERS[planner.split(":")[1] ?? ""] ?? "AI"} · read-only`
+  : "Doorstep's own plan · no model";
+
 /** AT-06: cases whose agent pre-check already started in this tab (the server also reuses runs). */
 const AUTO_RAN = new Set<string>();
 const NEEDS_SELLER = ["AWAITING_SELLER", "HOLD_FOR_REVIEW", "DISPUTE_EVIDENCE"];
@@ -621,8 +627,9 @@ function AgentPanel({ token, caseId, auto, onDone }: { token: string; caseId: st
       <div className="row wrap" style={{ gap: 10 }}>
         <button className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => go()}>{busy ? "Checking PayPal…" : run ? "Run the agent again" : "Run the agent"}</button>
         {run && (
-          <span className="faint" title={run.planner}>
-            {run.planner.startsWith("model") ? "Planned by AI, within code checks." : "Doorstep's checks, each step chosen by what PayPal showed."} Every step is in the timeline.
+          <span className="faint" data-testid="agent-planner"
+            title={run.planner.startsWith("model") ? "The model chose each step; code checks every one. Every step is in the timeline." : "No model answered, so Doorstep's own plan ran: each step chosen by what PayPal showed. Every step is in the timeline."}>
+            {plannerName(run.planner)}
           </span>
         )}
       </div>
