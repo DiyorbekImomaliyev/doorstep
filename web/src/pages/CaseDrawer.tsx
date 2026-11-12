@@ -730,6 +730,7 @@ function RecoveryPanel({ token, recovery, primary, onChanged }: { token: string;
   const [err, setErr] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [amount, setAmount] = useState(() => (r.claim_minor / 100).toFixed(2));
+  const paidMinor = Math.round(Number(amount.replace(/[£$,\s]/g, "")) * 100); // NaN for text: Save stays off
   const status = RECOVERY_STATUS[r.status];
   const facts = new Map(r.facts.map((f) => [f.id, f]));
   const left = daysLeft(r.deadline_at);
@@ -739,6 +740,7 @@ function RecoveryPanel({ token, recovery, primary, onChanged }: { token: string;
     setBusy(true); setErr(null);
     try {
       await api.recoveryMark(token, r.case_id, m, minor);
+      setPaying(false); // QA-03: the amount form closes once the payment is recorded
       onChanged(m === "submitted" ? "Marked as submitted to the carrier." : m === "paid" ? "Recorded: the carrier paid." : m === "refused" ? "Recorded: the carrier refused." : "Claim withdrawn.");
     } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
@@ -785,12 +787,12 @@ function RecoveryPanel({ token, recovery, primary, onChanged }: { token: string;
         </div>
       </details>
       {err && <ErrorBox message={err} />}
-      {paying ? (
+      {paying && r.actions.includes("paid") ? (
         <div className="row" style={{ alignItems: "flex-end" }}>
           <label className="field grow">Amount the carrier paid ({r.currency})
             <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
-          <button className="btn primary" disabled={busy} onClick={() => mark("paid", Math.round(Number(amount) * 100))}>Save</button>
+          <button className="btn primary" disabled={busy || !(paidMinor > 0)} onClick={() => mark("paid", paidMinor)}>Save</button>
           <button className="btn ghost" disabled={busy} onClick={() => setPaying(false)}>Cancel</button>
         </div>
       ) : r.actions.length > 0 && (
