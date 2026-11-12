@@ -90,7 +90,7 @@ const LOCALE = {
   aiMessageInputPlaceholder: "Ask what changed, ask for a figure, or ask to change a chart…",
   // S5: how Doorstep's own writes read in the history (Studio's `${name}` interpolation).
   dsHistoryNewReport: "New report ‘${name}’",
-  dsHistoryTemplate: "Built ‘${name}’ from template",
+  dsHistoryTemplate: "Built ‘${name}’",
   dsHistoryAnswer: "Answer chart",
   dsHistoryRemoveAnswer: "Removed an answer",
   dsHistoryMapped: "Set up ‘${name}’",

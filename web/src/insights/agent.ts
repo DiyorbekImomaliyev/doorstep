@@ -389,12 +389,14 @@ export function templatePage(id: string, carrier: string): Page {
     id,
     widgets: {
       k1: kpi("claimed", "Claims filed"), k2: kpi("recovered", "Paid back"),
-      clock: W.claimClock, fp: W.failurePoints, ev: W.evidenceByCarrier,
+      // One carrier's page: its open claims fit one row of clocks, and proof splits by method
+      // (by carrier it would be a single bar).
+      clock: W.claimClock, fp: W.failurePoints, ev: W.evidenceByMethod,
     },
     widgetLayout: {
       k1: { xTrack: 0, yTrack: 0, xSpan: 12, ySpan: 11 }, k2: { xTrack: 12, yTrack: 0, xSpan: 12, ySpan: 11 },
-      clock: { xTrack: 0, yTrack: 11, xSpan: 24, ySpan: 15 },
-      fp: { xTrack: 0, yTrack: 26, xSpan: 13, ySpan: 20 }, ev: { xTrack: 13, yTrack: 26, xSpan: 11, ySpan: 20 },
+      clock: { xTrack: 0, yTrack: 11, xSpan: 24, ySpan: 10 },
+      fp: { xTrack: 0, yTrack: 21, xSpan: 13, ySpan: 15 }, ev: { xTrack: 13, yTrack: 21, xSpan: 11, ySpan: 15 },
     },
     filter: carrierFilter(carrier),
   };

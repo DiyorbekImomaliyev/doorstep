@@ -373,7 +373,7 @@ test("AS-10 with no model, Chase builds Doorstep's template page in one step", a
   await page.getByRole("button", { name: "Pause live updates" }).click();
   const carrier = await chaseFromBrief(page);
   const panel = page.getByRole("complementary", { name: "Ask Doorstep" });
-  await expect(panel.getByText("Built from template")).toBeVisible();
+  await expect(panel.getByText(`Built ‘${carrier} recovery’`)).toBeVisible();
   await expect(panel.getByRole("group", { name: "Plan" }).locator('li[data-state="done"]')).toHaveCount(5);
   await expect(report(page, `${carrier} recovery`)).toHaveAttribute("aria-current", "true");
   await expect(kpi(page, "Claimed from carriers")).toBeVisible();

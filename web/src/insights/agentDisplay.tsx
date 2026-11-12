@@ -166,7 +166,10 @@ export const doorstepToolDisplay: Record<string, AgAiToolDisplay> = {
     },
   },
   build_report_template: {
-    label: ({ args, status }) => ({ text: status === "done" ? "Built from template" : "Building from template", pill: args.carrier ? String(args.carrier) : undefined }),
+    label: ({ args, status, result }) => {
+      const name = (result?.success ? (result as { data?: { name?: string } }).data?.name : undefined) ?? `${String(args.carrier ?? "Carrier")} recovery`;
+      return { text: `${status === "done" ? "Built" : "Building"} ‘${name}’`, pill: args.carrier ? String(args.carrier) : undefined };
+    },
   },
   build_page: {
     label: ({ args, status, result }) => {
