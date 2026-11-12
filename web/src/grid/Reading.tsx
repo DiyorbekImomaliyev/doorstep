@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import type { GridApi } from "ag-grid-community";
+import { Info } from "lucide-react";
 import type { GridAnswer, OrderRow } from "../api";
 import { Chips, ReadBy } from "../components/ai";
 import { chipsFromGrid, menuSource, type Chip } from "./ask";
@@ -45,7 +46,10 @@ export default function Reading({ api, answer, currency, onUndo, onDone, onDismi
       </div>
     );
   }
-  const summary = `Showing ${count} order${count === 1 ? "" : "s"}: ${chips.map((c) => c.label.toLowerCase()).join(", ")}.`;
+  // The model's one line on how it read the question, e.g. a place the grid cannot filter by. The
+  // keyword reader's note only repeats "Read by keywords", which the badge already says.
+  const note = answer.mode === "model" ? answer.plan.note.trim() : "";
+  const summary = `Showing ${count} order${count === 1 ? "" : "s"}: ${chips.map((c) => c.label.toLowerCase()).join(", ")}.${note ? ` ${note}` : ""}`;
   return (
     <div className="reading ds-rise" data-menu-source={menuSource}>
       <span className="reading-label">Showing <b className="num">{count}</b></span>
@@ -53,7 +57,7 @@ export default function Reading({ api, answer, currency, onUndo, onDone, onDismi
         chips[i]?.remove();
         if (chips.length === 1) onDone(); // the last chip: the grid is back to its usual order
       }} />
-      <span className="grow" />
+      {note ? <span className="reading-why" title={note} data-testid="reading-note"><Info aria-hidden /><span>{note}</span></span> : <span className="grow" />}
       <ReadBy mode={answer.mode} provider={answer.provider} />
       <button type="button" className="reading-btn" onClick={onUndo}>Undo</button>
       <span className="sr-only" aria-live="polite">{summary}</span>

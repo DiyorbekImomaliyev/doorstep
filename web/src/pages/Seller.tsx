@@ -206,7 +206,15 @@ export default function Seller({ token }: { token: string }) {
     else if (wanted.before !== rows) setWanted(null); // fetched again, still not there
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wanted, rows]);
-  const onReady = useCallback((a: GridApi) => { gridApi.current = a; }, []);
+  // ⌘K "Ask the grid" from another page: the question waits until the Control Room's grid is back.
+  const pendingAsk = useRef<string | null>(null);
+  const askNow = useRef<(q: string) => void>(() => {});
+  const onReady = useCallback((a: GridApi) => {
+    gridApi.current = a;
+    const q = pendingAsk.current;
+    pendingAsk.current = null;
+    if (q) window.requestAnimationFrame(() => askNow.current(q));
+  }, []);
 
   const counts = useMemo(() => {
     const r = rows ?? [];
@@ -263,6 +271,13 @@ export default function Seller({ token }: { token: string }) {
     } finally {
       setAsking(false);
     }
+  };
+  askNow.current = (q) => { void askGrid(q); };
+  const askFromBar = (q: string) => {
+    const a = gridApi.current;
+    if (page === "orders" && a && !a.isDestroyed()) { void askGrid(q); return; }
+    pendingAsk.current = q;
+    go("orders");
   };
   const undoReading = () => {
     const prev = undoStack.current.pop();
@@ -486,7 +501,7 @@ export default function Seller({ token }: { token: string }) {
           onChanged={(msg) => { setToast(msg); reload(); }}
         />
       )}
-      {cmd && <CommandBar commands={commands} onClose={() => setCmd(false)} />}
+      {cmd && <CommandBar commands={commands} onClose={() => setCmd(false)} onAsk={askFromBar} />}
       <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );

@@ -947,6 +947,11 @@ button.kpi[aria-pressed="true"]:hover { box-shadow: inset 0 -2px 0 var(--accent)
 .reading-label { font-size: 13px; color: var(--text-2); white-space: nowrap; }
 .reading-label b { color: var(--text); font-weight: 600; }
 .reading-note { font-size: 13.5px; color: var(--text-2); }
+/* The model's note on how it read the question: one muted line that takes the free space, cut short with the whole note on hover. */
+.reading-why { flex: 1 1 180px; min-width: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-3); }
+.reading-why svg { width: 13px; height: 13px; flex: none; }
+.reading-why > span { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.35; }
+@media (max-width: 600px) { .reading-why { flex-basis: 100%; order: 9; } .reading-why > span { -webkit-line-clamp: 4; } }
 .reading .ds-chip { background: var(--surface); }
 .reading-btn { border: 0; background: none; padding: 4px 6px; border-radius: 6px; font: 600 12.5px/1 var(--font); color: var(--accent); cursor: pointer; }
 .reading-btn:hover { background: var(--accent-soft); }

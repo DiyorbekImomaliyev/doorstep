@@ -96,6 +96,33 @@ test("UI-04 an unavailable AI policy check is said once, with Retry", async ({ p
   await expect(page.getByText("AI unavailable", { exact: true }).and(page.locator(":not(.sr-only)")).locator("visible=true")).toHaveCount(1);
 });
 
+test("UI-06 ⌘K asks the grid from any page, and the grid says which part of the question it could not filter", async ({ page }) => {
+  const asked: { question: string }[] = [];
+  const note = "Lost parcels over £50. The grid can't filter by place, so London was left out.";
+  await page.route("**/grid/ask", (route) => {
+    asked.push(route.request().postDataJSON());
+    return route.fulfill({ json: {
+      question: "q", mode: "model", provider: "anthropic",
+      plan: { answerable: true, view: "all", journey: ["Lost by carrier"], next_step: [], delivery: [], min_at_stake: 50, max_proof: null, sort: [], show: [], note },
+    } });
+  });
+  await page.goto(`/seller/${seed.seller_token}#money`);
+  await expect(page.locator(".page-head h1")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+k");
+  const bar = page.getByRole("dialog", { name: "Command bar" });
+  await bar.getByRole("combobox", { name: "Command" }).fill("lost parcels in London over £50");
+  const ask = bar.getByRole("option", { name: /^Ask the grid/ });
+  await expect(ask).toBeVisible();
+  await ask.click();
+  await expect(bar).toHaveCount(0);
+  // Back on the Control Room, the answer applied as chips, with the model's note beside them.
+  await expect(page.getByRole("button", { name: "Remove: Journey: Lost by carrier" })).toBeVisible();
+  await expect(page.getByTestId("reading-note")).toHaveText(note);
+  await expect(page.getByText("Read by Claude")).toBeVisible();
+  expect(asked.map((a) => a.question)).toEqual(["lost parcels in London over £50"]);
+  expect(page.url()).not.toContain("#money");
+});
+
 test("UI-07 undoing a build Doorstep made, and redoing it, keeps the console clean", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
