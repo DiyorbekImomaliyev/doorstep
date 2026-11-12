@@ -205,6 +205,8 @@ class InsightAnswer(BaseModel):
     question: str
     plan: InsightPlan
     mode: Literal["model", "keywords"]
+    # AI-03: which provider read the question ("anthropic", "gemini"), so the card names it.
+    provider: str | None = None
 
 
 class ModelBudget:
@@ -240,23 +242,24 @@ class InsightsAgent:
     def __init__(self, llm: StructuredLLM | None, *, budget: ModelBudget | None = None) -> None:
         self.llm = llm
         self.budget = budget or ModelBudget(_per_hour_from_env())
-        self._cache: OrderedDict[str, InsightPlan] = OrderedDict()
+        self._cache: OrderedDict[str, tuple[InsightPlan, str | None]] = OrderedDict()
 
     def ask(self, question: str) -> InsightAnswer:
         question = " ".join(question.split())[:300]
         key = _key(question)
         if key in self._cache:
             self._cache.move_to_end(key)
-            return InsightAnswer(question=question, plan=self._cache[key], mode="model")
-        plan = self._from_model(question)
-        if plan is None:
+            plan, provider = self._cache[key]
+            return InsightAnswer(question=question, plan=plan, mode="model", provider=provider)
+        got = self._from_model(question)
+        if got is None:
             return InsightAnswer(question=question, plan=keyword_plan(question), mode="keywords")
-        self._cache[key] = plan
+        self._cache[key] = got
         if len(self._cache) > CACHE_SIZE:
             self._cache.popitem(last=False)
-        return InsightAnswer(question=question, plan=plan, mode="model")
+        return InsightAnswer(question=question, plan=got[0], mode="model", provider=got[1])
 
-    def _from_model(self, question: str) -> InsightPlan | None:
+    def _from_model(self, question: str) -> tuple[InsightPlan, str | None] | None:
         if self.llm is None or not self.budget.take():
             return None
         try:
@@ -272,6 +275,8 @@ class InsightsAgent:
             return None
         if not isinstance(out, InsightPlan):
             return None
+        provider = getattr(self.llm, "last_provider", None)
+        provider = provider if isinstance(provider, str) else None
         if not out.answerable:
-            return out.model_copy(update={"note": out.note or UNANSWERABLE})
-        return out
+            return out.model_copy(update={"note": out.note or UNANSWERABLE}), provider
+        return out, provider
