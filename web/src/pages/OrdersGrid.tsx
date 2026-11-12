@@ -875,7 +875,8 @@ export default function OrdersGrid({ rows: orders, search, empty, onOpen, onRead
       cellRenderer: ProofCell,
     },
     {
-      colId: "money", headerName: "At stake", chartDataType: "excluded", initialWidth: 120, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
+      // Wide enough for its name with both the sort arrow and the filter mark showing.
+      colId: "money", headerName: "At stake", chartDataType: "excluded", initialWidth: 164, minWidth: 164, type: "rightAligned", hide: phone, enableCellChangeFlash: true,
       valueGetter: (p) => p.data?.money_at_stake_minor ?? 0,
       filter: "agNumberColumnFilter", suppressHeaderMenuButton: false,
       // AG Grid aggregates it for group rows (per currency) and offers "% of total" in the column menu.
