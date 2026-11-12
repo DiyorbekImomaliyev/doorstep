@@ -105,7 +105,7 @@
 .ax-wi-bar .is-rule { background: var(--accent); }
 .ax-wi-bar .is-auto { background: var(--line-2); }
 .ax-wi-bar .is-you { background: var(--warn); opacity: .55; }
-.ax-wi-filter { padding: 10px 18px 12px; }
+.ax-wi-filter { padding: 10px 18px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ax-whatif .table-card { border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 
 /* Policy */

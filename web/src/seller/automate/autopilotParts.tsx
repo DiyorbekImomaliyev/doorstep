@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import type { ColDef, ICellRendererParams } from "ag-grid-community";
+import { useMemo, useRef, useState } from "react";
+import type { ColDef, GridApi, ICellRendererParams } from "ag-grid-community";
+import { GridTools } from "../../grid/deskGrid";
 import { Clock3, FlaskConical, PackageOpen, PackageX, Zap } from "lucide-react";
 import type { AutopilotStatement } from "../../api";
 import { FAILURE_POINT, money, when, type Tone } from "../../format";
@@ -178,6 +179,7 @@ export function WhatIf({ cards, selected, onSelect, limits, onOpen }: {
   cards: RuleCard[]; selected: number; onSelect: (i: number) => void; limits: CurrencyLimits[]; onOpen: (orderId: string) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const grid = useRef<GridApi<ReplayCase> | null>(null);
   const c = cards[selected];
   const replay = c?.replay ?? null;
   const lim = limits.find((l) => l.currency === c?.currency);
@@ -248,9 +250,11 @@ export function WhatIf({ cards, selected, onSelect, limits, onOpen }: {
           { key: "auto", label: "Automatic", count: auto.length, tone: OUTCOME.auto.tone, title: "Refunded automatically anyway, under the shop's auto limit" },
           { key: "you", label: "You", count: you.length, tone: OUTCOME.you.tone, title: "Still yours to decide" },
         ]} />
+        <div className="desk-tools"><GridTools api={() => grid.current} /></div>
       </div>
       <LedgerGrid<ReplayCase>
         label="Replayed cases" rows={shown} columns={columns} getRowId={(r) => r.case_id}
+        onReady={(a) => { grid.current = a; }}
         onOpen={(r) => onOpen(r.order_id)} empty="No cases here."
         card={(r) => (
           <>

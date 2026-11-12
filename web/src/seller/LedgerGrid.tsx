@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { AgGridReact } from "ag-grid-react";
-import type { CellKeyDownEvent, ColDef, RowClickedEvent, StatusPanelDef } from "ag-grid-community";
+import type { CellKeyDownEvent, ColDef, GridApi, RowClickedEvent, StatusPanelDef } from "ag-grid-community";
 import { isSelecting, useDeskGrid } from "../grid/deskGrid";
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
@@ -103,13 +103,15 @@ type Props<T extends object> = {
   /** One card per row on phones. */
   card: (r: T) => ReactNode;
   groupPanel?: boolean;
+  /** The grid's API once it is ready, for a page's GridTools (Columns and filters, Excel). */
+  onReady?: (api: GridApi<T>) => void;
 };
 
 type Rec = Record<string, unknown> & Totalled;
 const fieldOf = <T,>(c: ColDef<T>) => (c.field as string | undefined) ?? "";
 
 /** The Control Room's grid look for a read-only list; phones get a stack of cards. */
-export default function LedgerGrid<T extends object>({ label, rows, columns: given, getRowId, onOpen, empty, totals, totalLines, card, groupPanel }: Props<T>) {
+export default function LedgerGrid<T extends object>({ label, rows, columns: given, getRowId, onOpen, empty, totals, totalLines, card, groupPanel, onReady }: Props<T>) {
   const phone = useMedia("(max-width: 600px)");
   const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true, enableCellChangeFlash: true }), []);
   // GP-01..GP-06: the Control Room's grid kit. Money is any `*_minor` field (in the row's currency), dates any `*_at`.
@@ -175,6 +177,7 @@ export default function LedgerGrid<T extends object>({ label, rows, columns: giv
         groupDisplayType="groupRows"
         groupDefaultExpanded={-1}
         {...kit.props}
+        onGridReady={(e) => onReady?.(e.api)}
         tooltipShowDelay={250}
         overlayNoRowsTemplate={`<span class="lg-empty">${empty}</span>`}
         domLayout="autoHeight"
