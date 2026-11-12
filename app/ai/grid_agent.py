@@ -230,7 +230,9 @@ def keyword_grid_plan(question: str, menu: GridMenu) -> GridPlan:
 class GridAnswer(BaseModel):
     question: str
     plan: GridPlan
-    mode: Literal["model", "keywords"]
+    # "rules": a request to act or for contact details, refused before any model reads it (AI-06),
+    # so the grid never says "Read by keywords" while the model is up.
+    mode: Literal["model", "keywords", "rules"]
     provider: str | None = None
 
 
@@ -278,7 +280,7 @@ class GridAgent:
         question = " ".join(question.split())[:300]
         if _ACTION.search(_norm(question)) or _CONTACT.search(_norm(question)):
             return GridAnswer(
-                question=question, plan=keyword_grid_plan(question, menu), mode="keywords"
+                question=question, plan=keyword_grid_plan(question, menu), mode="rules"
             )
         key = _key(question, menu)
         if key in self._cache:
