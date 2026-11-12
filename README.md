@@ -247,22 +247,37 @@ Each row opens a detail panel without leaving the table. The grid also does a se
 
 Three ledgers read from Doorstep's own records, each with KPIs on top and an AG Grid table with one total per currency. A row opens its case.
 
-- **Claims:** every carrier claim, its status, the days left and what the carrier paid. Group by carrier.
-- **Disputes:** each PayPal dispute, the route Doorstep took, the Seller Protection verdict and the outcome.
-- **Money:** every refund, offer and evidence send, with PayPal's refund id, the `PayPal-Request-Id` and a link to the signed receipt. It updates live
-  while a refund is on its way.
+- **Claims:** open, recovered and due-soon totals; a claim clock of deadlines; filters by status and a grouping by carrier. Each claim opens its pack,
+  the carrier's terms, the deadline and its history, with the steps it allows: submitted, paid, refused or withdrawn.
+- **Disputes:** each PayPal dispute with its stage, the route Doorstep took, the five Seller Protection checks, the evidence sent and a timeline.
+- **Money:** every refund, offer and evidence send, with totals per currency and a weekly chart. Each one opens its steps from approval to PayPal's
+  answer, the five live checks run just before sending, the `PayPal-Request-Id`, and its signed receipt, which is verified in the browser. It updates
+  live while a refund is on its way, and exports to Excel.
+- **Autopilot:** the seller's rules as switches with their limits, what each one refunded, today's spend against the daily cap, and a replay of the last
+  90 days through the rule ("What if").
+- **Policy:** the shop's written policy checked against the law, with each conflict marked, the rule it breaks and suggested wording.
 
-The pages read; none of them can move money. **Autopilot** and **Policy** have pages of their own too: the seller's rules with what they spent, and the
-shop's written policy checked against the law.
+Their buttons call the same endpoints as the case drawer, so money still moves only through the policy.
 
 <details>
-<summary>Screenshot: Claims, with what the carriers paid back</summary>
-<img src="docs/img/screens/claims.png" alt="The Claims page: open claims, money recovered, days left, and a ledger grid with a total per currency" width="100%">
+<summary>Screenshot: Claims, with the claim clock and what the carriers paid back</summary>
+<img src="docs/img/screens/claims.png" alt="The Claims page: open, recovered and due-soon totals, a claim clock of deadlines, status filters and a grid with a total per currency" width="100%">
+</details>
+
+<details>
+<summary>Screenshot: Disputes, with the Seller Protection checks and timeline</summary>
+<img src="docs/img/screens/disputes.png" alt="The Disputes page: open disputes, amount in dispute, stage filters, and one dispute opened with its route, Seller Protection checks, evidence and timeline" width="100%">
 </details>
 
 <details>
 <summary>Screenshot: Money, every PayPal write with its idempotency key</summary>
-<img src="docs/img/screens/money.png" alt="The Money page: refunds with status, PayPal refund id, request key and receipt link" width="100%">
+<img src="docs/img/screens/money.png" alt="The Money page: totals per currency, a weekly money flow chart, a proof panel and a grid of refunds with status, refund id, request key and receipts" width="100%">
+</details>
+
+<details>
+<summary>Screenshot: Autopilot and Policy</summary>
+<img src="docs/img/screens/autopilot.png" alt="The Autopilot page: a rule for lost parcels switched on with its limits, today's spend against the daily cap, what it refunded, and a what-if replay" width="100%">
+<img src="docs/img/screens/policy.png" alt="The Policy page: one conflict with the Consumer Rights Act marked in the shop policy, with the finding and suggested wording" width="100%">
 </details>
 
 ### Buyer's page
