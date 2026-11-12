@@ -1,0 +1,4 @@
+/* AQ-01: the model's note beside the chips is one line; the full text is its title tooltip. A
+   phone has no hover, so it keeps two lines there. */
+.reading-why.one > span { -webkit-line-clamp: 1; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .reading-why.one > span { -webkit-line-clamp: 2; } }

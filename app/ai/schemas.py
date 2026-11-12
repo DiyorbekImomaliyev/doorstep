@@ -177,7 +177,11 @@ class GridPlan(BaseModel):
     max_proof: int | None = Field(default=None, ge=0, le=5)
     sort: list[GridSort] = Field(default_factory=list, max_length=2)
     show: list[Literal["next", "buyer", "updated"]] = Field(default_factory=list, max_length=3)
-    note: str = Field(default="", max_length=200)
+    # AQ-01: shown on one line beside the chips, so the model is asked for 12 words at most; a
+    # longer note is still valid (the line ends in an ellipsis, the full text is its tooltip).
+    note: str = Field(
+        default="", max_length=200, description="At most 12 plain words; one line in the UI"
+    )
 
     def fits(self, menu: GridMenu) -> bool:
         """Every journey and next-step value is one the grid offered."""

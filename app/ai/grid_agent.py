@@ -253,7 +253,8 @@ Fields:
 - sort: up to two of money, risk, proof, updated, status, each with desc (true = biggest, newest,
   riskiest or most proof first).
 - show: extra columns the answer needs: next, buyer (postcode area), updated.
-- note: one short sentence saying how you read the question.
+- note: at most 12 plain words, in the question's language: how you read it, or the part the
+  menu can't filter (e.g. "Lost parcels over £50; no filter by city.").
 
 Set answerable=false (and leave the rest empty) when the question is not about finding, filtering
 or ordering the seller's own orders, when it asks for buyer contact details, or when it asks you to

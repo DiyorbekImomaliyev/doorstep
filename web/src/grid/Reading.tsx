@@ -9,6 +9,7 @@ import { Info } from "lucide-react";
 import type { GridAnswer, OrderRow } from "../api";
 import { Chips, ReadBy } from "../components/ai";
 import { chipsFromGrid, menuSource, type Chip } from "./ask";
+import "./reading.css";
 
 function leafCount(api: GridApi<OrderRow>): number {
   let n = 0;
@@ -57,7 +58,7 @@ export default function Reading({ api, answer, currency, onUndo, onDone, onDismi
         chips[i]?.remove();
         if (chips.length === 1) onDone(); // the last chip: the grid is back to its usual order
       }} />
-      {note ? <span className="reading-why" title={note} data-testid="reading-note"><Info aria-hidden /><span>{note}</span></span> : <span className="grow" />}
+      {note ? <span className="reading-why one" title={note} data-testid="reading-note"><Info aria-hidden /><span>{note}</span></span> : <span className="grow" />}
       <ReadBy mode={answer.mode} provider={answer.provider} />
       <button type="button" className="reading-btn" onClick={onUndo}>Undo</button>
       <span className="sr-only" aria-live="polite">{summary}</span>
