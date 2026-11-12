@@ -1,11 +1,13 @@
-"""Thin Shippo REST client (test mode): register a track, validate an address (TR-01, CK-01).
+"""Thin Shippo REST client (test mode): register a track, read a track, validate an address
+(TR-01, DI-06, CK-01).
 
-Only the two calls Doorstep needs. Errors raise; the job runner retries track registration.
+Only the calls Doorstep needs. Errors raise; the job runner retries track registration.
 """
 
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -35,6 +37,22 @@ class ShippoClient:
             raise ShippoError(f"Shippo {path} answered {response.status_code}")
         data = response.json()
         return data if isinstance(data, dict) else {}
+
+    def _get(self, path: str) -> dict[str, Any]:
+        try:
+            response = httpx.get(
+                f"{self.base_url}{path}", headers=self._headers, timeout=self.timeout_s
+            )
+        except httpx.HTTPError as exc:
+            raise ShippoError(f"Shippo {path} failed: {type(exc).__name__}") from exc
+        if response.status_code >= 400:
+            raise ShippoError(f"Shippo {path} answered {response.status_code}")
+        data = response.json()
+        return data if isinstance(data, dict) else {}
+
+    def get_track(self, carrier: str, tracking_number: str) -> dict[str, Any]:
+        """The parcel as Shippo knows it now: the same track object its webhook carries."""
+        return self._get(f"/tracks/{quote(carrier, safe='')}/{quote(tracking_number, safe='')}")
 
     def register_track(self, carrier: str, tracking_number: str) -> None:
         """Ask Shippo to watch this tracking number; events then arrive by webhook."""

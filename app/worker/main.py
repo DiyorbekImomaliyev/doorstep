@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.explainer import Explainer
 from app.ai.recovery import RecoveryDrafter
-from app.cases.dispute_intake import OpenCase, take_dispute
+from app.cases.dispute_intake import OpenCase, Refresh, take_dispute
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import CasePipeline
 from app.cases.recovery import DRAFT_RECOVERY, DraftRecoveryHandler, sweep_expired
@@ -33,8 +33,9 @@ from app.policy.rules import RuleBook, load_rules
 from app.policy.service import REFUND_JOB, PolicyService, RefundJobHandler
 from app.proof.receipts import ReceiptSigner, issue_refund_receipt
 from app.runtime import NotConfigured, Runtime, build_runtime
-from app.shipping.events import handle_shippo_track_updated
+from app.shipping.events import handle_shippo_track_updated, refresh_from_carrier
 from app.shipping.service import REGISTER_TRACK, RegisterTrackHandler, ShippingService
+from app.shipping.shippo import ShippoError
 from app.worker.approved import CompleteApprovedHandler, sweep_unreturned_approvals
 from app.worker.handlers import ADD_TRACKING, CAPTURE_ORDER, AddTrackingHandler, CaptureOrderHandler
 from app.worker.inbox import InboxProcessor
@@ -111,7 +112,11 @@ def build_worker(rt: Runtime) -> tuple[InboxProcessor, JobRunner]:
     inbox_handlers: dict[tuple[str, str], Any] = {
         ("shippo", "track_updated"): handle_shippo_track_updated,
         **paypal_inbox_handlers(
-            rulebook, rt.clock, rt.services.receipts, case_opener(rt, rulebook)
+            rulebook,
+            rt.clock,
+            rt.services.receipts,
+            case_opener(rt, rulebook),
+            carrier_refresher(rt),
         ),
     }
     inbox = InboxProcessor(rt.session_factory, inbox_handlers, rt.clock, rt.settings)
@@ -132,7 +137,25 @@ def case_opener(rt: Runtime, rulebook: RuleBook) -> OpenCase:
     return open_case
 
 
-def sweep_disputes(rt: Runtime, open_case: OpenCase | None = None) -> int:
+def carrier_refresher(rt: Runtime) -> Refresh | None:
+    """DI-06: bring a disputed order up to date from the carrier before its case opens. A failed
+    read leaves the order as it is: the dispute is still recorded and shown to the seller."""
+    shippo = rt.shippo
+    if shippo is None:
+        return None
+
+    def refresh(s: Session, order: Order) -> None:
+        try:
+            refresh_from_carrier(s, order, shippo, now=rt.clock.now())
+        except ShippoError as error:
+            log.warning("dispute: carrier read for order %s failed (%s)", order.id[:8], error)
+
+    return refresh
+
+
+def sweep_disputes(
+    rt: Runtime, open_case: OpenCase | None = None, refresh: Refresh | None = None
+) -> int:
     """DI-02: ask PayPal for its open disputes, in case a webhook never came (PayPal cannot reach
     a local server). A dispute on a capture Doorstep knows goes through the webhook's own intake,
     which is safe to repeat. Returns how many disputes matched an order."""
@@ -148,7 +171,13 @@ def sweep_disputes(rt: Runtime, open_case: OpenCase | None = None) -> int:
             if order is None:  # another shop's payment on the same PayPal account
                 continue
             said = take_dispute(
-                s, order, found.dispute_id, reason=found.reason, clock=rt.clock, open_case=open_case
+                s,
+                order,
+                found.dispute_id,
+                reason=found.reason,
+                clock=rt.clock,
+                open_case=open_case,
+                refresh=refresh,
             )
             log.debug("dispute sweep: %s", said)
             matched += 1
@@ -254,6 +283,7 @@ def run_loop(rt: Runtime, should_stop: Callable[[], bool], poll_s: float = 2.0) 
     ).start()
     last_sweep = last_dispute_sweep = 0.0
     opener = case_opener(rt, load_rules(rt.deps.rules_dir))
+    refresher = carrier_refresher(rt)
     log.info("worker started")
     while not should_stop():
         try:
@@ -268,7 +298,7 @@ def run_loop(rt: Runtime, should_stop: Callable[[], bool], poll_s: float = 2.0) 
         if time.monotonic() - last_dispute_sweep > DISPUTE_SWEEP_EVERY_S:
             last_dispute_sweep = time.monotonic()
             try:
-                sweep_disputes(rt, opener)
+                sweep_disputes(rt, opener, refresher)
             except Exception:  # a PayPal read failing must not stop the worker; next sweep retries
                 log.exception("dispute sweep failed; retrying next sweep")
         if not done:

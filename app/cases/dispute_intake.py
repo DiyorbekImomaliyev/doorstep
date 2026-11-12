@@ -9,8 +9,10 @@ never gets one). Both call `take_dispute`, which is safe to repeat:
    seller can send evidence. A held case stays held: a person decides it again, and that decision
    sees the open dispute. A refund already in the outbox is stopped by its own re-check.
 3. An order that never had a case, and can have one, gets one opened by "paypal" and decided on
-   the facts as they are. The policy's first check routes it to DISPUTE_EVIDENCE, as the dispute
-   is open. Only delivery problems open a case: other dispute reasons are recorded for a person.
+   the facts as they are. A shipped order with no carrier scan yet is first brought up to date
+   from the carrier (DI-06), as a server the carrier cannot reach gets no tracking webhook. The
+   policy's first check routes the case to DISPUTE_EVIDENCE, as the dispute is open. Only
+   delivery problems open a case: other dispute reasons are recorded for a person.
 
 Nothing here calls PayPal or moves money: evidence goes only when the seller taps Send evidence,
 through app.policy (hard rules 1 and 7).
@@ -47,6 +49,7 @@ CASE_STATES_FROM = frozenset(
 )
 
 OpenCase = Callable[[Session, Order, ClaimReason], object]
+Refresh = Callable[[Session, Order], None]  # DI-06: the carrier's latest scan, applied
 
 
 def take_dispute(
@@ -57,6 +60,7 @@ def take_dispute(
     reason: str,
     clock: Clock,
     open_case: OpenCase | None = None,
+    refresh: Refresh | None = None,
 ) -> str:
     """Record an open PayPal dispute on this order and route its case; returns a sentence for the
     audit and the logs. `open_case` opens and decides a case (CasePipeline.report); without it
@@ -71,6 +75,8 @@ def take_dispute(
     claim = PAYPAL_REASONS.get(reason.upper())
     if cases or open_case is None or claim is None:
         return f"Recorded dispute {dispute_id}; the Disputes page shows it to the seller."
+    if refresh is not None and OrderState(order.state) not in CASE_STATES_FROM:
+        refresh(session, order)
     if OrderState(order.state) not in CASE_STATES_FROM:
         return f"Recorded dispute {dispute_id}; the order is {order.state.lower()}, so no case."
     open_case(session, order, claim)

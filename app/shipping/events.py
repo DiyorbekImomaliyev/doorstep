@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.orders.models import Order, Shipment, TrackingEvent
 from app.orders.state import CarrierEventOutcome, CarrierStatus, apply_carrier_event
+from app.shipping.shippo import ShippoClient
 from app.worker.models import WebhookInbox
 
 log = logging.getLogger("doorstep.shipping")
@@ -43,8 +44,6 @@ def handle_shippo_track_updated(session: Session, row: WebhookInbox) -> None:
     data = row.payload.get("data")
     data = data if isinstance(data, dict) else {}
     tracking_number = str(data.get("tracking_number") or "")
-    status_block = data.get("tracking_status")
-    status_block = status_block if isinstance(status_block, dict) else {}
     shipment = session.scalars(
         select(Shipment)
         .where(Shipment.tracking_number == tracking_number)
@@ -53,9 +52,33 @@ def handle_shippo_track_updated(session: Session, row: WebhookInbox) -> None:
     if shipment is None:
         log.info("shippo event %s for unknown tracking number; skipped", row.event_id)
         return
+    apply_track(session, shipment, data, received_at=row.received_at)
+
+
+def refresh_from_carrier(
+    session: Session, order: Order, shippo: ShippoClient, *, now: datetime
+) -> None:
+    """DI-06: before a dispute is answered, ask Shippo where the parcel is now and apply it to this
+    order's shipment as the webhook would have (a server Shippo cannot reach gets no webhook).
+    ShippoError propagates; the caller decides what a failed read means."""
+    shipment = session.scalars(
+        select(Shipment).where(Shipment.order_id == order.id).order_by(Shipment.created_at.desc())
+    ).first()
+    if shipment is None or not shipment.tracking_number:
+        return
+    data = shippo.get_track(shipment.carrier, shipment.tracking_number)
+    apply_track(session, shipment, data, received_at=now)
+
+
+def apply_track(
+    session: Session, shipment: Shipment, data: dict[str, Any], *, received_at: datetime
+) -> None:
+    """One Shippo track object applied to one shipment, from the webhook or a carrier read."""
     order = session.get(Order, shipment.order_id)
     if order is None:  # pragma: no cover - FK guarantees the order exists
         return
+    status_block = data.get("tracking_status")
+    status_block = status_block if isinstance(status_block, dict) else {}
     status = _status(status_block.get("status"))
     event = TrackingEvent(
         shipment_id=shipment.id,
@@ -71,7 +94,7 @@ def handle_shippo_track_updated(session: Session, row: WebhookInbox) -> None:
         from app.cases.late_delivery import record_delivered_scan
 
         session.flush()
-        record_delivered_scan(session, order, event, now=row.received_at)
+        record_delivered_scan(session, order, event, now=received_at)
     if status == CarrierStatus.FAILURE:  # TR-03: the buyer picks rebook or locker
         from app.shipping.service import offer_failed_attempt_choice
 

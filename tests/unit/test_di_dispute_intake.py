@@ -15,11 +15,13 @@ from app.cases.dispute_intake import take_dispute
 from app.cases.engine import ClaimReason
 from app.cases.pipeline import CasePipeline
 from app.orders.enums import CaseState, MoneyActionKind, OrderState
-from app.orders.models import Case, Dispute, Order
+from app.orders.models import Case, Dispute, Order, TrackingEvent
 from app.paypal_client.errors import PayPalClientError
 from app.policy.evidence import DISPUTE_EVIDENCE_JOB
 from app.proof.receipts import ReceiptSigner
-from app.worker.main import sweep_disputes
+from app.shipping.events import refresh_from_carrier
+from app.shipping.shippo import ShippoClient, ShippoError
+from app.worker.main import carrier_refresher, sweep_disputes
 from app.worker.models import Job
 from app.worker.paypal_events import paypal_inbox_handlers
 from tests.factories import make_case, make_order, make_seller, make_shipment
@@ -260,3 +262,116 @@ def test_DI_05_a_resolved_dispute_is_recorded_once(db, clock, rulebook):
     db.flush()
     record_resolved(db, row, "ANY")
     assert (row.status, case.state) == ("resolved", CaseState.SETTLED.value)
+
+
+class _Carrier:
+    """Shippo's track read: the same track object its webhook carries."""
+
+    def __init__(self, status: str = "DELIVERED", fail: bool = False) -> None:
+        self.status, self.fail = status, fail
+        self.reads: list[tuple[str, str]] = []
+
+    def get_track(self, carrier: str, tracking_number: str) -> dict[str, Any]:
+        self.reads.append((carrier, tracking_number))
+        if self.fail:
+            raise ShippoError("Shippo /tracks answered 503")
+        return {
+            "tracking_number": tracking_number,
+            "tracking_status": {"status": self.status, "status_date": "2026-11-10T23:30:39Z"},
+        }
+
+
+def _refresh(carrier: _Carrier, clock):
+    rt = SimpleNamespace(shippo=carrier, clock=clock)
+    refresh = carrier_refresher(rt)  # type: ignore[arg-type]
+    assert refresh is not None
+    return refresh
+
+
+def test_DI_06_a_shipped_order_is_brought_up_to_date_from_the_carrier_then_gets_its_case(
+    db, rulebook, clock, opener
+):
+    order = make_order(db, make_seller(db), state=OrderState.SHIPPED)
+    make_shipment(db, order, tracking_number="SHIPPO_DELIVERED")
+    carrier = _Carrier("DELIVERED")
+    said = take_dispute(
+        db,
+        order,
+        "PP-D-6",
+        reason=NOT_RECEIVED,
+        clock=clock,
+        open_case=opener,
+        refresh=_refresh(carrier, clock),
+    )
+    assert carrier.reads == [("shippo", "SHIPPO_DELIVERED")]
+    [case] = _cases(db, order)
+    assert case.state == CaseState.DISPUTE_EVIDENCE.value and "opened a case" in said
+    [event] = db.scalars(select(TrackingEvent)).all()
+    assert (event.status, event.applied) == ("DELIVERED", True)
+
+
+@pytest.mark.parametrize("carrier", [_Carrier("PRE_TRANSIT"), _Carrier(fail=True)])
+def test_DI_06_with_no_carrier_scan_the_dispute_is_recorded_for_a_person(
+    db, rulebook, clock, opener, carrier
+):
+    order = make_order(db, make_seller(db), state=OrderState.SHIPPED)
+    make_shipment(db, order, tracking_number="SHIPPO_PRE_TRANSIT")
+    take_dispute(
+        db,
+        order,
+        "PP-D-7",
+        reason=NOT_RECEIVED,
+        clock=clock,
+        open_case=opener,
+        refresh=_refresh(carrier, clock),
+    )
+    assert _cases(db, order) == [] and order.state == OrderState.SHIPPED.value
+    assert db.scalars(select(Dispute)).one().status == "open"
+
+
+def test_DI_06_an_order_the_carrier_already_moved_is_not_read_again(db, clock, opener):
+    order = make_order(db, make_seller(db), state=OrderState.DELIVERED)
+    carrier = _Carrier()
+    take_dispute(
+        db,
+        order,
+        "PP-D-8",
+        reason=NOT_RECEIVED,
+        clock=clock,
+        open_case=opener,
+        refresh=_refresh(carrier, clock),
+    )
+    assert carrier.reads == [] and len(_cases(db, order)) == 1
+
+
+def test_DI_06_a_shared_test_tracking_number_updates_only_the_disputed_order(db, clock):
+    seller = make_seller(db)
+    older = make_order(db, seller, state=OrderState.SHIPPED)
+    make_shipment(db, older, tracking_number="SHIPPO_DELIVERED")
+    newer = make_order(db, seller, state=OrderState.SHIPPED)
+    make_shipment(db, newer, tracking_number="SHIPPO_DELIVERED")
+    refresh_from_carrier(db, older, _Carrier(), now=clock.now())  # type: ignore[arg-type]
+    assert (older.state, newer.state) == (OrderState.DELIVERED.value, OrderState.SHIPPED.value)
+
+
+def test_DI_06_no_carrier_read_without_shippo_or_a_tracking_number(db, clock):
+    assert carrier_refresher(SimpleNamespace(shippo=None, clock=clock)) is None  # type: ignore[arg-type]
+    order = make_order(db, make_seller(db), state=OrderState.SHIPPED)
+    carrier = _Carrier()
+    refresh_from_carrier(db, order, carrier, now=clock.now())  # type: ignore[arg-type]
+    assert carrier.reads == []
+
+
+def test_DI_06_shippo_client_reads_a_track(httpserver):
+    track = {"tracking_number": "SHIPPO_DELIVERED", "tracking_status": {"status": "DELIVERED"}}
+    httpserver.expect_request("/tracks/shippo/SHIPPO_DELIVERED", method="GET").respond_with_json(
+        track
+    )
+    httpserver.expect_request("/tracks/shippo/BAD", method="GET").respond_with_data(
+        "no", status=404
+    )
+    client = ShippoClient(api_key="shippo_test_x", base_url=httpserver.url_for("").rstrip("/"))
+    assert client.get_track("shippo", "SHIPPO_DELIVERED") == track
+    with pytest.raises(ShippoError, match="404"):
+        client.get_track("shippo", "BAD")
+    assert httpserver.log[0][0].headers["Authorization"] == "ShippoToken shippo_test_x"

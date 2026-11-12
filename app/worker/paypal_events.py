@@ -28,7 +28,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.cases.dispute_intake import OpenCase, take_dispute
+from app.cases.dispute_intake import OpenCase, Refresh, take_dispute
 from app.clock import Clock
 from app.money import Money
 from app.orders.enums import CaseState, OrderState
@@ -190,7 +190,7 @@ def _make_capture_declined(clock: Clock) -> Handler:
     return handle
 
 
-def _make_dispute(clock: Clock, open_case: OpenCase | None) -> Handler:
+def _make_dispute(clock: Clock, open_case: OpenCase | None, refresh: Refresh | None) -> Handler:
     def handle(s: Session, row: WebhookInbox) -> None:
         res = _resource(row)
         dispute_id = str(res.get("dispute_id") or "")
@@ -230,6 +230,7 @@ def _make_dispute(clock: Clock, open_case: OpenCase | None) -> Handler:
             reason=str(res.get("reason") or ""),
             clock=clock,
             open_case=open_case,
+            refresh=refresh,
         )
         log.info("dispute %s: %s", dispute_id, said)
 
@@ -283,8 +284,9 @@ def paypal_inbox_handlers(
     clock: Clock,
     receipts: ReceiptSigner | None = None,
     open_case: OpenCase | None = None,
+    refresh: Refresh | None = None,
 ) -> dict[tuple[str, str], Handler]:
-    dispute = _make_dispute(clock, open_case)
+    dispute = _make_dispute(clock, open_case, refresh)
     return {
         ("paypal", "CHECKOUT.ORDER.APPROVED"): _make_order_approved(clock),
         ("paypal", "PAYMENT.CAPTURE.COMPLETED"): _make_capture_completed(clock),
