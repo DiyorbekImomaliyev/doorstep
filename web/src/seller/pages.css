@@ -47,6 +47,14 @@ p.lg-empty { padding: 28px 16px; text-align: center; margin: 0; }
 /* One toolbar above each desk's grid: filter chips on the left, the desk's own controls on the right. */
 .desk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 12px; flex-wrap: wrap; min-width: 0; }
 .desk-bar > .grow { flex: 1; }
+/* GP-02, GP-04: the grid's own tools (Columns and filters, Excel) as icon buttons, after the desk's controls. */
+.desk-tools, .grid-tools { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.desk-tools .grid-tools { margin-left: 0; }
+.grid-tools .icon-btn { color: var(--text-2); }
+.grid-tools .icon-btn:hover { color: var(--text); }
+@media (max-width: 600px) { .grid-tools { display: none; } }
+/* The side bar keeps room for its lists when the grid holds only a row or two. */
+.ledger-grid .ag-root-wrapper:has(.ag-side-bar:not(.ag-hidden) .ag-tool-panel-wrapper:not(.ag-hidden)) .ag-root-wrapper-body { min-height: 380px; }
 .ledger-grid .source-panel { font-size: 12.5px; color: var(--text-3); padding: 0 4px; }
 .desk-source { padding: 10px 16px 12px; margin: 0; border-top: 1px solid var(--line); font-size: 12.5px; }
 

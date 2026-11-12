@@ -7,6 +7,7 @@ import type { DisputeRow } from "../api";
 import { ErrorBox, useAsync, usePoll } from "../components/ui";
 import { ago, money, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
+import { GridTools, isSelecting, useDeskGrid } from "../grid/deskGrid";
 import { useMedia } from "../motion";
 import Chips from "./Chips";
 import { CopyId, ItemCell, PageHead } from "./LedgerGrid";
@@ -123,15 +124,27 @@ function Detail(p: CustomDetailCellRendererProps<DeskRow>) {
 }
 
 function DeskGrid({ rows, onReady, openFirst }: { rows: DeskRow[]; onReady: (a: GridApi<DeskRow>) => void; openFirst: string | null }) {
+  const { open } = useContext(Desk);
   const hasDue = rows.some((r) => r.paypal.response_due_at);
   const source = rows.some((r) => r.simulated) ? SOURCE : "";
+  // GP-01..GP-06: the Control Room's grid kit (menu, Excel, range sums, side bar, kept layout).
+  const kit = useDeskGrid<DeskRow>({
+    page: "disputes", sheet: "Disputes",
+    money: [{ colId: "amount_minor", minor: (r) => r.amount_minor }],
+    currency: (r) => r.currency,
+    dates: { due: (r) => r.paypal.response_due_at },
+    text: (id, r) => (id === "item" ? `${r.item} (${r.order_ref})` : id === "protection" ? `${r.protection.met} of ${r.protection.total}` : undefined),
+    skip: ["action"],
+    onOpen: (r) => open(r),
+  });
   const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
     statusPanels: [
       { statusPanel: SourcePanel, statusPanelParams: { text: source }, align: "left" },
+      ...kit.statusPanels,
       { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" },
     ],
-  }), [source]);
-  const columns = useMemo((): ColDef<DeskRow>[] => [
+  }), [source, kit]);
+  const columns = useMemo((): ColDef<DeskRow>[] => kit.columns([
     { headerName: "Dispute", field: "item", flex: 2, minWidth: 220, cellRenderer: "agGroupCellRenderer", cellRendererParams: { innerRenderer: DisputeCell, suppressCount: true } },
     { headerName: "PayPal ID", field: "paypal_dispute_id", width: 198, cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <CopyId value={q.data.paypal_dispute_id} shown={shortId(q.data.paypal_dispute_id)} /> },
     { headerName: "Reason", colId: "reason", flex: 1, minWidth: 160, valueGetter: (q) => (q.data ? reasonText(q.data) : ""), cellRenderer: ReasonCell },
@@ -144,12 +157,14 @@ function DeskGrid({ rows, onReady, openFirst }: { rows: DeskRow[]; onReady: (a: 
     { headerName: "Protection", colId: "protection", width: 124, headerTooltip: "Seller Protection checks met",
       // The states are in the value, so the cell redraws when any check changes; it sorts by checks met.
       valueGetter: (q) => (q.data ? `${q.data.protection.met}:${q.data.protection.checks.map((c) => c.state).join(",")}` : ""),
-      comparator: (a: string, b: string) => parseInt(a, 10) - parseInt(b, 10), cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <ProtectionMeter r={q.data} /> },
+      comparator: (a: string, b: string) => parseInt(a, 10) - parseInt(b, 10), cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <ProtectionMeter r={q.data} />,
+      filter: "agNumberColumnFilter", filterValueGetter: (q) => q.data?.protection.met ?? null },
     { headerName: "", colId: "action", width: 156, sortable: false, resizable: false, valueGetter: (q) => (q.data ? actionOf(q.data).label : ""), cellRenderer: ActionCell, cellClass: "dd-act-cell" },
-  ], [hasDue]);
-  const defaultColDef = useMemo<ColDef<DeskRow>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true }), []);
+  ]), [hasDue, kit]);
+  const defaultColDef = useMemo<ColDef<DeskRow>>(() => ({ sortable: true, resizable: true, suppressHeaderMenuButton: true, suppressHeaderFilterButton: true, enableCellChangeFlash: true }), []);
   const clicked = (e: RowClickedEvent<DeskRow>) => {
     if ((e.event?.target as HTMLElement | null)?.closest("button, a, summary, .ag-group-contracted, .ag-group-expanded")) return;
+    if (isSelecting(e.api, e.event)) return;
     e.node.setExpanded(!e.node.expanded);
   };
   const keyed = (e: CellKeyDownEvent<DeskRow>) => {
@@ -179,6 +194,7 @@ function DeskGrid({ rows, onReady, openFirst }: { rows: DeskRow[]; onReady: (a: 
         statusBar={statusBar}
         tooltipShowDelay={250}
         domLayout="autoHeight"
+        {...kit.props}
       />
     </section>
   );
@@ -310,6 +326,7 @@ export default function DisputesPage({ rows, error, onOpenOrder, token, onChange
             <div className="desk-bar">
               <Chips<Seg> label="Filter disputes" value={seg} onChange={setSeg}
                 items={SEGMENTS.map((s) => ({ key: s.key, label: s.label, count: counts[s.key], title: s.tip, tone: s.key === "all" ? undefined : SEG_TONE[s.key] }))} />
+              {!phone && <GridTools api={() => gridApi.current} />}
             </div>
             {shown.length === 0 ? (
               <section className="table-card dd-none" aria-label="PayPal disputes">
