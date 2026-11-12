@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CornerDownLeft, Search } from "lucide-react";
+import { CornerDownLeft, Search, Sparkles } from "lucide-react";
 
 /**
  * ⌘K command bar for the Control Room (the Linear / Raycast pattern): jump to an order, switch
@@ -24,7 +24,11 @@ function matches(c: Command, words: string[]): boolean {
   return words.every((w) => hay.includes(w));
 }
 
-export default function CommandBar({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+export default function CommandBar({ commands, onClose, onAsk }: {
+  commands: Command[]; onClose: () => void;
+  /** AI-07: hands a typed question to Ask the grid (the last row, or the only one when nothing matches). */
+  onAsk?: (question: string) => void;
+}) {
   const [q, setQ] = useState("");
   const [at, setAt] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -36,8 +40,15 @@ export default function CommandBar({ commands, onClose }: { commands: Command[];
     const hit = commands.filter((c) => matches(c, words));
     // Orders lead when the seller types; with nothing typed, views and actions come first.
     const order = words.length ? GROUPS : (["Go to", "Actions", "Orders"] as const);
-    return order.flatMap((g) => hit.filter((c) => c.group === g).slice(0, g === "Orders" ? MAX_ORDERS : 99));
-  }, [commands, q]);
+    const found = order.flatMap((g) => hit.filter((c) => c.group === g).slice(0, g === "Orders" ? MAX_ORDERS : 99));
+    const question = q.trim();
+    if (!onAsk || question.length < 2) return found;
+    const ask: Command = {
+      id: "ask-grid", group: "Actions", label: `Ask the grid: “${question.slice(0, 60)}”`, hint: "AI", icon: <Sparkles />,
+      run: () => onAsk(question.slice(0, 300)),
+    };
+    return [...found, ask];
+  }, [commands, q, onAsk]);
   useEffect(() => { setAt(0); }, [q]);
   useEffect(() => {
     list.current?.querySelector(`[data-i="${at}"]`)?.scrollIntoView({ block: "nearest" });
