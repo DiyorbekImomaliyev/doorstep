@@ -139,7 +139,7 @@ test("PL-10 PL-11 PL-12 the policy is checked clause by clause; Check again re-r
     await expect(page.locator(".ax-checked")).toContainText("Checked");
   } else {
     await expect(toast).toContainText("Not checked");
-    await expect(check).toContainText("Not checked yet");
+    await expect(check).toContainText(res.dropped ? "Not verified" : "AI unavailable");
   }
 
   // PL-10/11: each conflict is marked in the text, with its finding, rule file and suggested wording.
