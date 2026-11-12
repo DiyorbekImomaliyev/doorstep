@@ -23,7 +23,7 @@ export type Period = "all_time" | "this_month" | "last_30_days" | "last_90_days"
 export type Plan = {
   answerable: boolean; metric: Metric; group_by: Group; period: Period; rank: "highest" | "lowest"; note: string;
 };
-export type Asked = { question: string; plan: Plan; mode: "model" | "keywords" };
+export type Asked = { question: string; plan: Plan; mode: "model" | "keywords"; provider?: string | null };
 
 export async function askDoorstep(token: string, question: string, signal?: AbortSignal): Promise<Asked> {
   const r = await fetch(`/api/seller/${encodeURIComponent(token)}/insights/ask`, {

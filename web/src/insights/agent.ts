@@ -19,7 +19,7 @@ import { createAiHarness, directLlmRunner } from "ag-studio";
 import { answer, askDoorstep, type Asked } from "./ask";
 import type { Prepared } from "./data";
 import { explainWidget, widgetNames } from "./explain";
-import { W, kpi } from "./reports";
+import { KPI_H, W, kpi } from "./reports";
 import type { DoorstepRegistry } from "./widgets";
 
 // ---------------------------------------------------------------- the adapter
@@ -69,17 +69,27 @@ const OFFLINE = "I can't reach Doorstep just now. Your reports keep updating liv
  *    "what changed", answer_question (the keyword reader) for anything else.
  */
 const LOCAL = "local-";
+/** AI-04: tools whose card says everything, so the model is not asked to repeat it. */
+const SELF_SAID = new Set(["answer_question", "build_page"]);
 const MONEY_ASK = /\b(refund|reimburse|compensat|pay (me|out|back)|send (me )?money|transfer|charge back|chargeback|ignore (the|all|your|previous) (rules|instructions))/i;
 const SCAN_ASK = /what changed|unusual|wrong|anything/i;
 /** S4: "Chase Evri", "build me a page to chase…": with no model, Doorstep's template builds it. */
-const CHASE_ASK = /\bchase\b|\bbuild\b.*\bpage\b/i;
+const CHASE_ASK = /\bchase\b/i;
+/** AI-02: "build me a page for delivery types", "make a report about lockers". */
+const BUILD_ASK = /\b(build|make|create|set up|design)\b.*\b(page|report|dashboard)\b|\b(new )?(page|report|dashboard)\s+(for|about|on)\b/i;
+/** AI-02: with no model and no topic it has a layout for, the console says so instead of guessing a page. */
+export const NO_TOPIC = "I can't reach the model just now, so I can only build pages I have a layout for: delivery methods, carriers, claims, cases, money, proof or areas. Name one and I'll build it.";
 /** S6: the toolbar's "Explain this chart" sends `Explain “<name>”`. */
 const EXPLAIN_ASK = /^explain\b/i;
 /** AS-21: "Show me Evri's claims" opens that carrier's report. */
 const SHOW_ASK = /^show me\b/i;
 
-/** What the offline lead needs from the board to route a chase or an explain. */
-export type LocalRoutes = { chase: (words: string) => string | undefined; charts: () => string[] };
+/** What the offline lead needs from the board to route a chase, a build or an explain. */
+export type LocalRoutes = {
+  chase: (words: string) => string | undefined; charts: () => string[];
+  /** AI-02: the page a build request names (a topic, and a carrier or method filter), or none. */
+  topic?: (words: string) => TopicPick | undefined;
+};
 
 /** The name inside the first pair of quotes, matched against the known names. */
 const quoted = (text: string, names: string[]) => {
@@ -98,12 +108,22 @@ export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnO
       const call = (kind: string, name: string, args: Record<string, unknown>) =>
         ({ call_id: `${LOCAL}${kind}-${nextId("c")}`, name, arguments: args });
 
+      // AI-04: after answer_question the card is the answer (figure, reading, chart), and after
+      // build_page the result names every widget it placed, so no second model turn is spent
+      // repeating them. Only when every result since the model's last call is one of those.
+      const tail = items.slice(items.map((i) => i.kind).lastIndexOf("call") + 1);
+      const callName = (id?: string) => items.find((i) => i.kind === "call" && i.call_id === id)?.name;
+      const selfSaid = lead && last?.kind === "result" && tail.length > 0
+        && tail.every((i) => i.kind === "result" && SELF_SAID.has(callName(i.call_id) ?? ""));
       let turn: Promise<TurnOut>;
-      if (lead && last?.kind === "result" && last.call_id?.startsWith(LOCAL)) {
-        // After a local call the card has said it all (the console's head says how it was read).
+      let local = false;
+      if (lead && last?.kind === "result" && (last.call_id?.startsWith(LOCAL) || selfSaid)) {
+        // After a local call (or one whose card says it all) nothing more is said.
         turn = Promise.resolve({ message: "", calls: [], mode: "fallback" });
+        local = true;
       } else if (lead && last?.kind === "user" && MONEY_ASK.test(last.text) && offers("answer_question")) {
         turn = Promise.resolve({ message: "", calls: [call("guard", "answer_question", { question: last.text.slice(0, 300) })], mode: "fallback" });
+        local = true;
       } else {
         turn = fetch(`/api/seller/${encodeURIComponent(token)}/insights/agent`, {
           method: "POST",
@@ -137,12 +157,20 @@ export function doorstepAdapter(token: string, agent: string, onTurn?: (t: TurnO
               const carrier = routes.chase(last.text);
               if (carrier) return { message: "", calls: [call("offline", "build_report_template", { carrier })], mode: "fallback" };
             }
+            // AI-02: a page on a topic Doorstep has a layout for, and never a page about something else.
+            if (routes?.topic && BUILD_ASK.test(last.text) && offers("build_page")) {
+              const pick = routes.topic(last.text);
+              if (pick) return { message: "", calls: [call("offline", "build_page", pick)], mode: "fallback" };
+              return { message: NO_TOPIC, calls: [], mode: "fallback" };
+            }
             const name = SCAN_ASK.test(last.text) && offers("scan_for_anomalies") ? "scan_for_anomalies" : offers("answer_question") ? "answer_question" : null;
             if (!name) return t;
             return { message: "", calls: [call("offline", name, name === "answer_question" ? { question: last.text.slice(0, 300) } : {})], mode: "fallback" };
           });
       }
-      turn.then((t) => onTurn?.(t)).catch(() => undefined);
+      // A turn the browser answered itself says nothing about the model, so it is not reported: the
+      // console never reads "keywords" while the model is up (answer_question reports its own read).
+      if (!local) turn.then((t) => onTurn?.(t)).catch(() => undefined);
 
       const messageId = nextId("msg");
       const stream = (async function* (): AsyncGenerator<AgAiEvent> {
@@ -307,6 +335,8 @@ const ASK_FAILED = "Couldn't read that just now. Try again in a moment.";
 /** What answer_question hands the console: the sentence, how it was read, and the chart it added. */
 export type Answered = {
   answerable: boolean; headline: string; detail: string[]; reading: string[]; chart: boolean; widgetId?: string; mode: Asked["mode"];
+  /** AI-03: the provider that read the question, when a model did. */
+  provider?: string | null;
   /** The plan the figures came from, so the card can recompute them as the data moves. */
   plan?: Asked["plan"];
 };
@@ -370,6 +400,161 @@ export function templatePage(id: string, carrier: string): Page {
   };
 }
 
+// ---------------------------------------------------------------- AI-02: a page on any topic
+
+type Widget = NonNullable<Page["widgets"]>[string];
+type Piece = { key: string; label: string; widget: Widget; size: "kpi" | "half" | "wide" | "full"; h?: number };
+
+/** A table per delivery method: the exact numbers behind the method charts. */
+const methodScorecard: Widget = {
+  type: "pivot-grid",
+  dataMapping: { rows: [{ id: "orders.method" }], columns: [], values: [{ id: "order_count" }, { id: "case_rate" }, { id: "prevention_rate" }, { id: "evidence_avg" }, { id: "transit_days" }] },
+  sort: [{ field: { id: "order_count" }, direction: "desc" }],
+  format: { title: { enabled: true, text: "Method scorecard" }, subtitle: { enabled: false }, style: { grandTotalRow: { enabled: true } } },
+} as Widget;
+
+/** The topics Doorstep has a layout for, each read top to bottom: numbers, then charts, then detail. */
+export const TOPICS = {
+  delivery_methods: {
+    name: "Delivery methods",
+    words: /deliver(y|ies)? (type|method|option|choice)s?|\bmethods?\b|locker|signature|signed for|home deliver/i,
+    pieces: [
+      { key: "k1", label: "Orders", widget: kpi("order_count", "All orders"), size: "kpi" },
+      { key: "k2", label: "Case rate", widget: kpi("case_rate", "Orders with a problem"), size: "kpi" },
+      { key: "k3", label: "Prevention rate", widget: kpi("prevention_rate", "Locker, signed or fixed address"), size: "kpi" },
+      { key: "k4", label: "Proof on file", widget: kpi("evidence_avg", "Possession proof per order"), size: "kpi" },
+      { key: "mix", label: "Delivery choice", widget: W.methodMix, size: "half" },
+      { key: "rate", label: "Case rate by method", widget: W.caseRateByMethod, size: "wide" },
+      { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "half" },
+      { key: "fp", label: "What goes wrong", widget: W.failurePoints, size: "wide" },
+      { key: "table", label: "Method scorecard", widget: methodScorecard, size: "full", h: 14 },
+    ],
+  },
+  carriers: {
+    name: "Carriers",
+    words: /carrier|courier|royal mail|evri|dpd|usps|\bups\b|fedex/i,
+    pieces: [
+      { key: "k1", label: "Orders", widget: kpi("order_count", "All orders"), size: "kpi" },
+      { key: "k2", label: "Case rate", widget: kpi("case_rate", "Orders with a problem"), size: "kpi" },
+      { key: "k3", label: "Days in transit", widget: kpi("transit_days", "Label to delivered"), size: "kpi" },
+      { key: "k4", label: "Recovery rate", widget: kpi("recovery_rate", "Recovered ÷ claimed"), size: "kpi" },
+      { key: "cost", label: "Cost by carrier", widget: W.costByCarrier, size: "half" },
+      { key: "causes", label: "Causes by carrier", widget: W.failuresByCarrier, size: "wide" },
+      { key: "score", label: "Carrier scorecard", widget: W.carrierScorecard, size: "full", h: 16 },
+    ],
+  },
+  claims: {
+    name: "Carrier claims",
+    words: /claim|recover|paid back|deadline/i,
+    pieces: [
+      { key: "k1", label: "Claims filed", widget: kpi("claimed", "Claimed from carriers"), size: "kpi" },
+      { key: "k2", label: "Paid back", widget: kpi("recovered", "Paid by carriers"), size: "kpi" },
+      { key: "k3", label: "Recovery rate", widget: kpi("recovery_rate", "Recovered ÷ claimed"), size: "kpi" },
+      { key: "clock", label: "Claim deadlines", widget: W.claimClock, size: "full", h: 15 },
+      { key: "status", label: "Claims by status", widget: W.claimsByStatus, size: "half" },
+      { key: "ev", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "wide" },
+      { key: "grid", label: "Carrier claims", widget: W.claimsGrid, size: "full", h: 18 },
+    ],
+  },
+  cases: {
+    name: "Cases",
+    words: /\bcases?\b|problem|complaint|fail|went wrong|lost|damaged|missing|dispute/i,
+    pieces: [
+      { key: "k1", label: "Cases", widget: kpi("case_count", "Problems reported"), size: "kpi" },
+      { key: "k2", label: "Open cases", widget: kpi("open_cases", "Not yet settled"), size: "kpi" },
+      { key: "k3", label: "Refunded", widget: kpi("paid_out", "Refunded via PayPal"), size: "kpi" },
+      { key: "month", label: "Cases by month", widget: W.casesByMonth, size: "full", h: 18 },
+      { key: "route", label: "How cases were decided", widget: W.decisions, size: "half" },
+      { key: "fp", label: "What goes wrong", widget: W.failurePoints, size: "wide" },
+      { key: "grid", label: "Every case", widget: W.casesGrid, size: "full", h: 20 },
+    ],
+  },
+  money: {
+    name: "Money",
+    words: /money|refund|loss|cost|spend|paid|revenue|sales|profit|£|\$/i,
+    pieces: [
+      { key: "k1", label: "Net delivery loss", widget: kpi("net_loss", "Refunds minus recoveries"), size: "kpi" },
+      { key: "k2", label: "Refunded", widget: kpi("paid_out", "Refunded via PayPal"), size: "kpi" },
+      { key: "k3", label: "Recovered", widget: kpi("recovered", "Paid by carriers"), size: "kpi" },
+      { key: "k4", label: "Sales", widget: kpi("sales", "Value of orders"), size: "kpi" },
+      { key: "flow", label: "Money flow", widget: W.moneyFlow, size: "half" },
+      { key: "cost", label: "Cost by carrier", widget: W.costByCarrier, size: "wide" },
+      { key: "money", label: "Money by carrier", widget: W.moneyByCarrier, size: "full", h: 15 },
+    ],
+  },
+  proof: {
+    name: "Proof",
+    words: /proof|evidence|seal|photo|signature proof|possession/i,
+    pieces: [
+      { key: "k1", label: "Proof on file", widget: kpi("evidence_avg", "Possession proof per order"), size: "kpi" },
+      { key: "k2", label: "Prevention rate", widget: kpi("prevention_rate", "Locker, signed or fixed address"), size: "kpi" },
+      { key: "journey", label: "Parcel journey", widget: W.journey, size: "full", h: 20 },
+      { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "half" },
+      { key: "evc", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "wide" },
+    ],
+  },
+  areas: {
+    name: "Areas",
+    words: /area|postcode|district|region|where|map|london|manchester|city|zip/i,
+    pieces: [
+      { key: "atlas", label: "Delivery atlas", widget: W.atlas, size: "full", h: 30 },
+      { key: "table", label: "Areas", widget: W.areaTable, size: "full", h: 16 },
+    ],
+  },
+} satisfies Record<string, { name: string; words: RegExp; pieces: Piece[] }>;
+export type Topic = keyof typeof TOPICS;
+export type TopicPick = { topic: Topic; name?: string; carrier?: string | null; method?: string | null };
+const TOPIC_ORDER: Topic[] = ["claims", "delivery_methods", "proof", "areas", "cases", "money", "carriers"];
+
+/** The live delivery methods, as the reports name them ("Home", "Locker", "Signature"). */
+export const liveMethods = (p: Prepared) =>
+  [...new Set(tableRows(p, "orders").map((r) => String(r.method)))].filter((k) => k && !/^Not /.test(k)).sort();
+
+/** AI-02, offline: the topic a build request names, and the carrier or method it narrows to. */
+export function pickTopic(p: Prepared, words: string): TopicPick | undefined {
+  const said = ` ${words.toLowerCase().replace(/[^a-z0-9()£$]+/g, " ")} `;
+  const carrier = liveCarriers(p).find((k) => said.includes(` ${k.toLowerCase().replace(/[^a-z0-9()]+/g, " ").trim()} `)) ?? null;
+  const method = liveMethods(p).find((m) => new RegExp(`\\b${m.toLowerCase()}s?\\b`).test(said)) ?? null;
+  const topic = TOPIC_ORDER.find((t) => TOPICS[t].words.test(said));
+  if (!topic) return undefined;
+  const t: Topic = method && !carrier && topic !== "claims" ? "delivery_methods" : topic;
+  const only = carrier ?? method;
+  // Every argument the tool's schema asks for, so Studio runs the offline call as it runs a model's.
+  return { topic: t, name: only ? `${only} · ${TOPICS[t].name}` : TOPICS[t].name, carrier, method: carrier ? null : method };
+}
+
+/** The page for a topic: KPIs in one row, charts two to a row (13 + 11), tables full width. */
+export function topicPage(id: string, pick: TopicPick): { page: Page; parts: string[] } {
+  const pieces: Piece[] = TOPICS[pick.topic].pieces;
+  const widgets: Record<string, Widget> = {};
+  const layout: NonNullable<Page["widgetLayout"]> = {};
+  const kpis = pieces.filter((x) => x.size === "kpi");
+  let y = 0;
+  kpis.forEach((x, i) => {
+    const span = Math.floor(24 / kpis.length);
+    widgets[x.key] = x.widget;
+    layout[x.key] = { xTrack: i * span, yTrack: 0, xSpan: i === kpis.length - 1 ? 24 - i * span : span, ySpan: KPI_H };
+  });
+  if (kpis.length) y = KPI_H;
+  let x = 0;
+  for (const piece of pieces.filter((q) => q.size !== "kpi")) {
+    widgets[piece.key] = piece.widget;
+    if (piece.size === "full") {
+      if (x) { y += 20; x = 0; }
+      layout[piece.key] = { xTrack: 0, yTrack: y, xSpan: 24, ySpan: piece.h ?? 18 };
+      y += piece.h ?? 18;
+    } else {
+      const span = piece.size === "half" ? 11 : 13;
+      layout[piece.key] = { xTrack: x, yTrack: y, xSpan: x ? 24 - x : span, ySpan: 20 };
+      x = x ? 0 : span;
+      if (!x) y += 20;
+    }
+  }
+  const filter: Page["filter"] = pick.carrier ? carrierFilter(pick.carrier)
+    : pick.method ? { page: [{ field: { id: "orders.method" }, model: { operator: "equals", value: pick.method } }] } : {};
+  return { page: { id, widgets, widgetLayout: layout, filter } as Page, parts: pieces.map((q) => q.label) };
+}
+
 /** The console's plan for a build: each line ticks when its tool call completes. */
 export const BUILD_PLAN = [
   { key: "report", label: "New report" },
@@ -381,22 +566,31 @@ export const BUILD_PLAN = [
 
 const LEAD = `You are Doorstep's analyst, working inside a small online seller's Insights reports.
 The reports: Overview (orders, case rate, money), Carriers (claims, recovery, deadlines), Cases.
-- "What's unusual", "anything wrong", "what changed": call scan_for_anomalies, then explain the
-  top findings in plain words and offer to open the report each one points to.
+The seller may write in any language or misspell words: read what they mean, and reply in their language.
+- "What's unusual", "anything wrong", "what changed": call scan_for_anomalies, then name the top
+  one or two findings in plain words and offer to open the report each one points to.
 - A figure or a breakdown ("net loss by carrier this month"): call answer_question with the
-  seller's question. It adds a chart to the Answers page and returns the figure: quote it.
+  seller's question. Its card shows the figure and the chart, so add nothing after it.
 - "Show me Evri": call open_carrier_report. "Open the cases": call open_report.
+- A page, report or dashboard about a topic ("build me a page for delivery types", "a page about
+  lockers", "a money dashboard", "a page for Evri"): call build_page once with the closest topic, a
+  short name in the seller's words, and the carrier or delivery method they named (lockers ->
+  method Locker). It places Doorstep's widgets in one step; its result lists them.
+- To chase a carrier's claims ("chase Evri", "a page to chase a carrier"): call
+  build_report_template with that carrier (if none is named, the one scan_for_anomalies flags),
+  then one sentence.
+- Only for a page no topic covers, or widgets the seller names one by one: create_report, delegate
+  to the page agent with its pageId, check_page, then one sentence naming what is on the page.
 - To change how an existing chart looks (chart type, sorting, labels, title), delegate to the
-  widget agent. To add, move or remove widgets or filters on a page, delegate to the page agent.
+  widget agent. To add, move or remove widgets on the open page, delegate to the page agent.
   Doorstep's own widgets are in its catalogue; ask it to prefer them for claims, causes and proof.
-- To build a page for a carrier ("chase Evri"): create_report, delegate to the page agent with its
-  pageId to add doorstep-claim-clock, doorstep-failure-points and doorstep-evidence-meter,
-  check_page, then one sentence. If no carrier is named, use the one scan_for_anomalies flags.
 - "Explain “…”": call explain_chart with that name, then say in two sentences what it shows and
   how to read it.
 - Anything about refunds, payments or contacting someone: call answer_question with the seller's
   words. It says what Doorstep can and can't do. Never promise an action.
-Never compute or guess a number yourself. Two or three short sentences per reply.`;
+- Anything else (weather, jokes, other shops): one sentence on what you can do instead.
+Never compute or guess a number yourself. Never say a step failed unless a tool returned an error.
+At most two short sentences per reply, no headings, no lists.`;
 
 /** The tools Studio's own agents keep: everything except reading data rows. */
 const withoutRows = (def: AgAnyAiAgentDefinition): AgAnyAiAgentDefinition => ({
@@ -440,15 +634,17 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
         const out: Answered = { answerable: false, headline: ASK_FAILED, detail: [], reading: [], chart: false, mode: "keywords" };
         return ctx.success(ASK_FAILED, out);
       }
+      // AI-03: who read the question (Claude, Gemini, or the keyword reader), for the line under the reply.
+      onTurn?.("doorstep", { message: "", calls: [], mode: asked.mode === "model" ? "model" : "fallback", provider: asked.provider ?? null });
       if (!asked.plan.answerable) {
-        const out: Answered = { answerable: false, headline: asked.plan.note, detail: [], reading: [], chart: false, mode: asked.mode };
+        const out: Answered = { answerable: false, headline: asked.plan.note, detail: [], reading: [], chart: false, mode: asked.mode, provider: asked.provider };
         return ctx.success(`Not answerable from the reports: ${asked.plan.note}`, out);
       }
       const result = answer(asked.plan, a().prepared());
       const widgetId = result.empty ? undefined : a().addAnswer(asked);
       const plain = (t: string) => t.replace(/\*\*/g, "");
       const text = [plain(result.headline), ...result.detail.map(plain), result.empty ? "No chart added." : "Chart added to the Answers page."].join("\n");
-      const out: Answered = { answerable: true, headline: result.headline, detail: result.detail, reading: result.reading, chart: !result.empty, widgetId, mode: asked.mode, plan: asked.plan };
+      const out: Answered = { answerable: true, headline: result.headline, detail: result.detail, reading: result.reading, chart: !result.empty, widgetId, mode: asked.mode, provider: asked.provider, plan: asked.plan };
       return ctx.success(text, out);
     },
   });
@@ -533,6 +729,31 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
       return ctx.success(`Built '${name}' from Doorstep's template and opened it.`, { pageId: id, name, carrier: args.carrier });
     },
   });
+  const methods = () => liveMethods(a().prepared());
+  const buildPage: AgAiTool = api.defineAiTool({
+    name: "build_page",
+    description: "Build a finished report page on one topic from Doorstep's own widgets in one step, optionally narrowed to one carrier or one delivery method, and open it. Topics: delivery_methods (home, locker, signature), carriers, claims (carrier claims and deadlines), cases (problems and decisions), money (refunds, recoveries, loss), proof (possession evidence), areas (postcode map). Returns the widgets it placed.",
+    params: (s) => s.object({
+      topic: s.enum(Object.keys(TOPICS) as [Topic, ...Topic[]]),
+      name: s.string({ description: "A short page name in the seller's words, e.g. 'Lockers' or 'Delivery types'" }),
+      carrier: s.enum(() => carriers()).nullable(),
+      method: s.enum(() => methods()).nullable(),
+    }),
+    execute: (args: { topic: Topic; name?: string; carrier?: string | null; method?: string | null }, ctx) => {
+      const topic = TOPICS[args.topic] ? args.topic : "delivery_methods";
+      const carrier = args.carrier && carriers().includes(args.carrier) ? args.carrier : null;
+      const method = !carrier && args.method && methods().includes(args.method) ? args.method : null;
+      const name = String(args.name ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || [carrier ?? method, TOPICS[topic].name].filter(Boolean).join(" · ");
+      const id = `ai-${slug(name)}-${++pageSeq}`;
+      const { page, parts } = topicPage(id, { topic, carrier, method });
+      addPage(page, name, "dsHistoryNewReport", ctx);
+      const only = carrier ?? method;
+      return ctx.success(
+        `Built '${name}'${only ? `, filtered to ${only},` : ""} with ${parts.length} widgets: ${parts.join(", ")}. It is open.`,
+        { pageId: id, name, topic, carrier, method, parts },
+      );
+    },
+  });
   const explain: AgAiTool = api.defineAiTool({
     name: "explain_chart",
     description: "Describe one widget on the open page: what it measures, how it is grouped and sorted, and its filters. Reads settings only, never data rows.",
@@ -543,7 +764,10 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
     },
   });
 
-  const routes: LocalRoutes = { chase: (words) => chaseCarrier(a().prepared(), words), charts: () => widgetNames(api) };
+  const routes: LocalRoutes = {
+    chase: (words) => chaseCarrier(a().prepared(), words), charts: () => widgetNames(api),
+    topic: (words) => pickTopic(a().prepared(), words),
+  };
   const adapterFor = (agent: string) =>
     doorstepAdapter(a().token, agent, (t) => onTurn?.(agent, t), agent === "doorstep" ? routes : undefined);
   return createAiHarness(api, ({ tools, builtIn }) => ({
@@ -553,7 +777,7 @@ export function doorstepHarness(api: AgStudioApi, actions: { current: AgentActio
         name: "Doorstep",
         description: "Doorstep's analyst: finds what changed, answers questions with charts, and hands chart edits to Studio's agents.",
         instructions: () => LEAD,
-        tools: () => [scan, ask, report, carrier, createReport, checkPage, template, explain,
+        tools: () => [scan, ask, report, carrier, buildPage, createReport, checkPage, template, explain,
           tools.studio.viewReport(), tools.studio.viewPage(), tools.delegateTo(["widget", "page"])],
         maxTurns: 8,
         adapter: adapterFor("doorstep"),

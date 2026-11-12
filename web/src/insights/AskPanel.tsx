@@ -17,12 +17,13 @@ import { ReadBy } from "../components/ai";
 import type { AgAiPromptStarter } from "ag-studio";
 import { BUILD_PLAN } from "./agent";
 import { answeredBy, seconds, startClock, stopClock, tookMs } from "./answeredBy";
-import { AnswerActionsContext, doorstepToolDisplay, traceLabel, type AnswerActions } from "./agentDisplay";
+import { AnswerActionsContext, doorstepToolDisplay, traceLabel, widgetLabel, type AnswerActions } from "./agentDisplay";
+import "./askpanel.css";
 
 const NO_MESSAGES: ReadonlyArray<AgAiChatMessage> = [];
 /** Steps whose detail opens by itself: the findings, the answer and the explanation are the point. */
-const OPEN = new Set(["scan_for_anomalies", "answer_question", "explain_chart"]);
-const BUILDS = new Set(["create_report", "build_report_template"]);
+const OPEN = new Set(["scan_for_anomalies", "answer_question", "explain_chart", "build_page"]);
+const BUILDS = new Set(["create_report", "build_report_template", "build_page"]);
 
 /** S4/S5: what the console can do with a build it made (the board's ledger). */
 export type BuildActions = { has: (pageId: string) => boolean; undo: (pageId: string) => void; redo: () => void; canRedo: boolean };
@@ -57,19 +58,41 @@ function useTurnCalls(harness: AgAiHarness, parts: ReadonlyArray<AgAiChatMessage
 
 const complete = (c: AgAiToolCallView) => c.status === "complete" && (c.result as AgAiToolResult | undefined)?.success !== false;
 
+type PlanStep = { key: string; label: string };
+
+/**
+ * AI-02: the steps of this build, as it really goes. Doorstep's carrier template has its fixed five;
+ * a custom page lists each widget Studio's page agent adds, then the check.
+ */
+function planOf(calls: AgAiToolCallView[]): { steps: PlanStep[]; done: (key: string) => boolean } {
+  const template = calls.some((c) => c.name === "build_report_template" && complete(c));
+  if (calls.some((c) => c.name === "build_report_template")) {
+    return { steps: [...BUILD_PLAN], done: () => template };
+  }
+  const added = calls.filter((c) => c.name === "add_widget");
+  const steps = [
+    { key: "report", label: "New report" },
+    ...added.map((c) => ({ key: c.toolCallId, label: cap(widgetLabel(c.args.type)) })),
+    { key: "check", label: "Check the page" },
+  ];
+  return {
+    steps,
+    done: (key) => calls.some((c) => complete(c) && (key === "report" ? c.name === "create_report" : key === "check" ? c.name === "check_page" : c.toolCallId === key)),
+  };
+}
+const cap = (s: string) => s.replace(/^(a|an) /, "").replace(/^./, (c) => c.toUpperCase());
+
 /** The build's plan, ticking as Doorstep and Studio's page agent finish each step. */
 function PlanCard({ calls, running }: { calls: AgAiToolCallView[]; running: boolean }) {
-  const template = calls.some((c) => c.name === "build_report_template" && complete(c));
-  const done = (key: string) => template || calls.some((c) => complete(c) && (
-    key === "report" ? c.name === "create_report" : key === "check" ? c.name === "check_page" : c.name === "add_widget" && c.args.type === key));
-  const states = BUILD_PLAN.map((s) => done(s.key));
+  const plan = planOf(calls);
+  const states = plan.steps.map((s) => plan.done(s.key));
   const next = running ? states.indexOf(false) : -1;
   const n = states.filter(Boolean).length;
   return (
     <div className="ask-plan" role="group" aria-label="Plan">
-      <div className="ask-plan-head"><span>Plan</span><span className="num">{n}/{BUILD_PLAN.length}</span></div>
+      <div className="ask-plan-head"><span>Plan</span><span className="num">{n}/{plan.steps.length}</span></div>
       <ol>
-        {BUILD_PLAN.map((s, i) => {
+        {plan.steps.map((s, i) => {
           const state = states[i] ? "done" : i === next ? "now" : running ? "todo" : "skipped";
           return (
             <li key={s.key} data-state={state}>
@@ -156,7 +179,8 @@ function Turn({ id, question, parts, harness, names, busy, build }: {
   return (
     <div className="ask-turn">
       <p className="ask-q">{question}</p>
-      {made && <PlanCard calls={calls} running={busy} />}
+      {/* A topic page is one step; its card lists every widget, so it needs no plan. */}
+      {made && made.name !== "build_page" && <PlanCard calls={calls} running={busy} />}
       <Parts parts={parts} harness={harness} names={names} />
       {!busy && calls.length > 0 && <Trace calls={calls} took={took} />}
       {!busy && <AnsweredBy id={id} steps={calls.filter((c) => traceLabel(c.name) !== null).length} />}
@@ -316,6 +340,8 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
   const newChat = () => { session?.close(); onSession(null); setDraft(""); input.current?.focus(); };
   const busy = running || starting;
   const last = turns[turns.length - 1];
+  // AI-03: the head names who read the latest question (Claude, Gemini, or keywords when no model did).
+  const who = last ? answeredBy(last.id) : undefined;
 
   return (
     <aside className="ask" aria-label="Ask Doorstep" onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
@@ -328,7 +354,7 @@ export function AskPanel({ harness, session, onSession, pending, onPendingSent, 
         </div>
         <p title="Figures become charts on the Answers report. Chart and page changes go to AG Studio's own agents.">
           Figures, charts and page edits.
-          {mode && <> <ReadBy mode={mode === "model" ? "model" : "keywords"} /></>}
+          {(who || mode) && <> <ReadBy mode={(who ? who !== "Rules" : mode === "model") ? "model" : "keywords"} provider={who} /></>}
         </p>
       </div>
       {busy && <div className="ds-sweep ask-sweep" aria-hidden />}
