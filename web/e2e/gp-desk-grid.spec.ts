@@ -103,6 +103,8 @@ test("GP-05 a sorted column is kept for the page after a reload; Reset layout pu
   const head = claims(page).locator('.ag-header-cell[col-id="claim"]');
   await head.click();
   await expect(head).toHaveAttribute("aria-sort", "ascending");
+  // AG Grid reports state changes asynchronously: wait until the layout is saved before reloading.
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((k) => k.endsWith(".claims") && (localStorage.getItem(k) ?? "").includes('"colId":"claim","sort":"asc"')))).toBe(true);
   await page.reload();
   await expect(dataRow(page, "Silk scarf")).toBeVisible();
   await expect(head).toHaveAttribute("aria-sort", "ascending");
