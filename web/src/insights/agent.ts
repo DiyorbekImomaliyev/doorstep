@@ -427,9 +427,9 @@ export const TOPICS = {
       { key: "k4", label: "Proof on file", widget: kpi("evidence_avg", "Possession proof per order"), size: "kpi" },
       { key: "mix", label: "Delivery choice", widget: W.methodMix, size: "half" },
       { key: "rate", label: "Case rate by method", widget: W.caseRateByMethod, size: "wide" },
-      { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "half" },
-      { key: "fp", label: "What goes wrong", widget: W.failurePoints, size: "wide" },
-      { key: "table", label: "Method scorecard", widget: methodScorecard, size: "full", h: 14 },
+      { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "half", h: 14 },
+      { key: "fp", label: "What goes wrong", widget: W.failurePoints, size: "wide", h: 14 },
+      { key: "table", label: "Method scorecard", widget: methodScorecard, size: "full", h: 10 },
     ],
   },
   carriers: {
@@ -452,9 +452,9 @@ export const TOPICS = {
       { key: "k1", label: "Claims filed", widget: kpi("claimed", "Claimed from carriers"), size: "kpi" },
       { key: "k2", label: "Paid back", widget: kpi("recovered", "Paid by carriers"), size: "kpi" },
       { key: "k3", label: "Recovery rate", widget: kpi("recovery_rate", "Recovered ÷ claimed"), size: "kpi" },
-      { key: "clock", label: "Claim deadlines", widget: W.claimClock, size: "full", h: 15 },
-      { key: "status", label: "Claims by status", widget: W.claimsByStatus, size: "half" },
-      { key: "ev", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "wide" },
+      { key: "clock", label: "Claim deadlines", widget: W.claimClock, size: "full", h: 12 },
+      { key: "status", label: "Claims by status", widget: W.claimsByStatus, size: "half", h: 16 },
+      { key: "ev", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "wide", h: 16 },
       { key: "grid", label: "Carrier claims", widget: W.claimsGrid, size: "full", h: 18 },
     ],
   },
@@ -466,8 +466,8 @@ export const TOPICS = {
       { key: "k2", label: "Open cases", widget: kpi("open_cases", "Not yet settled"), size: "kpi" },
       { key: "k3", label: "Refunded", widget: kpi("paid_out", "Refunded via PayPal"), size: "kpi" },
       { key: "month", label: "Cases by month", widget: W.casesByMonth, size: "full", h: 18 },
-      { key: "route", label: "How cases were decided", widget: W.decisions, size: "half" },
-      { key: "fp", label: "What goes wrong", widget: W.failurePoints, size: "wide" },
+      { key: "route", label: "How cases were decided", widget: W.decisions, size: "half", h: 15 },
+      { key: "fp", label: "What goes wrong", widget: W.failurePoints, size: "wide", h: 15 },
       { key: "grid", label: "Every case", widget: W.casesGrid, size: "full", h: 20 },
     ],
   },
@@ -491,8 +491,8 @@ export const TOPICS = {
       { key: "k1", label: "Proof on file", widget: kpi("evidence_avg", "Possession proof per order"), size: "kpi" },
       { key: "k2", label: "Prevention rate", widget: kpi("prevention_rate", "Locker, signed or fixed address"), size: "kpi" },
       { key: "journey", label: "Parcel journey", widget: W.journey, size: "full", h: 20 },
-      { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "half" },
-      { key: "evc", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "wide" },
+      { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "half", h: 16 },
+      { key: "evc", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "wide", h: 16 },
     ],
   },
   areas: {
@@ -538,15 +538,15 @@ const NARROWED: Record<"method" | "carrier", Record<string, Piece>> = {
   method: {
     mix: { key: "mix", label: "Orders by carrier", widget: byCarrier("carrier", "order_count", "Orders by carrier", "donut-chart"), size: "half" },
     rate: { key: "rate", label: "Case rate by carrier", widget: byCarrier("carrier", "case_rate", "Case rate by carrier", "column-chart-grouped"), size: "wide" },
-    ev: { key: "ev", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "half" },
+    ev: { key: "ev", label: "Proof by carrier", widget: W.evidenceByCarrier, size: "half", h: 14 },
     table: { key: "table", label: "Carrier scorecard", widget: W.carrierScorecard, size: "full", h: 14 },
   },
   carrier: {
     cost: { key: "cost", label: "Delivery choice", widget: W.methodMix, size: "half" },
     causes: { key: "causes", label: "What goes wrong", widget: W.failurePoints, size: "wide" },
     score: { key: "score", label: "Method scorecard", widget: methodScorecard, size: "full", h: 14 },
-    ev: { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "wide" },
-    evc: { key: "evc", label: "Proof by method", widget: W.evidenceByMethod, size: "wide" },
+    ev: { key: "ev", label: "Proof by method", widget: W.evidenceByMethod, size: "wide", h: 14 },
+    evc: { key: "evc", label: "Proof by method", widget: W.evidenceByMethod, size: "wide", h: 14 },
   },
 };
 
@@ -565,18 +565,28 @@ export function topicPage(id: string, pick: TopicPick): { page: Page; parts: str
     layout[x.key] = { xTrack: i * span, yTrack: 0, xSpan: i === kpis.length - 1 ? 24 - i * span : span, ySpan: KPI_H };
   });
   if (kpis.length) y = KPI_H;
-  let x = 0;
+  let x = 0, rowH = 0, firstKey = "";
   for (const piece of pieces.filter((q) => q.size !== "kpi")) {
     widgets[piece.key] = piece.widget;
     if (piece.size === "full") {
-      if (x) { y += 20; x = 0; }
-      layout[piece.key] = { xTrack: 0, yTrack: y, xSpan: 24, ySpan: piece.h ?? 18 };
-      y += piece.h ?? 18;
+      if (x) { y += rowH; x = 0; rowH = 0; }
+      // One carrier's claims are a single row of clocks: a short band.
+      const h = pick.carrier && piece.key === "clock" ? 8 : piece.h ?? 18;
+      layout[piece.key] = { xTrack: 0, yTrack: y, xSpan: 24, ySpan: h };
+      y += h;
     } else {
       const span = piece.size === "half" ? 11 : 13;
-      layout[piece.key] = { xTrack: x, yTrack: y, xSpan: x ? 24 - x : span, ySpan: 20 };
-      x = x ? 0 : span;
-      if (!x) y += 20;
+      // A row is as tall as its taller chart; each says how tall its content needs to be.
+      const h = piece.h ?? 20;
+      if (!x) {
+        layout[piece.key] = { xTrack: 0, yTrack: y, xSpan: span, ySpan: h };
+        x = span; rowH = h; firstKey = piece.key;
+      } else {
+        rowH = Math.max(rowH, h);
+        layout[firstKey] = { ...layout[firstKey]!, ySpan: rowH };
+        layout[piece.key] = { xTrack: x, yTrack: y, xSpan: 24 - x, ySpan: rowH };
+        y += rowH; x = 0; rowH = 0;
+      }
     }
   }
   const filter: Page["filter"] = pick.carrier ? carrierFilter(pick.carrier)

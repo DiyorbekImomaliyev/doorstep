@@ -140,6 +140,21 @@ export function AtlasWidget(params: AgWidgetParams<AtlasDef>) {
   // The size of one SVG unit on screen, so labels keep a readable size on a small card.
   const unit = size.w ? Math.min(size.w / vw, size.h / vh) : 1;
 
+  // Labels ride in a row of pills along the top of the scene, each on a thin leader down to its
+  // column, so they never sit on a neighbouring column. The rest show on hover.
+  const u = Math.max(unit, 0.5);
+  const wanted = scene.ordered.filter((t) => scene.top.has(t.area) || sel(t)).slice(0, 8)
+    .map((t) => {
+      const [lx, ly] = iso(t.col, t.row, Math.max(6, (t.orders / scene.maxOrders) * scene.maxH));
+      return { area: t.area, lx, ly, px: lx, w: (t.area.length * 7 + 14) / u };
+    }).sort((p, q) => p.lx - q.lx);
+  wanted.forEach((l, i) => {
+    if (i > 0) l.px = Math.max(l.px, wanted[i - 1].px + (wanted[i - 1].w + l.w) / 2 + 4 / u);
+    l.px = Math.min(l.px, vx + vw - l.w / 2 - 2 / u);
+  });
+  const pillY = vy + 12 / u;
+  const labels = wanted;
+
   return (
     <div className="ds-atlas" ref={box} data-picking={anyPicked || undefined} onMouseLeave={() => setTip(null)}>
       <svg viewBox={`${vx} ${vy} ${vw} ${vh}`} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Delivery areas">
@@ -157,7 +172,6 @@ export function AtlasWidget(params: AgWidgetParams<AtlasDef>) {
           const left = [iso(c - F, r + F, h), iso(c + F, r + F, h), iso(c + F, r + F, 0), iso(c - F, r + F, 0)] as [number, number][];
           const right = [iso(c + F, r - F, h), iso(c + F, r + F, h), iso(c + F, r + F, 0), iso(c + F, r - F, 0)] as [number, number][];
           const ring = [iso(c - F - 0.07, r - F - 0.07), iso(c + F + 0.07, r - F - 0.07), iso(c + F + 0.07, r + F + 0.07), iso(c - F - 0.07, r + F + 0.07)] as [number, number][];
-          const [lx, ly] = iso(c, r, h);
           const on = sel(t);
           return (
             <g key={t.area} className="ds-atlas-tile" tabIndex={0} role="button" aria-pressed={on} aria-label={label(t)}
@@ -170,13 +184,21 @@ export function AtlasWidget(params: AgWidgetParams<AtlasDef>) {
                 <polygon points={pts(left)} fill={shade(col, 0.13)} />
                 <polygon points={pts(right)} fill={shade(col, 0.27)} />
                 <polygon className="ds-atlas-top" points={pts(top)} fill={rgb(col)} />
-                {(scene.top.has(t.area) || on) && grow > 1 && (
-                  <text className="ds-atlas-code" x={lx} y={ly - 7 / Math.max(unit, 0.5)} textAnchor="middle" fontSize={11 / Math.max(unit, 0.5)}>{t.area}</text>
-                )}
               </g>
             </g>
           );
         })}
+        {grow > 1 && (
+          <g className="ds-atlas-labels" aria-hidden>
+            {labels.map((l) => (
+              <g key={l.area}>
+                <line className="ds-atlas-lead" x1={l.px} y1={pillY + 8 / u} x2={l.lx} y2={l.ly - 2} />
+                <rect className="ds-atlas-pill" x={l.px - l.w / 2} y={pillY - 8 / u} width={l.w} height={16 / u} rx={8 / u} />
+                <text className="ds-atlas-code" x={l.px} y={pillY + 4 / u} textAnchor="middle" fontSize={11 / u}>{l.area}</text>
+              </g>
+            ))}
+          </g>
+        )}
       </svg>
 
       {regions.length > 1 && (
