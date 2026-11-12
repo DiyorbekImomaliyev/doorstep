@@ -422,7 +422,7 @@ export const areasPage: Page = {
   widgetLayout: {
     t: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 4 },
     atlas: { xTrack: 0, yTrack: 4, xSpan: 24, ySpan: 30 },
-    table: { xTrack: 0, yTrack: 34, xSpan: 24, ySpan: 16 },
+    table: { xTrack: 0, yTrack: 34, xSpan: 24, ySpan: 23 },
   },
   filter: {},
 };
