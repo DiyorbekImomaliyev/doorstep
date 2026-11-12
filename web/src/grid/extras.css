@@ -1,5 +1,7 @@
 /* Control Room grid extras: the view-name popover, the empty state. */
 .orders-grid { position: relative; }
+/* Rows on screen: no reserved empty-state room, so a collapsed lane leaves no gap above the status bar. */
+.orders-grid[data-filled] .ag-grid-scrolling-rows { min-height: 0; }
 .name-view {
   position: absolute; top: 46px; right: 12px; z-index: 30; display: flex; gap: 8px; align-items: center;
   padding: 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow-lg);

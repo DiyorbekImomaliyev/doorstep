@@ -1010,9 +1010,20 @@ export default function OrdersGrid({ rows: orders, search, empty, onOpen, onRead
       { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" },
     ],
   }), [source]);
+  // The theme keeps room under the header for the empty state. Once a row shows (a lane, even
+  // collapsed, or a pivot row), the grid is exactly as tall as its rows: no space above the status bar.
+  const wrap = useRef<HTMLDivElement>(null);
+  const onModelUpdated = useCallback((e: { api: GridApi }) => {
+    let filled = false;
+    for (let i = 0; i < e.api.getDisplayedRowCount() && !filled; i++) {
+      const n = e.api.getDisplayedRowAtIndex(i);
+      filled = !!n && (!!n.data || (!!n.group && !n.footer));
+    }
+    wrap.current?.toggleAttribute("data-filled", filled);
+  }, []);
 
   return (
-    <div className="orders-grid" data-loading={loading || undefined} onKeyDown={findKey}>
+    <div ref={wrap} className="orders-grid" data-loading={loading || undefined} onKeyDown={findKey}>
       <AgGridReact<OrderRow>
         theme={gridTheme}
         rowData={rows}
@@ -1030,6 +1041,7 @@ export default function OrdersGrid({ rows: orders, search, empty, onOpen, onRead
         onStateUpdated={(e) => { if (!card && !phone && !e.sources.includes("gridInitializing") && !e.sources.includes("api") && e.sources.some((x) => (KEPT as readonly string[]).includes(x))) writeLayout(e.state); }}
         onRowClicked={onRowClicked}
         onCellKeyDown={onCellKeyDown}
+        onModelUpdated={onModelUpdated}
         rowStyle={rowStyle}
         // Cell selection: drag across cells for AG Grid's live sum; Ctrl/Cmd+C copies them.
         cellSelection={cellSelection}
