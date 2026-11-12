@@ -622,7 +622,9 @@ a.demo-item:hover .di-go svg { transform: translateX(3px); }
 .lane-name { font-weight: 600; font-size: 13.5px; color: var(--text); }
 .lane-you .lane-name { color: var(--accent); }
 .lane-hint { color: var(--text-3); font-size: 12.5px; }
-.lane-meta { margin-left: auto; color: var(--text-2); font-size: 12.5px; }
+.lane-meta { margin-left: auto; color: var(--text-2); font-size: 12.5px; white-space: nowrap; }
+/* A phone keeps the lane's money whole ("£149 + $89 at stake"); the hint is the part that goes. */
+@media (max-width: 600px) { .lane-row .lane-hint { display: none; } }
 
 /* Master/detail panel */
 .orders-grid .ag-details-row { padding: 4px 16px 16px 52px; background: var(--surface); }
