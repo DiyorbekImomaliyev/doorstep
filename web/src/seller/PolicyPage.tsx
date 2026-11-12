@@ -12,6 +12,9 @@ type Issue = PolicyCheck["issues"][number];
 const SETTINGS = "doorstep_settings";
 const hhmm = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+/** QA-02: why a check came back unchecked. Nothing is still waiting: the model failed, or it
+ *  answered with findings that did not quote the policy (dropped in code). */
+const unchecked = (r: PolicyCheck) => (r.dropped ? "Not verified" : "AI unavailable");
 
 /** High: it contradicts who carries the loss (the liability rule for the shop's region).
  *  Medium: it contradicts only how the shop's refunds are set up in Doorstep. */
@@ -120,7 +123,7 @@ export default function PolicyPage({ token, check, failed }: { check: PolicyChec
       const r = await api.policyCheck(token);
       setRes(r); setAt(new Date()); setActive(null);
       toast.show(r.status === "checked" ? (r.issues.length ? `Checked · ${plural(r.issues.length, "conflict")}` : "Checked · no conflicts")
-        : r.status === "no_policy" ? "No policy to check" : "Not checked · try again soon");
+        : r.status === "no_policy" ? "No policy to check" : r.dropped ? "Not checked · not verified" : "Not checked · AI unavailable");
     } catch {
       setErr("The check did not run. Try again.");
     } finally { setBusy(false); }
@@ -181,7 +184,7 @@ export default function PolicyPage({ token, check, failed }: { check: PolicyChec
             <div className="kpi" title={res.provider ? `Read by ${res.provider}; every quote matched to your policy in code` : undefined}>
               <span className="label"><FileCheck aria-hidden />Checked</span>
               <span className="value num" style={{ fontSize: 22 }}>{at && res.status === "checked" ? hhmm(at) : "—"}</span>
-              <span className="sub">{res.status === "checked" ? "AI read · code verified" : res.status === "no_policy" ? "nothing to read" : "waiting for AI"}</span>
+              <span className="sub">{res.status === "checked" ? "AI read · code verified" : res.status === "no_policy" ? "nothing to read" : unchecked(res)}</span>
             </div>
           </section>
 
@@ -191,7 +194,11 @@ export default function PolicyPage({ token, check, failed }: { check: PolicyChec
             ) : (
               <>
                 {res.status === "unchecked" && (
-                  <div className="notice"><FileText aria-hidden /><span><strong>Not checked yet</strong></span></div>
+                  <div className="notice warn" role="status" style={{ alignItems: "center" }} title={res.dropped ? "The AI's findings did not quote your policy exactly, so none is shown." : "The AI model did not answer. Your policy is unchanged."}>
+                    <FileText aria-hidden />
+                    <span className="grow"><strong>{unchecked(res)}</strong> <span className="muted">· policy not checked</span></span>
+                    <button type="button" className="btn ghost sm" onClick={recheck} disabled={busy}>Retry</button>
+                  </div>
                 )}
                 {res.status === "checked" && n === 0 && (
                   <div className="ax-good"><CircleCheck aria-hidden /><span><strong>No conflicts</strong> <span className="muted">with {law}</span></span></div>

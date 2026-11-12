@@ -275,6 +275,16 @@ details.fold > :not(summary) { padding: 0 14px 14px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 16px; border-radius: 10px; z-index: 60; box-shadow: var(--shadow-lg); font-size: 13.5px; display: flex; gap: 8px; align-items: center; animation: rise .2s var(--ease); }
 @keyframes rise { from { transform: translate(-50%, 8px); opacity: 0; } }
+/* QA-04: with a case drawer open, the toast sits over the drawer, above its action buttons. */
+body:has(.drawer) .toast { left: calc(100vw - min(640px, 100vw) / 2); bottom: 132px; max-width: calc(min(640px, 100vw) - 32px); }
+/* QA-05: on a phone the drawer's actions wrap with the main one first, full width; the toast moves to the top. */
+@media (max-width: 600px) {
+  body:has(.drawer) .toast { top: 12px; bottom: auto; }
+  .drawer footer .row { flex-wrap: wrap; }
+  .drawer footer .row > .grow { display: none; }
+  .drawer footer .row > .btn { flex: 1 1 auto; min-width: 0; box-sizing: border-box; }
+  .drawer footer .row > .btn.lg, .drawer footer .row > .btn.primary { order: -1; flex-basis: 100%; }
+}
 
 /* ---------- buyer / seal (phone first) ---------- */
 .order-head { display: flex; flex-direction: column; gap: 4px; }
