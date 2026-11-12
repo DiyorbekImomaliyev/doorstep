@@ -136,9 +136,20 @@ export function snapshot(api: GridApi, view: string): Snapshot {
   return { view, state: api.getState(), shown: ["next", "buyer", "updated"].filter((c) => api.getColumn(c)?.isVisible()) };
 }
 
+/**
+ * QA-01: filters and sort as AG Grid state, on fresh set filters. Switching to a list with one lane
+ * (or back) regroups the rows, and AG Grid then leaves the filters panel holding a set filter that
+ * was never started: the next filter model on it throws in the panel and never reaches the rows.
+ * Destroying the three set filters first gives the model filters that are ready.
+ */
+function setFiltersAndSort(api: GridApi, state: GridState) {
+  for (const c of SETS) api.destroyFilter(c);
+  api.setState(state, IGNORE);
+}
+
 /** Put the grid back to a snapshot's filters, sort and extra columns. */
 export function restore(api: GridApi, s: Snapshot) {
-  api.setState({ filter: s.state.filter ?? { filterModel: {} }, sort: s.state.sort ?? { sortModel: [] } }, IGNORE);
+  setFiltersAndSort(api, { filter: { filterModel: s.state.filter?.filterModel ?? {} }, sort: s.state.sort ?? { sortModel: [] } });
   const extra = ["next", "buyer", "updated"];
   api.setColumnsVisible(extra.filter((c) => !s.shown.includes(c)), false);
   api.setColumnsVisible(s.shown, true);
@@ -146,6 +157,6 @@ export function restore(api: GridApi, s: Snapshot) {
 
 /** Apply a plan to the grid now (the view has already switched). */
 export function applyPlan(api: GridApi, plan: GridPlan) {
-  api.setState(planToState(plan), IGNORE);
+  setFiltersAndSort(api, planToState(plan));
   if (plan.show.length) api.setColumnsVisible(plan.show, true);
 }
