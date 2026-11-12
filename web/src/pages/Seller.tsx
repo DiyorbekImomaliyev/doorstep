@@ -334,6 +334,27 @@ export default function Seller({ token }: { token: string }) {
     claims: recovered.data?.open_claims ?? 0,
     disputes: (disputes.data ?? []).filter((d) => d.status === "open").length,
   };
+  // SB-01: live state beside each sidebar item. Maroon (alert) means something needs the seller; grey is information.
+  const policyIssues = policy.data?.status === "checked" ? policy.data.issues.length : 0;
+  const refundsOnWay = (moneyRows.data ?? []).filter((r) => r.status === "queued" || r.status === "pending").length;
+  const rulesOn = (auto.data?.rules ?? []).filter((r) => r.status === "on").length;
+  const navState: Partial<Record<Page, { n?: number; alert?: boolean; on?: boolean; tip: string }>> = {
+    claims: { n: badge.claims, alert: true, tip: badge.claims ? `${badge.claims} open` : "None open" },
+    disputes: { n: badge.disputes, alert: true, tip: badge.disputes ? `${badge.disputes} open` : "None open" },
+    money: { n: refundsOnWay, tip: refundsOnWay ? `${refundsOnWay} on their way` : "Nothing pending" },
+    autopilot: { on: rulesOn > 0, tip: rulesOn ? `${rulesOn} rule${rulesOn === 1 ? "" : "s"} on` : "No rule on" },
+    policy: { n: policyIssues, alert: true, tip: policyIssues ? `${policyIssues} issue${policyIssues === 1 ? "" : "s"} found` : policy.data?.status === "checked" ? "No issues" : "Not checked" },
+    insights: { tip: "AG Studio" },
+  };
+  // Up and Down arrows walk the sidebar's buttons; Tab still visits each in order.
+  const walkNav = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(".nav button, .nav a"));
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    if (i < 0) return;
+    e.preventDefault();
+    items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+  };
   const linkInvalid = !!error && !rows && rowsStatus !== null && rowsStatus < 500;
   usePageTitle(linkInvalid ? "Link not valid" : page === "orders" ? `${activeMeta.label} · Control Room` : PAGE[page].label, { private: true });
 
@@ -348,7 +369,7 @@ export default function Seller({ token }: { token: string }) {
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      <aside className="sidebar" onKeyDown={walkNav}>
         <Wordmark />
         <div className="shop-chip">
           <span className="avatar" aria-hidden>{(me.data?.name ?? "M").slice(0, 1)}</span>
@@ -361,8 +382,9 @@ export default function Seller({ token }: { token: string }) {
           <div className="nav-label">Orders</div>
           <div className="nav" role="group" aria-label="Filter orders">
             {FILTERS.map((f) => (
-              <button key={f.key} aria-pressed={page === "orders" && !!rows && active === f.key} onClick={() => choose(f.key)}>
-                {f.icon}{f.label}<span className="count">{rows ? counts[f.key] : ""}</span>
+              <button key={f.key} aria-pressed={page === "orders" && !!rows && active === f.key} onClick={() => choose(f.key)}
+                title={`${f.label} · ${rows ? counts[f.key] : "…"}`}>
+                {f.icon}{f.label}<span className={`count${f.key === "action" && counts.action > 0 ? " alert" : ""}`}>{rows ? counts[f.key] : ""}</span>
               </button>
             ))}
           </div>
@@ -372,10 +394,13 @@ export default function Seller({ token }: { token: string }) {
             <div className="nav-label">{g.label}</div>
             <div className="nav" role="group" aria-label={g.label}>
               {g.pages.map((p) => {
-                const n = badge[p];
+                const st = navState[p];
+                const n = st?.n ?? 0;
                 return (
-                  <button key={p} aria-pressed={page === p} onClick={() => go(p)}>
-                    {PAGE[p].icon}{PAGE[p].label}{n > 0 && <span className="count alert">{n}</span>}
+                  <button key={p} aria-pressed={page === p} onClick={() => go(p)} title={`${PAGE[p].hint}${st ? ` · ${st.tip}` : ""}`}>
+                    {PAGE[p].icon}{PAGE[p].label}
+                    {st?.on && <span className="pill-on" aria-hidden />}
+                    {n > 0 && <span className={`count${st?.alert ? " alert" : ""}`}>{n}</span>}
                   </button>
                 );
               })}

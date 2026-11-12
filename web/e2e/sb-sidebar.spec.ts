@@ -1,0 +1,61 @@
+// SB-01..SB-03: the seller's sidebar shows live state per item, names each page in a tooltip,
+// walks with the arrow keys, and stays a tidy 44 px strip on a phone.
+import { expect, test } from "@playwright/test";
+
+let token = "";
+test.beforeAll(async ({ request }) => {
+  const seed = await (await request.post("/demo/seed?scratch=1")).json();
+  token = seed.seller_token as string;
+});
+
+const side = (page: import("@playwright/test").Page) => page.locator("aside.sidebar");
+
+test("SB-01 SB-02 each item has a tooltip and live state; urgent is maroon, the rest grey", async ({ page }) => {
+  await page.route(`**/api/seller/${token}/autopilot`, (r) => r.fulfill({ json: { rules: [{ id: "r1", failure_point: "FP-01", currency: "GBP", max_amount_minor: 5000, status: "on", precedents: 3, updated_at: "2026-11-12T10:00:00Z" }], suggestions: [] } }));
+  await page.route(`**/api/seller/${token}/policy-check`, (r) => r.fulfill({ json: {
+    status: "checked", facts: [], rule_id: null, rule_version: null, source: "", disclaimer: "", provider: null, dropped: 0,
+    issues: [{ quote: "q", problem: "p", suggestion: "s", facts: [] }, { quote: "q2", problem: "p", suggestion: "s", facts: [] }],
+  } }));
+  await page.goto(`/seller/${token}`);
+  const s = side(page);
+  await expect(s.getByRole("button", { name: /^Needs you/ })).toBeVisible();
+  const buttons = s.locator(".nav button");
+  expect(await buttons.count()).toBe(10);
+  for (let i = 0; i < 10; i++) expect((await buttons.nth(i).getAttribute("title")) ?? "").not.toBe("");
+  // Policy: a maroon count of issues. Autopilot: an On pill, with no text in the accessible name.
+  await expect(s.locator(".nav button", { hasText: "Policy" }).locator(".count.alert")).toHaveText("2");
+  await expect(s.locator(".nav button", { hasText: "Policy" })).toHaveAttribute("title", /2 issues found/);
+  await expect(s.locator(".nav button", { hasText: "Autopilot" }).locator(".pill-on")).toBeVisible();
+  await expect(s.getByRole("button", { name: "Autopilot", exact: true })).toBeVisible();
+  // Counts that only inform stay grey: In transit never carries the alert style.
+  await expect(s.locator(".nav button", { hasText: "In transit" }).locator(".count")).not.toHaveClass(/alert/);
+});
+
+test("SB-02 arrow keys walk the sidebar and the focus ring shows", async ({ page }) => {
+  await page.goto(`/seller/${token}`);
+  const first = side(page).getByRole("button", { name: /^Needs you/ });
+  await first.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(side(page).getByRole("button", { name: /^In transit/ })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(first).toBeFocused();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  const ring = await first.evaluate((e) => getComputedStyle(e).outlineStyle);
+  expect(ring).toBe("solid");
+});
+
+test.describe("phone", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  test("SB-03 the strip has 44 px targets and the page does not scroll sideways", async ({ page }) => {
+    await page.goto(`/seller/${token}`);
+    const s = side(page);
+    await expect(s.getByRole("button", { name: /^Needs you/ })).toBeVisible();
+    const buttons = s.locator(".nav button");
+    for (let i = 0; i < (await buttons.count()); i++) {
+      const box = await buttons.nth(i).boundingBox();
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  });
+});
