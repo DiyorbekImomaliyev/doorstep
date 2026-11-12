@@ -118,6 +118,40 @@ export function usePoll(reload: () => void, active: boolean, ms = 3000) {
   }, [active, ms]);
 }
 
+const SITE = "Doorstep";
+const DEFAULT_DESCRIPTION = document.querySelector<HTMLMetaElement>('meta[name="description"]')?.content ?? "";
+
+/** The tab title ("Claims · Doorstep") and the page's description. A signed-link page (a buyer's
+ * order, a seal, a seller's Control Room) also asks search engines not to index it. */
+export function usePageTitle(title: string | null, opts: { description?: string; private?: boolean } = {}) {
+  const { description, private: hidden = false } = opts;
+  useEffect(() => {
+    document.title = title ? `${title} · ${SITE}` : `${SITE} · Lost-parcel refunds for PayPal sellers`;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (meta) meta.content = description ?? DEFAULT_DESCRIPTION;
+    let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (hidden && !robots) {
+      robots = Object.assign(document.createElement("meta"), { name: "robots", content: "noindex" });
+      document.head.appendChild(robots);
+    } else if (!hidden && robots) robots.remove();
+  }, [title, description, hidden]);
+}
+
+/** A whole-page state in place of the content: a link that is invalid or expired, a page that
+ * could not load. One icon, one short title, one line, one way on. */
+export function PageState({ icon, title, text, tone = "neutral", action, alert = false }: {
+  icon: ReactNode; title: string; text: string; tone?: Tone; action?: ReactNode; alert?: boolean;
+}) {
+  return (
+    <section className={`page-state ${tone}`} role={alert ? "alert" : "status"}>
+      <span className="page-state-icon" aria-hidden>{icon}</span>
+      <h1>{title}</h1>
+      <p>{text}</p>
+      {action && <div className="page-state-actions">{action}</div>}
+    </section>
+  );
+}
+
 export function ErrorBox({ message }: { message: string }) {
   return <div className="notice bad" role="alert"><CircleAlert aria-hidden /><span>{message}</span></div>;
 }

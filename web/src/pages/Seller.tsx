@@ -1,9 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GridApi } from "ag-grid-community";
-import { BarChart3, BookOpen, ReceiptText, Columns3, Download, FileText, FileWarning, FolderOpen, Gavel, HandCoins, Info, Inbox, Landmark, Lightbulb, List, PackageX, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
+import { BarChart3, BookOpen, ReceiptText, Columns3, Download, FileText, FileWarning, FolderOpen, Gavel, HandCoins, Info, Inbox, Landmark, Lightbulb, Link2Off, List, PackageX, RefreshCw, Search, Truck, Wallet, Zap } from "lucide-react";
 import { api, type Economics, type GridAnswer, type GridPlan, type OrderRow, type PreventionTip, type RecoverySummary } from "../api";
 import { OPEN_ORDER_EVENT, type OpenOrderDetail } from "../events";
-import { Badge, ErrorBox, Loading, Toast, Wordmark, useAsync, usePoll } from "../components/ui";
+import { Badge, Brand, ErrorBox, Loading, PageState, Toast, Wordmark, useAsync, usePageTitle, usePoll } from "../components/ui";
 import CommandBar, { type Command } from "../components/CommandBar";
 import { itemKind } from "../components/gridCells";
 import { money } from "../format";
@@ -118,7 +118,7 @@ function Tip({ t }: { t: PreventionTip }) {
 
 export default function Seller({ token }: { token: string }) {
   const me = useAsync(() => api.me(token), [token]);
-  const { data: rows, error, reload: reloadOrders } = useAsync(() => api.orders(token), [token]);
+  const { data: rows, error, status: rowsStatus, reload: reloadOrders } = useAsync(() => api.orders(token), [token]);
   const recovered = useAsync(() => api.recoveries(token), [token]);
   const costs = useAsync(() => api.economics(token), [token]);
   const tips = useAsync(() => api.prevention(token), [token]);
@@ -319,6 +319,17 @@ export default function Seller({ token }: { token: string }) {
     claims: recovered.data?.open_claims ?? 0,
     disputes: (disputes.data ?? []).filter((d) => d.status === "open").length,
   };
+  const linkInvalid = !!error && !rows && rowsStatus !== null && rowsStatus < 500;
+  usePageTitle(linkInvalid ? "Link not valid" : page === "orders" ? `${activeMeta.label} · Control Room` : PAGE[page].label, { private: true });
+
+  if (linkInvalid) {
+    return (
+      <><Brand /><main className="narrow">
+        <PageState alert tone="bad" icon={<Link2Off />} title="This seller link isn't valid"
+          text="Open a fresh demo shop from the home page." action={<a className="btn primary" href="/#demo">Open a demo shop</a>} />
+      </main></>
+    );
+  }
 
   return (
     <div className="shell">
@@ -393,7 +404,7 @@ export default function Seller({ token }: { token: string }) {
             </div>
           </div>
 
-          {error && <ErrorBox message="This seller link isn't valid. Open a fresh demo from the home page." />}
+          {error && !rows && <ErrorBox message="Couldn't load your orders just now. Press Refresh to try again." />}
           {!rows && !error && (
             <section className="kpis" aria-hidden>
               {[0, 1, 2, 3].map((i) => (
@@ -402,7 +413,7 @@ export default function Seller({ token }: { token: string }) {
             </section>
           )}
 
-          {!error && (
+          {(rows || !error) && (
             <>
               {rows && <section className="kpis" aria-label="Summary">
                 <button className={`kpi ${counts.action ? "attention" : ""}`} aria-pressed={page === "orders" && active === "action"} onClick={() => pick("action")}>

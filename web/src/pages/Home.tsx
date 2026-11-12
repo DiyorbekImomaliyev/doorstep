@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ArrowRight, ChevronRight, CircleCheck, CreditCard, House, RotateCcw,
+  ArrowRight, ArrowUpRight, ChevronRight, CircleCheck, CreditCard, House, LoaderCircle, RotateCcw,
   Scale, ScanLine, Smartphone, Store, Truck,
 } from "lucide-react";
 import { api, type SeedOut } from "../api";
-import { Brand, ErrorBox, useAsync } from "../components/ui";
+import { Brand, ErrorBox, useAsync, usePageTitle } from "../components/ui";
 import Journey3D from "../components/Journey3D";
 import SystemDiagram from "../components/SystemDiagram";
 import WorldProblem from "../components/WorldProblem";
@@ -39,26 +39,34 @@ function keepSeed(seed: SeedOut | null) {
 
 export default function Home() {
   const health = useAsync(() => api.health(), []);
+  usePageTitle(null);
   const [seed, setSeedState] = useState<SeedOut | null>(savedSeed);
   const setSeed = (s: SeedOut | null) => { keepSeed(s); setSeedState(s); };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const first = useRef<HTMLAnchorElement>(null);
+  const [fresh, setFresh] = useState(false);
   async function start() {
+    if (busy) return;
     setBusy(true); setErr(null);
-    try { setSeed(await api.seed(true)); } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
+    try { setSeed(await api.seed(true)); setFresh(true); } catch (e) { setErr(String((e as Error).message)); } finally { setBusy(false); }
   }
+  // A shop that was just made: the keyboard lands on its first door, without moving the page.
+  useEffect(() => { if (fresh) first.current?.focus({ preventScroll: true }); }, [fresh]);
+  /** "Try the demo": scroll to the demo (the link's own #demo) and make the shop on the way. */
+  const tryDemo = () => { if (!seed) void start(); };
 
   return (
     <div className="landing">
-      <Brand nav={NAV} right={<a className="btn primary" href="#demo">Try the demo</a>} />
+      <Brand nav={NAV} right={<a className="btn primary" href="#demo" onClick={tryDemo}>Try the demo</a>} />
 
       <header className="hero">
         <span className="eyebrow"><b>For PayPal sellers</b> UK and US</span>
         <h1>No buyer loses money.<br /><em>No honest seller</em> pays for a lost parcel.</h1>
         <p className="lede">Doorstep refunds the buyer in minutes, proves who had the parcel, and drafts the claim to the courier.</p>
         <div className="ctas">
-          <a className="btn primary lg" href="#demo">Try the live demo <ArrowRight size={17} /></a>
+          <a className="btn primary lg" href="#demo" onClick={tryDemo}>Try the live demo <ArrowRight size={17} /></a>
           <a className="btn lg" href="#how">How it works</a>
         </div>
         <div className="built-on"><span>Built on</span><b>PayPal</b><i aria-hidden>·</i><b>Shippo</b><i aria-hidden>·</i><b>AG Grid</b><i aria-hidden>·</i><b>AG Studio</b><i aria-hidden>·</i><b>Render</b></div>
@@ -106,21 +114,23 @@ export default function Home() {
           <h2>Try it in a minute</h2>
           <p>Your own copy of Malika's shop, in the PayPal sandbox.</p>
         </div>
-        <div className="demo">
+        <div className="demo" data-state={seed ? "ready" : busy ? "busy" : "idle"} aria-busy={busy || undefined}>
           <div className="demo-top">
             <div className="col" style={{ gap: 4 }}>
               <h3>Malika's shop</h3>
-              <span className="muted">{seed ? "Ready. Pick a role." : "Ready in a few seconds."}</span>
+              <span className="muted" aria-live="polite">{seed ? "Ready. Pick a role." : busy ? "Setting up your shop…" : "Ready in a few seconds."}</span>
             </div>
             {!seed ? (
-              <button className="btn primary lg" disabled={busy} onClick={start}>{busy ? "Setting up…" : "Open my demo shop"}</button>
+              <button className="btn primary lg" disabled={busy} onClick={start}>
+                {busy && <LoaderCircle className="spin" size={17} aria-hidden />}{busy ? "Setting up…" : "Open my demo shop"}
+              </button>
             ) : (
               <span className="badge good" style={{ height: 28, padding: "0 10px" }}><CircleCheck />Ready</span>
             )}
           </div>
-          {err && <div style={{ padding: "0 28px 16px" }}><ErrorBox message={err} /></div>}
+          {err && <div className="demo-err"><ErrorBox message={err} /></div>}
           <div className="demo-grid">
-            <DemoItem href={seed ? `/seller/${seed.seller_token}` : null} icon={<Store />} title="Malika's Control Room"
+            <DemoItem ref={first} href={seed ? `/seller/${seed.seller_token}` : null} icon={<Store />} title="Malika's Control Room"
               text="Approve refunds. Send evidence." go="Open Malika's Control Room" />
             <DemoItem href={seed ? `/t/${seed.buyers["sam-jacket"]}` : null} newTab icon={<House />} title="Be Diyorbek"
               text="“Delivered”, but not there." go="Tap Not here" />
@@ -153,17 +163,18 @@ export default function Home() {
   );
 }
 
-function DemoItem({ href, icon, title, text, go, newTab }: { href: string | null; icon: React.ReactNode; title: string; text: string; go: string; newTab?: boolean }) {
+type DemoItemProps = { href: string | null; icon: React.ReactNode; title: string; text: string; go: string; newTab?: boolean; ref?: React.Ref<HTMLAnchorElement> };
+function DemoItem({ href, icon, title, text, go, newTab, ref }: DemoItemProps) {
   const body = (
     <>
       <span className="di-icon" aria-hidden>{icon}</span>
       <span className="di-title">{title}</span>
       <span className="di-text">{text}</span>
-      <span className="di-go">{go} <ArrowRight /></span>
+      <span className="di-go">{go} {newTab ? <ArrowUpRight /> : <ArrowRight />}</span>
     </>
   );
   if (!href) return <div className="demo-item locked" aria-disabled>{body}</div>;
-  return <a className="demo-item" href={href} {...(newTab ? { target: "_blank", rel: "noreferrer" } : {})}>{body}</a>;
+  return <a ref={ref} className="demo-item" href={href} {...(newTab ? { target: "_blank", rel: "noreferrer", title: "Opens in a new tab" } : {})}>{body}</a>;
 }
 
 /** Static previews of the three screens that matter (decorative; the live demo is below). */

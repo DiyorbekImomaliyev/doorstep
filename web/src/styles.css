@@ -304,8 +304,27 @@ body:has(.drawer) .toast { left: calc(100vw - min(640px, 100vw) / 2); bottom: 13
 .rights { border-color: var(--accent-line); background: linear-gradient(180deg, #fff, var(--accent-soft)); }
 .rights .rights-head { display: flex; align-items: center; gap: 8px; color: var(--accent); }
 .seal-page .seal-main { height: 60px; font-size: 17px; }
-.footnote { text-align: center; color: var(--text-3); font-size: 12.5px; display: flex; align-items: center; justify-content: center; gap: 6px; }
-.footnote svg { width: 14px; height: 14px; }
+.footnote { text-align: center; color: var(--text-3); font-size: 12.5px; line-height: 1.5; text-wrap: balance; }
+.footnote svg { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; margin-right: 6px; }
+
+/* A whole-page state (invalid link, page that could not load): centred, calm, one way on. */
+.page-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 56px 20px 40px; max-width: 420px; margin: 0 auto; }
+.page-state-icon { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); margin-bottom: 6px; border: 1px solid var(--line); }
+.page-state-icon svg { width: 26px; height: 26px; }
+.page-state.bad .page-state-icon { background: var(--bad-soft); color: var(--bad); border-color: #f0d3cf; }
+.page-state.warn .page-state-icon { background: var(--warn-soft); color: var(--warn); border-color: #eedfc3; }
+.page-state.accent .page-state-icon { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+.page-state h1 { font-family: var(--serif); font-size: 26px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.2; text-wrap: balance; }
+.page-state p { color: var(--text-2); font-size: 15px; line-height: 1.5; margin: 0; text-wrap: balance; }
+.page-state-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+
+/* Phones: every control on a public page is at least a 44 px tap target. */
+@media (max-width: 600px) {
+  .narrow .btn:not(.lg), .page-state .btn:not(.lg), .topbar .btn, .landing .btn:not(.lg) { height: 44px; }
+  .narrow select, .narrow input:not([type="checkbox"]):not([type="radio"]) { height: 44px; font-size: 16px; }
+  .narrow textarea { font-size: 16px; }
+  .narrow details.fold > summary { min-height: 44px; }
+}
 
 /* ================= landing ================= */
 .landing { background: var(--bg); }
@@ -457,6 +476,16 @@ a.demo-item:hover { background: var(--accent-soft); text-decoration: none; }
 a.demo-item:hover .di-icon { background: #fff; color: var(--accent); }
 a.demo-item:hover .di-go svg { transform: translateX(3px); }
 .demo-item.locked { opacity: .55; }
+/* A section opened from the top bar starts below the sticky bar, not under it. */
+.landing .section, .landing [id] { scroll-margin-top: 76px; }
+.demo .btn.lg { gap: 8px; }
+.demo-err { padding: 16px 28px 0; }
+.demo[data-state="busy"] .demo-item.locked { opacity: .7; }
+.demo[data-state="busy"] .demo-item.locked .di-icon { animation: di-wait 1.2s ease-in-out infinite; }
+@keyframes di-wait { 50% { opacity: .45; } }
+.demo[data-state="ready"] .demo-item:first-child { background: linear-gradient(180deg, var(--accent-soft), transparent 75%); }
+.demo[data-state="ready"] .demo-item:first-child .di-icon { background: var(--accent); color: #fff; }
+.demo-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .demo-path { padding: 14px 28px; border-top: 1px solid var(--line); background: var(--bg); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
 .demo-path .chev { color: var(--text-3); width: 14px; height: 14px; }
 @media (max-width: 960px) { .demo-grid { grid-template-columns: 1fr 1fr; } .demo-item:nth-child(3) { border-left: 0; } .demo-item { border-top: 1px solid var(--line); } }

@@ -32,4 +32,51 @@ test("UI-01 the Control Room grid is as tall as its rows, with lanes open or clo
   await expect(page.getByText("No match.")).toBeVisible();
 });
 
+test("UI-02 the landing page shares well and Try the demo makes a shop on the way down", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveTitle(/^Doorstep · /);
+  const og = (p: string) => page.locator(`meta[property="${p}"]`).getAttribute("content");
+  expect(await og("og:image")).toMatch(/\/assets\/doorstep-share\.png$/);
+  expect(await page.locator('meta[name="twitter:card"]').getAttribute("content")).toBe("summary_large_image");
+  const image = await page.request.get("/assets/doorstep-share.png");
+  expect(image.headers()["content-type"]).toBe("image/png");
+  expect((await page.request.get("/assets/favicon.svg")).headers()["content-type"]).toContain("svg");
+  await page.getByRole("link", { name: /Try the live demo/ }).click();
+  const seller = page.getByRole("link", { name: /Open Malika's Control Room/ });
+  await expect(seller).toBeVisible({ timeout: 30_000 });
+  await expect(seller).toBeFocused();
+  await expect(page.getByRole("button", { name: "Open my demo shop" })).toHaveCount(0);
+});
+
+test("UI-02 an invalid link is a calm page with a way on, and every page has its own title", async ({ page }) => {
+  await page.goto("/seller/not-a-token");
+  await expect(page.getByRole("alert")).toContainText("isn't valid");
+  await expect(page.getByRole("link", { name: "Open a demo shop" })).toHaveAttribute("href", "/#demo");
+  await expect(page).toHaveTitle("Link not valid · Doorstep");
+  await page.goto("/s/not-a-token");
+  await expect(page.getByRole("alert")).toContainText("isn't valid");
+  await page.goto("/shop/not-a-shop");
+  await expect(page.getByRole("heading", { name: "This shop isn't open" })).toBeVisible();
+  await page.goto(`/seller/${seed.seller_token}#claims`);
+  await expect(page).toHaveTitle("Claims · Doorstep");
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex");
+  await page.goto(`/shop/${seed.summary.seller_id}`);
+  await expect(page).toHaveTitle("Checkout · Doorstep");
+});
+
+test.describe("phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test("UI-02 public pages fit a phone, and their controls are 44 px tap targets", async ({ page }) => {
+    for (const url of ["/", `/t/${seed.buyers["sam-jacket"]}`, `/t/${seed.buyers["failed-attempt"]}`, `/shop/${seed.summary.seller_id}`, "/proof", "/t/bad-link"]) {
+      await page.goto(url);
+      await page.locator("main, .landing").first().waitFor();
+      await page.waitForTimeout(600);
+      expect(await noOverflow(page), url).toBe(true);
+      const small = await page.evaluate(() => [...document.querySelectorAll("main .btn, .topbar .btn, .landing .btn")]
+        .filter((b) => (b as HTMLElement).offsetParent && b.getBoundingClientRect().height < 44)
+        .map((b) => (b.textContent ?? "").trim()));
+      expect(small, url).toEqual([]);
+    }
+  });
+});
 

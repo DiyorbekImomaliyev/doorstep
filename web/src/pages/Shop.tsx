@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, House, Lock, PenLine, ShieldCheck, Shirt, Sparkles } from "lucide-react";
+import { Check, House, Lock, PenLine, ShieldCheck, Shirt, Sparkles, Store } from "lucide-react";
 import { api, type Product, type Quote } from "../api";
-import { Brand, ErrorBox, Loading } from "../components/ui";
+import { Brand, ErrorBox, Loading, PageState, usePageTitle } from "../components/ui";
 import { METHOD, money } from "../format";
 
 const HINT: Record<string, string> = {
@@ -35,11 +35,14 @@ export default function Shop({ sellerId }: { sellerId: string }) {
   const [product, setProduct] = useState<Product | null>(null);
   const currency = country === "US" ? "USD" : "GBP";
   const amount = product?.prices[currency] ?? null;
+  // No shop at this address, or nothing for sale: one calm page in place of the checkout.
+  const [closed, setClosed] = useState(false);
+  usePageTitle(closed ? "Shop not found" : "Checkout", { description: "Checkout with PayPal. Doorstep checks the address before you're charged." });
 
   useEffect(() => {
     api.products(sellerId)
-      .then((items) => items[0] ? setProduct(items[0]) : setErr("This shop has nothing for sale."))
-      .catch((e) => setErr(String(e.message)));
+      .then((items) => items[0] ? setProduct(items[0]) : setClosed(true))
+      .catch((e) => (e as { status?: number }).status === 404 ? setClosed(true) : setErr(String(e.message)));
   }, [sellerId]);
 
   useEffect(() => {
@@ -56,11 +59,20 @@ export default function Shop({ sellerId }: { sellerId: string }) {
     try {
       const started = await api.start(sellerId, amount, currency, country, method, product.sku);
       sessionStorage.setItem("doorstep:last_buyer_url", started.buyer_url);
+      sessionStorage.setItem("doorstep:last_shop_url", window.location.pathname);
       window.location.assign(started.approve_url);
     } catch (e) {
       setErr(String((e as Error).message));
       setBusy(false);
     }
+  }
+
+  if (closed) {
+    return (
+      <><Brand /><main className="narrow">
+        <PageState icon={<Store />} title="This shop isn't open" text="Check the link with the seller." action={<a className="btn" href="/">Doorstep home</a>} />
+      </main></>
+    );
   }
 
   return (

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { Bot, Check, CircleCheck, History, House, KeyRound, LifeBuoy, Lock, MapPin, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
+import { Bot, Check, CircleCheck, CloudOff, History, House, KeyRound, LifeBuoy, Link2Off, Lock, MapPin, RotateCw, Scale, ShieldCheck, TriangleAlert, Truck } from "lucide-react";
 import { api, type BuyerView } from "../api";
-import { Brand, ErrorBox, Loading, Timeline, Toast, useAsync, usePoll } from "../components/ui";
+import { Brand, ErrorBox, Loading, PageState, Timeline, Toast, useAsync, usePageTitle, usePoll } from "../components/ui";
 import { METHOD, REASONS, money } from "../format";
 
 const STEPS = [
@@ -47,6 +47,8 @@ export default function Buyer({ token }: { token: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   // The page follows the parcel and the case on its own until the order is finished.
   usePoll(reload, !!v && (v.case_open || !["CONFIRMED", "RESOLVED"].includes(v.state)), 5000);
+  usePageTitle(error && !v ? "Link not valid" : v ? `${v.item || "Your order"}` : "Your order",
+    { private: true, description: v ? `Your order from ${v.seller_name || "the shop"}: where it is, and one tap if it didn't arrive.` : undefined });
 
   // CK-09: PayPal restarts the payment as a new order, so the buyer can choose another method.
   async function payAgain() {
@@ -77,15 +79,20 @@ export default function Buyer({ token }: { token: string }) {
   }
 
   if (error && !v && status !== null && status < 500) {
-    return (<><Brand /><div className="narrow"><ErrorBox message="This link isn't valid or has expired. Ask the shop for a new one." /></div></>);
+    return (
+      <><Brand /><main className="narrow">
+        <PageState alert tone="bad" icon={<Link2Off />} title="This link isn't valid"
+          text="It may have expired. Ask the shop for a new one." action={<a className="btn" href="/">Doorstep home</a>} />
+      </main></>
+    );
   }
   if (error && !v) {
     // A server or network error is ours, not the buyer's: say so, and let them retry.
     return (
-      <><Brand /><div className="narrow col">
-        <ErrorBox message="We couldn't load your order just now. Your order and payment are safe." />
-        <button className="btn" style={{ alignSelf: "flex-start" }} onClick={reload}>Try again</button>
-      </div></>
+      <><Brand /><main className="narrow">
+        <PageState alert tone="warn" icon={<CloudOff />} title="Couldn't load your order"
+          text="Your order and payment are safe." action={<button className="btn primary" onClick={reload}><RotateCw size={15} aria-hidden />Try again</button>} />
+      </main></>
     );
   }
   if (!v) return (<><Brand /><div className="narrow col"><Loading height={160} /><Loading height={80} /></div></>);

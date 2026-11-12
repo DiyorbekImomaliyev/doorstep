@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CircleCheck, CircleX, KeyRound, Pencil } from "lucide-react";
 import { api, type ProofCheck } from "../api";
-import { Brand, Loading } from "../components/ui";
+import { Brand, Loading, usePageTitle } from "../components/ui";
 
 /** DP-03: anyone checks a signed delivery proof. The proof arrives in the URL fragment, so
  * opening the link never sends it anywhere; the page posts it once, to be checked. */
@@ -16,6 +16,8 @@ export default function Proof() {
   const [draft, setDraft] = useState("");
   const [check, setCheck] = useState<ProofCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
+  usePageTitle(check ? (check.valid ? "Proof genuine" : "Proof not valid") : "Check a delivery proof",
+    { description: "Doorstep signs the delivery facts it holds with an Ed25519 key. Anyone can check a proof here." });
 
   useEffect(() => {
     if (!proof) return;

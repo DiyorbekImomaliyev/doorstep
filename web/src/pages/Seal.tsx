@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { ArrowLeftRight, ChevronLeft, CircleCheck, Eye, LifeBuoy, PackageMinus, PackageX, ShieldCheck, Truck } from "lucide-react";
+import { ArrowLeftRight, ChevronLeft, CircleCheck, Eye, LifeBuoy, Link2Off, PackageMinus, PackageX, ShieldCheck, Truck } from "lucide-react";
 import { api, type ReportOut } from "../api";
-import { Brand, ErrorBox, Loading, useAsync } from "../components/ui";
+import { Brand, ErrorBox, Loading, PageState, useAsync, usePageTitle } from "../components/ui";
 import { RightsCard } from "./Buyer";
 
 /** SL-02..06: the page the QR (or NFC sticker) inside the parcel opens. No app, no login, no
@@ -19,6 +19,8 @@ export default function Seal({ token }: { token: string }) {
   const [report, setReport] = useState<ReportOut | null>(null);
   const [preview, setPreview] = useState<"confirm" | "report" | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  usePageTitle(error ? "Seal not valid" : v ? `Seal · ${v.item || "Your parcel"}` : "Parcel seal",
+    { private: true, description: "Opened your parcel? One tap tells the seller it arrived." });
 
   async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(true); setErr(null);
@@ -27,7 +29,14 @@ export default function Seal({ token }: { token: string }) {
     finally { setBusy(false); }
   }
 
-  if (error) return (<><Brand /><main className="narrow"><ErrorBox message="This seal isn't valid. Ask the shop for help." /></main></>);
+  if (error) {
+    return (
+      <><Brand /><main className="narrow">
+        <PageState alert tone="bad" icon={<Link2Off />} title="This seal isn't valid"
+          text="Ask the shop for help." action={<a className="btn" href="/">Doorstep home</a>} />
+      </main></>
+    );
+  }
   if (!v) return (<><Brand /><main className="narrow col"><Loading height={160} /><Loading height={120} /></main></>);
 
   return (

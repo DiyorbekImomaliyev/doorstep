@@ -1,6 +1,6 @@
-import { CircleCheck, CircleX, FileCheck2, Info } from "lucide-react";
+import { CircleCheck, CircleX, FileCheck2, FileQuestion, Info } from "lucide-react";
 import { api } from "../api";
-import { Badge, Brand, ErrorBox, Loading, useAsync } from "../components/ui";
+import { Badge, Brand, ErrorBox, Loading, PageState, useAsync, usePageTitle } from "../components/ui";
 
 const KIND: Record<string, string> = {
   decision: "Decision", approval: "Approval", settlement: "Settled", refund: "Refund", evidence: "Dispute evidence",
@@ -10,7 +10,17 @@ const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const kindLabel = (k: string) => KIND[k] ?? cap(k);
 
 export default function Verify({ caseId }: { caseId: string }) {
-  const { data: r, error } = useAsync(() => api.verify(caseId), [caseId]);
+  const { data: r, error, status } = useAsync(() => api.verify(caseId), [caseId]);
+  usePageTitle(r?.status === "ok" ? "Receipts verified" : "Check signed receipts",
+    { description: "Each money decision has an Ed25519-signed receipt, chained to the last. Anyone can check the chain." });
+  if (error && status !== null && status < 500) {
+    return (
+      <><Brand right={<span className="faint">Public receipt check</span>} /><main className="narrow">
+        <PageState alert icon={<FileQuestion />} title="No receipts for this case"
+          text="Check the link, or open the case's check from its page." action={<a className="btn" href="/">Doorstep home</a>} />
+      </main></>
+    );
+  }
   return (
     <>
       <Brand right={<span className="faint">Public receipt check</span>} />
