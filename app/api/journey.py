@@ -317,7 +317,8 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
     seed_cap = Depends(limited(RateLimiter(per_client=12, total=150, window_s=hour)))
     checkout_cap = Depends(limited(RateLimiter(per_client=30, total=300, window_s=ten_min)))
     report_cap = Depends(limited(RateLimiter(per_client=20, total=200, window_s=hour)))
-    model_cap = Depends(limited(RateLimiter(per_client=60, total=400, window_s=hour)))
+    model_limiter = RateLimiter(per_client=60, total=400, window_s=hour)
+    model_cap = Depends(limited(model_limiter))
     agent_cap = Depends(limited(RateLimiter(per_client=90, total=600, window_s=hour)))
     verify_cap = Depends(limited(RateLimiter(per_client=120, total=1200, window_s=hour)))
 
@@ -932,12 +933,8 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
 
     recent_runs: dict[str, tuple[float, str, AgentRun]] = {}  # case id -> (when, state, run)
 
-    @router.post(
-        "/api/seller/{token}/agent/cases/{case_id}",
-        response_model=AgentRun,
-        dependencies=[model_cap],
-    )
-    def run_agent(token: str, case_id: str, s: Db) -> AgentRun:
+    @router.post("/api/seller/{token}/agent/cases/{case_id}", response_model=AgentRun)
+    def run_agent(token: str, case_id: str, s: Db, request: Request) -> AgentRun:
         """AT-01..05: the Doorstep agent reads the PayPal side and asks the policy; it stops
         at the seller's limit. Seeded demo orders use simulated reads. AT-06: a run on the same
         case in the same state within AGENT_REUSE_S is reused, so opening a case twice never
@@ -952,6 +949,9 @@ def build_journey_router(deps: AppDeps, services: Services, rulebook: RuleBook) 
         last = recent_runs.get(case.id)
         if last is not None and last[1] == case.state and now - last[0] <= AGENT_REUSE_S:
             return last[2]
+        # QA-06: only a run that really happens counts against the model cap (SE-05); a reused
+        # one costs nothing, so reopening cases never locks the seller out of the agent.
+        limited(model_limiter)(request)
         real = services.agent_tools
         tools = real if real is not None and not is_simulated(order.capture_id) else None
         agent = DoorstepAgent(tools or simulated_tools(s, order), llm=services.agent_llm)
