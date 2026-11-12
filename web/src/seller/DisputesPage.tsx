@@ -1,13 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps } from "ag-grid-react";
+import { AgGridReact, type CustomCellRendererProps, type CustomDetailCellRendererProps, type CustomStatusPanelProps } from "ag-grid-react";
 import { ModuleRegistry, type CellKeyDownEvent, type ColDef, type GridApi, type RowClickedEvent, type StatusPanelDef } from "ag-grid-community";
 import { MasterDetailModule, StatusBarModule } from "ag-grid-enterprise";
 import { ArrowUpRight, ChevronDown, Gavel, Info, RefreshCw, Scale, Send, ShieldCheck, Trophy, Wallet } from "lucide-react";
 import type { DisputeRow } from "../api";
 import { ErrorBox, useAsync, usePoll } from "../components/ui";
-import { ago, money } from "../format";
+import { ago, money, type Tone } from "../format";
 import { gridTheme } from "../grid/theme";
 import { useMedia } from "../motion";
+import Chips from "./Chips";
 import { CopyId, ItemCell, PageHead } from "./LedgerGrid";
 import { disputesDesk, type DeskRow, type Stage } from "./disputes/disputesApi";
 import { DisputeDetail, ProtectionMeter, ReplyBy, SEGMENTS, StagePill, actionOf, causeText, reasonText, shortId, stageOf } from "./disputes/parts";
@@ -16,6 +17,14 @@ import "./disputes/disputes.css";
 ModuleRegistry.registerModules([MasterDetailModule, StatusBarModule]);
 
 type Seg = Stage | "all";
+/** The chip dots match the row's stage pill. */
+const SEG_TONE: Record<Stage, Tone> = { needs_reply: "accent", evidence: "neutral", offer: "neutral", resolved: "good" };
+const SOURCE = "Demo disputes · simulated";
+
+/** Where the disputes come from, on the left of the grid's status bar (as on Claims). */
+function SourcePanel(p: CustomStatusPanelProps & { text: string }) {
+  return p.text ? <span className="source-panel">{p.text}</span> : null;
+}
 
 /** The latest rows and the drawer opener, for detail panels the grid renders in its own tree. */
 const Desk = createContext<{ byId: Map<string, DeskRow>; open: (r: DeskRow) => void }>({ byId: new Map(), open: () => {} });
@@ -113,10 +122,15 @@ function Detail(p: CustomDetailCellRendererProps<DeskRow>) {
   return <DisputeDetail r={r} onOpen={() => open(r)} />;
 }
 
-const statusBar: { statusPanels: StatusPanelDef[] } = { statusPanels: [{ statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" }] };
-
 function DeskGrid({ rows, onReady, openFirst }: { rows: DeskRow[]; onReady: (a: GridApi<DeskRow>) => void; openFirst: string | null }) {
   const hasDue = rows.some((r) => r.paypal.response_due_at);
+  const source = rows.some((r) => r.simulated) ? SOURCE : "";
+  const statusBar = useMemo((): { statusPanels: StatusPanelDef[] } => ({
+    statusPanels: [
+      { statusPanel: SourcePanel, statusPanelParams: { text: source }, align: "left" },
+      { statusPanel: "agTotalAndFilteredRowCountComponent", align: "right" },
+    ],
+  }), [source]);
   const columns = useMemo((): ColDef<DeskRow>[] => [
     { headerName: "Dispute", field: "item", flex: 2, minWidth: 220, cellRenderer: "agGroupCellRenderer", cellRendererParams: { innerRenderer: DisputeCell, suppressCount: true } },
     { headerName: "PayPal ID", field: "paypal_dispute_id", width: 198, cellRenderer: (q: CustomCellRendererProps<DeskRow>) => q.data && <CopyId value={q.data.paypal_dispute_id} shown={shortId(q.data.paypal_dispute_id)} /> },
@@ -199,6 +213,7 @@ function PhoneCards({ rows, changed }: { rows: DeskRow[]; changed: Set<string> }
           );
         })}
       </ul>
+      {rows.some((r) => r.simulated) && <p className="desk-source faint">{SOURCE}</p>}
     </section>
   );
 }
@@ -292,15 +307,9 @@ export default function DisputesPage({ rows, error, onOpenOrder, token, onChange
         )}
         {data && data.length > 0 && (
           <>
-            <div className="dd-bar">
-              <div className="dd-segs-ctl" role="group" aria-label="Filter disputes">
-                {SEGMENTS.map((s) => (
-                  <button key={s.key} type="button" aria-pressed={seg === s.key} title={s.tip} onClick={() => setSeg(s.key)}>
-                    {s.label}<span className="num dd-count">{counts[s.key]}</span>
-                  </button>
-                ))}
-              </div>
-              {data.some((r) => r.simulated) && <span className="faint dd-source">Demo disputes · simulated</span>}
+            <div className="desk-bar">
+              <Chips<Seg> label="Filter disputes" value={seg} onChange={setSeg}
+                items={SEGMENTS.map((s) => ({ key: s.key, label: s.label, count: counts[s.key], title: s.tip, tone: s.key === "all" ? undefined : SEG_TONE[s.key] }))} />
             </div>
             {shown.length === 0 ? (
               <section className="table-card dd-none" aria-label="PayPal disputes">

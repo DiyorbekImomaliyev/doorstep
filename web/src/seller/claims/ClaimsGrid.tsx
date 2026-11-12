@@ -193,7 +193,7 @@ export default function ClaimsGrid({ rows, seg, byCarrier, open, onOpen, onNext,
   }), [source]);
 
   return (
-    <div className="ledger-grid cd-grid clickable">
+    <div className="ledger-grid orders-grid cd-grid clickable">
       <AgGridReact<Row>
         theme={gridTheme}
         rowData={rows as Row[]}

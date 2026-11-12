@@ -10,6 +10,7 @@ import ClaimCards from "./claims/ClaimCards";
 import ClaimClock from "./claims/ClaimClock";
 import ClaimsGrid, { type Row } from "./claims/ClaimsGrid";
 import { DeskContext, Hint, type Desk } from "./claims/desk";
+import Chips from "./Chips";
 import { DUE_DAYS, SEGS, carrierOf, isOpen, joinMoney, rateText, shortDate, statusOf, summarise, type Seg } from "./claims/model";
 import "./claims/claims.css";
 
@@ -198,25 +199,19 @@ export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged
             <a className="btn cd-empty-link" href="#orders">View orders</a>
           </section>
         ) : (
+          <>
+          <div className="desk-bar">
+            <Chips<Seg> radio label="Status" value={seg} onChange={setSeg} countClass="cd-seg-n"
+              items={SEGS.map((k) => (k === "all"
+                ? { key: k, label: "All", count: s?.counts.all, title: "Every claim" }
+                : { key: k, label: statusOf(k).label, count: s?.counts[k], tone: statusOf(k).tone, title: statusOf(k).hint }))} />
+            {!phone && (
+              <button type="button" className="btn cd-toggle" aria-pressed={byCarrier} onClick={() => setByCarrier((v) => !v)} title="Group by carrier, with won ÷ claimed">
+                <Layers size={14} aria-hidden />By carrier
+              </button>
+            )}
+          </div>
           <section className="table-card cd-table" aria-label="Carrier claims" ref={gridBox}>
-            <div className="head cd-head">
-              <div className="cd-seg" role="radiogroup" aria-label="Status">
-                {SEGS.map((k) => {
-                  const n = s?.counts[k] ?? 0;
-                  return (
-                    <button key={k} type="button" role="radio" aria-checked={seg === k} className={`tone-${k === "all" ? "all" : statusOf(k).tone}${n ? "" : " zero"}`}
-                      onClick={() => setSeg(k)} title={k === "all" ? "Every claim" : statusOf(k).hint}>
-                      {k !== "all" && <span className="cd-dot" aria-hidden />}{k === "all" ? "All" : statusOf(k).label}<span className="cd-seg-n num">{s ? n : ""}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {!phone && (
-                <button type="button" className="btn cd-toggle" aria-pressed={byCarrier} onClick={() => setByCarrier((v) => !v)} title="Group by carrier, with won ÷ claimed">
-                  <Layers size={14} aria-hidden />By carrier
-                </button>
-              )}
-            </div>
             {!rows ? (
               <div className="cd-skel-rows" aria-label="Loading">{[0, 1, 2, 3].map((i) => <span key={i} className="skel" style={{ width: `${88 - i * 9}%` }} />)}</div>
             ) : phone ? (
@@ -226,6 +221,7 @@ export default function ClaimsPage({ token, rows: ledger, onOpenOrder, onChanged
             )}
             {phone && rows && rows.some((r) => r.simulated) && <p className="cd-source faint">Demo orders · carrier history simulated</p>}
           </section>
+          </>
         )}
       </div>
       <Toast message={toast} onDone={() => setToast(null)} />
