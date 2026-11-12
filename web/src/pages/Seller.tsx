@@ -15,7 +15,7 @@ import ClaimsPage from "../seller/ClaimsPage";
 import DisputesPage from "../seller/DisputesPage";
 import MoneyPage from "../seller/MoneyPage";
 import PolicyPage from "../seller/PolicyPage";
-import { applyPlan, menuFromGrid, menuSource, restore, snapshot, type Snapshot } from "../grid/ask";
+import { applyPlan, menuFromGrid, restore, snapshot, type Snapshot } from "../grid/ask";
 
 // AG Studio is large: it loads only when the seller opens Insights.
 const Insights = lazy(() => import("../insights/Insights"));
@@ -257,7 +257,6 @@ export default function Seller({ token }: { token: string }) {
     setAsking(true);
     try {
       const menu = menuFromGrid(a);
-      if (import.meta.env.DEV) console.debug("grid menu from", menuSource, menu);
       const res = await api.gridAsk(token, q, menu);
       setSearch("");
       if (res.plan.answerable) {
